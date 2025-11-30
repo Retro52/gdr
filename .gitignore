@@ -1,0 +1,54 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+
+# Fortran module files
+*.mod
+*.smod
+
+# Executables
+*.out
+*.app
+
+# Programm logs
+*.log
+
+# CLion directories
+.idea/
+cmake-build-*/
+
+# Visual studio directories
+.vs/
+Build/
+Debug/
+Release/
+x64/
+*.dir/
+
+# Visual studio files (I will, probably, add them later)
+*.vcxproj
+*.filters
+*.user
+*.sln
+
+# CMAke files and directories
+Graphics.dir/
+CMAkeFiles/
+CMAkeCache.txt
+*.cmake
+
+# Compiled shaders
+*.spv
+*.dxl

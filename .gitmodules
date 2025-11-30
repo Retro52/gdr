@@ -1,0 +1,33 @@
+[submodule "vendors/assimp"]
+	path = vendors/assimp
+	url = https://github.com/assimp/assimp.git
+[submodule "vendors/glm"]
+	path = vendors/glm
+	url = https://github.com/g-truc/glm.git
+[submodule "vendors/entt"]
+	path = vendors/entt
+	url = https://github.com/skypjack/entt.git
+[submodule "vendors/imgui"]
+	path = vendors/imgui
+	url = https://github.com/ocornut/imgui.git
+[submodule "vendors/imguizmo"]
+	path = vendors/imguizmo
+	url = https://github.com/CedricGuillemet/ImGuizmo.git
+[submodule "vendors/json"]
+	path = vendors/json
+	url = https://github.com/nlohmann/json.git
+[submodule "vendors/sdl3"]
+	path = vendors/sdl3
+	url = https://github.com/libsdl-org/SDL.git
+[submodule "vendors/nri"]
+	path = vendors/nri
+	url = https://github.com/NVIDIA-RTX/NRI.git
+[submodule "vendors/vma"]
+	path = vendors/vma
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+[submodule "vendors/volk"]
+	path = vendors/volk
+	url = https://github.com/zeux/volk.git
+[submodule "vendors/meshoptimizer"]
+	path = vendors/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer.git
