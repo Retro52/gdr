@@ -8,7 +8,7 @@ add_subdirectory(assimp)
 if (WIN32)
     set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_WIN32_KHR)
 elseif (APPLE AND NOT IOS)
-    set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_METAL_KHR)
+    set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_METAL_EXT)
 elseif (LINUX)
     # https://stackoverflow.com/questions/45536141/how-i-can-find-out-if-a-linux-system-uses-wayland-or-x11/45537237#45537237
     if (DEFINED ENV{WAYLAND_DISPLAY})
@@ -22,9 +22,9 @@ endif ()
 
 add_subdirectory(volk)
 
-set(NRI_ENABLE_IMGUI_EXTENSION ON)
-set(NRI_ENABLE_VALIDATION_SUPPORT ON)
-add_subdirectory(nri)
+#set(NRI_ENABLE_IMGUI_EXTENSION ON)
+#set(NRI_ENABLE_VALIDATION_SUPPORT ON)
+#add_subdirectory(nri)
 
 file(GLOB IMGUI_SOURCES "imgui/*.cpp" "imgui/*.c")
 file(GLOB IMGUIZMO_SOURCES "imguizmo/*.cpp" "imguizmo/*.c")

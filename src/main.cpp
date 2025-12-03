@@ -26,7 +26,7 @@ struct pc_data
     vec4 camera_pos;
 };
 
-int SDL_main(int argc, char* argv[])
+int main(int argc, char* argv[])
 {
     window client_window("VK window", {1920, 960}, false);
     events_queue client_events(client_window);

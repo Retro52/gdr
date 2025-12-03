@@ -52,3 +52,6 @@ CMAkeCache.txt
 # Compiled shaders
 *.spv
 *.dxl
+
+# Apple weird shit
+.DS_Store

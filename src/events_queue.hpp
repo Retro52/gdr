@@ -126,36 +126,47 @@ enum class keycode
 class events_queue
 {
 public:
+    struct dummy_event
+    {
+        // just a placeholder
+    };
+
+    struct window_event
+    {
+        ivec2 size;     // if window size was changed represents new window size
+        ivec2 size_px;  // if window size in pixels was changed represents new window size in pixels
+    };
+
+    struct mouse_event
+    {
+        vec2 pos;             // mouse pos
+        vec2 delta;           // if mouse was moved represent the travel distance
+        mouse_button button;  // if mouse button was pressed represents mouse button pressed
+    };
+
+    struct scroll_event
+    {
+        vec2 pos;    // where mouse was when scrolling occurred
+        vec2 delta;  // how much was scrolled in either direction
+    };
+
+    struct keyboard_event
+    {
+        keycode key;
+        button_state state;
+    };
+
     struct event_payload
     {
         event_type type {event_type::dummy};
 
         union
         {
-            struct window
-            {
-                ivec2 size;     // if window size was changed represents new window size
-                ivec2 size_px;  // if window size in pixels was changed represents new window size in pixels
-            } window;
-
-            struct mouse
-            {
-                vec2 pos;             // mouse pos
-                vec2 delta;           // if mouse was moved represent the travel distance
-                mouse_button button;  // if mouse button was pressed represents mouse button pressed
-            } mouse;
-
-            struct scroll
-            {
-                vec2 pos;    // where mouse was when scrolling occurred
-                vec2 delta;  // how much was scrolled in either direction
-            } scroll;
-
-            struct keyboard
-            {
-                keycode key;
-                button_state state;
-            } keyboard;
+            dummy_event dummy {};
+            mouse_event mouse;
+            window_event window;
+            scroll_event scroll;
+            keyboard_event keyboard;
         };
     };
 

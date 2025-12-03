@@ -26,34 +26,41 @@ public:
         SDL_Window* window {nullptr};
         driver_type type {driver_type::unknown};
 
+        struct dummy_handle
+        {
+        };
+
+        struct windows_handle
+        {
+            void* hwnd;  // Windows HWND
+        };
+
+        struct metal_handle
+        {
+            void* ca_layer;
+            void* metal_view;
+        };
+
+        struct wayland_handle
+        {
+            void* surface;  // Wayland wl_surface*
+            void* display;  // Wayland wl_display*
+        };
+
+        struct x11_handle
+        {
+            void* window;   // X11 Window (cast to ::Window)
+            void* display;  // X11 Display*
+        };
+
         union
         {
-            struct dummy
-            {
-            } dummy {};
+            dummy_handle dummy {};
 
-            struct windows
-            {
-                void* hwnd;  // Windows HWND
-            } windows;
-
-            struct metal
-            {
-                void* ca_layer;
-                void* metal_view;
-            } metal;
-
-            struct wayland
-            {
-                void* surface;  // Wayland wl_surface*
-                void* display;  // Wayland wl_display*
-            } wayland;
-
-            struct x11
-            {
-                void* window;   // X11 Window (cast to ::Window)
-                void* display;  // X11 Display*
-            } x11;
+            windows_handle windows;
+            metal_handle metal;
+            wayland_handle wayland;
+            x11_handle x11;
         };
     };
 

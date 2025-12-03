@@ -42,6 +42,12 @@ add_custom_target(shaders ALL DEPENDS ${SPV_SHADERS})
 
 file(GLOB_RECURSE SOURCES "${CMAKE_SOURCE_DIR}/src/*.cpp" "${CMAKE_SOURCE_DIR}/src/*.c" "${CMAKE_SOURCE_DIR}/src/*.cc")
 
+if (UNIX)
+    enable_language(ASM)
+    file(GLOB_RECURSE ASM_SOURCES "${CMAKE_SOURCE_DIR}/src/*.S")
+    list(APPEND SOURCES ${ASM_SOURCES})
+endif ()
+
 add_executable(${CMAKE_PROJECT_NAME} ${SOURCES} ${SHADERS})
 add_dependencies(${CMAKE_PROJECT_NAME} shaders)
 

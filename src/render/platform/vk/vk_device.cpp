@@ -446,12 +446,18 @@ result<context> create_vk_context(const window& window, const instance_desc& des
     std::vector<const char*> layers;
     load_instance_layers_and_extensions(window, desc, layers, context.instance_extensions);
 
-    VkInstanceCreateInfo ici {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
-    ici.pApplicationInfo        = &application_info;
-    ici.enabledLayerCount       = static_cast<u32>(layers.size());
-    ici.ppEnabledLayerNames     = layers.empty() ? nullptr : layers.data();
-    ici.enabledExtensionCount   = static_cast<u32>(context.instance_extensions.size());
-    ici.ppEnabledExtensionNames = context.instance_extensions.empty() ? nullptr : context.instance_extensions.data();
+    const VkInstanceCreateInfo ici
+    {
+        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+        .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
+#endif
+        .pApplicationInfo        = &application_info,
+        .enabledLayerCount       = static_cast<u32>(layers.size()),
+        .ppEnabledLayerNames     = layers.empty() ? nullptr : layers.data(),
+        .enabledExtensionCount   = static_cast<u32>(context.instance_extensions.size()),
+        .ppEnabledExtensionNames = context.instance_extensions.empty() ? nullptr : context.instance_extensions.data()
+    };
 
     if (volkGetInstanceVersion() < ici.pApplicationInfo->apiVersion)
     {
