@@ -22,10 +22,6 @@ endif ()
 
 add_subdirectory(volk)
 
-#set(NRI_ENABLE_IMGUI_EXTENSION ON)
-#set(NRI_ENABLE_VALIDATION_SUPPORT ON)
-#add_subdirectory(nri)
-
 file(GLOB IMGUI_SOURCES "imgui/*.cpp" "imgui/*.c")
 file(GLOB IMGUIZMO_SOURCES "imguizmo/*.cpp" "imguizmo/*.c")
 
