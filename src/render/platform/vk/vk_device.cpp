@@ -419,7 +419,9 @@ VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhysicalDe
     };
 
     const VmaAllocatorCreateInfo allocator_create_info = {
-        .flags            = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT | VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+        .flags = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
+        //        .flags            = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT |
+        //        VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
         .physicalDevice   = physical_device,
         .device           = device,
         .pVulkanFunctions = &vma_vulkan_functions,
@@ -446,8 +448,7 @@ result<context> create_vk_context(const window& window, const instance_desc& des
     std::vector<const char*> layers;
     load_instance_layers_and_extensions(window, desc, layers, context.instance_extensions);
 
-    const VkInstanceCreateInfo ici
-    {
+    const VkInstanceCreateInfo ici {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 #if defined(VK_USE_PLATFORM_METAL_EXT)
         .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
@@ -456,8 +457,7 @@ result<context> create_vk_context(const window& window, const instance_desc& des
         .enabledLayerCount       = static_cast<u32>(layers.size()),
         .ppEnabledLayerNames     = layers.empty() ? nullptr : layers.data(),
         .enabledExtensionCount   = static_cast<u32>(context.instance_extensions.size()),
-        .ppEnabledExtensionNames = context.instance_extensions.empty() ? nullptr : context.instance_extensions.data()
-    };
+        .ppEnabledExtensionNames = context.instance_extensions.empty() ? nullptr : context.instance_extensions.data()};
 
     if (volkGetInstanceVersion() < ici.pApplicationInfo->apiVersion)
     {
@@ -474,7 +474,8 @@ result<context> create_vk_context(const window& window, const instance_desc& des
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
             .messageSeverity =
                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-            .messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_FLAG_BITS_MAX_ENUM_EXT,
+            .messageType =
+                VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
             .pfnUserCallback = debug_cb};
 
         VK_RETURN_ON_FAIL(vkCreateDebugUtilsMessengerEXT(
@@ -491,6 +492,7 @@ result<context> create_vk_context(const window& window, const instance_desc& des
     const auto queue_create_info = get_queue_create_info(context.physical_device, context.surface);
 
     VkPhysicalDeviceVulkan13Features vk13_features {
+        .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
         .synchronization2 = desc.device_features.required(rendering_features_table::eSynchronization2),
         .dynamicRendering = desc.device_features.required(rendering_features_table::eDynamicRender),
     };
