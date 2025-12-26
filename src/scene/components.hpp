@@ -56,6 +56,7 @@ struct camera_component
     f32 near_plane;
 
     f32 aspect_ratio;
+    /// @rad2deg
     f32 horizontal_fov;
 
     // These below are utility functions, that need some info from a transform component, like position/rotation

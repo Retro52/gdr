@@ -46,7 +46,6 @@ x64/
 # CMake files and directories
 CMakeFiles/
 CMakeCache.txt
-*.cmake
 
 # Compiled shaders
 *.spv

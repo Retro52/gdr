@@ -7,11 +7,11 @@
 #define COUNT_OF(x) \
     ((sizeof(x) / sizeof(0 [x])) / ((size_t)(!(sizeof(x) % sizeof(0 [x])))))  // NOLINT(*-misplaced-array-index)
 
-#define DYE_CONCAT_(a, b) a##b
-#define EXPR_CONCAT(a, b) DYE_CONCAT_(a, b)
+#define EXPR_CONCAT_(a, b) a##b
+#define EXPR_CONCAT(a, b)  EXPR_CONCAT_(a, b)
 
 #if !defined(NDEBUG)
-#define DEBUG_ONLY(EXPR)  EXPR
+#define DEBUG_ONLY(EXPR) EXPR
 #define NDEBUG_ONLY(EXPR)
 #else
 #define DEBUG_ONLY(EXPR)

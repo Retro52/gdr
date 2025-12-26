@@ -83,7 +83,7 @@ int main(int argc, char* argv[])
     };
 
     const auto render_pipeline = *render::pipeline::create_graphics(
-        renderer, shaders, ARRAYSIZE(shaders), &range, 1, vertex_bind, vertex_desc, vertex_desc_count);
+        renderer, shaders, COUNT_OF(shaders), &range, 1, vertex_bind, vertex_desc, vertex_desc_count);
 
     imgui_layer editor(client_window, renderer);
 

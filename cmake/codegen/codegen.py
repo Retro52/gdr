@@ -11,6 +11,7 @@ Supported annotations:
     // @range(min, max) - Lower/Upper bounds for sliders, drags, etc.
     // @readonly        - Display but don't allow editing
     // @hide            - Skip this field entirely
+    // @rad2deg         - Field is stored in radians, display in degrees
     // @name("Display") - Custom display name
 """
 
@@ -45,6 +46,7 @@ class FieldAttribute(Enum):
     COLOR = auto()
     READONLY = auto()
     HIDDEN = auto()
+    RAD2DEG = auto()
     DEBUG_ONLY = auto()
     NDEBUG_ONLY = auto()
 
@@ -102,6 +104,7 @@ class WidgetBinding:
 @dataclass
 class Config:
     bindings: list[WidgetBinding] = field(default_factory=list)
+    param_name: str = 'data'
     fallback_widget: str = 'false; ImGui::TextDisabled("{display}: [{type}]")'
 
     def get_binding(self, type_name: str) -> Optional[WidgetBinding]:
@@ -130,6 +133,10 @@ def load_config(path: str) -> Config:
     if fallback_elem is not None and fallback_elem.text:
         config.fallback_widget = fallback_elem.text.strip()
 
+    param_name = root.find("param_name")
+    if param_name is not None and param_name.text:
+        config.param_name = param_name.text.strip()
+
     bindings_elem = root.find("bindings")
     if bindings_elem is not None:
         for b_elem in bindings_elem.findall("binding"):
@@ -155,6 +162,7 @@ ANNOTATION_PATTERNS = {
     'color': re.compile(r'@color\b'),
     'readonly': re.compile(r'@readonly\b'),
     'hide': re.compile(r'@hide\b'),
+    'rad2deg': re.compile(r'@rad2deg\b'),
     'range': re.compile(r'@range\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)'),
     'name': re.compile(r'@name\s*\(\s*"([^"]+)"\s*\)'),
 }
@@ -167,6 +175,7 @@ def parse_annotations(comment: str) -> dict:
         'color': False,
         'readonly': False,
         'hide': False,
+        'rad2deg': False,
         'range': None,
         'name': None,
     }
@@ -179,6 +188,8 @@ def parse_annotations(comment: str) -> dict:
         result['readonly'] = True
     if ANNOTATION_PATTERNS['hide'].search(comment):
         result['hide'] = True
+    if ANNOTATION_PATTERNS['rad2deg'].search(comment):
+        result['rad2deg'] = True
 
     range_match = ANNOTATION_PATTERNS['range'].search(comment)
     if range_match:
@@ -202,6 +213,8 @@ def apply_annotations_to_field(field: FieldInfo, anns: dict):
         field.attributes.add(FieldAttribute.READONLY)
     if anns['hide']:
         field.attributes.add(FieldAttribute.HIDDEN)
+    if anns['rad2deg']:
+        field.attributes.add(FieldAttribute.RAD2DEG)
     if anns['range']:
         field.range_min, field.range_max = anns['range']
     if anns['name']:
@@ -420,14 +433,10 @@ def parse_struct(node, source: bytes, comments: list, namespace: Optional[str] =
     return struct
 
 
-def parse_header(header_path: str) -> list[StructInfo]:
+def parse_header(source: bytes) -> list[StructInfo]:
     """Parse a C++ header file and extract annotated structs."""
-
-    CPP_LANGUAGE = Language(tscpp.language())
-    parser = Parser(CPP_LANGUAGE)
-
-    with open(header_path, 'rb') as f:
-        source = f.read()
+    k_language = Language(tscpp.language())
+    parser = Parser(k_language)
 
     tree = parser.parse(source)
 
@@ -436,11 +445,8 @@ def parse_header(header_path: str) -> list[StructInfo]:
     collect_comments(tree.root_node, source, comments)
 
     structs = []
-    current_namespace = None
 
     def visit(node, namespace=None):
-        nonlocal current_namespace
-
         if node.type == 'namespace_definition':
             # Extract namespace name
             ns_name = None
@@ -492,6 +498,7 @@ def generate_widget(field: FieldInfo, config: Config, indent: str = "    ") -> O
     type_name = field.type_name
 
     is_color = FieldAttribute.COLOR in field.attributes
+    is_rad2deg = FieldAttribute.RAD2DEG in field.attributes
     is_readonly = FieldAttribute.READONLY in field.attributes
     is_debug_only = FieldAttribute.DEBUG_ONLY in field.attributes
     is_ndebug_only = FieldAttribute.NDEBUG_ONLY in field.attributes
@@ -511,16 +518,36 @@ def generate_widget(field: FieldInfo, config: Config, indent: str = "    ") -> O
     min_val = field.range_min if field.range_min is not None else 0.0
     max_val = field.range_max if field.range_max is not None else 0.0
 
-    code = apply_template(
-        template,
-        display=display,
-        var=var,
-        type=type_name,
-        min=f"{min_val}f" if has_range else "0.0f",
-        max=f"{max_val}f" if has_range else "0.0f",
-        min_int=int(min_val) if has_range else 0,
-        max_int=int(max_val) if has_range else 0,
-    )
+    if is_rad2deg:
+        var_staging = f"{var.replace('.', '_')}_staging"
+        code = \
+            f"""[&]() -> bool
+                {'{'}
+                auto {var_staging} = glm::degrees({config.param_name}.{var});
+                bool result = {apply_template(
+                template,
+                display=display,
+                var=var_staging,
+                type=type_name,
+                min=f"{min_val}f" if has_range else "0.0f",
+                max=f"{max_val}f" if has_range else "0.0f",
+                min_int=int(min_val) if has_range else 0,
+                max_int=int(max_val) if has_range else 0)};
+                {config.param_name}.{var} = glm::radians({var_staging});
+                return result;
+                {'}'}()
+            """
+    else:
+        code = apply_template(
+            template,
+            display=display,
+            var=f"{config.param_name}.{var}",
+            type=type_name,
+            min=f"{min_val}f" if has_range else "0.0f",
+            max=f"{max_val}f" if has_range else "0.0f",
+            min_int=int(min_val) if has_range else 0,
+            max_int=int(max_val) if has_range else 0,
+        )
 
     lines = code.split('\n')
     indented = '\n'.join(indent + line for line in lines)
@@ -611,7 +638,14 @@ def main():
     if args.verbose:
         print(f"Parsing {args.input}...", file=sys.stderr)
 
-    structs = parse_header(args.input)
+    with open(args.input, 'rb') as f:
+        source: bytes = f.read()
+
+        if not "@imgui" in str(source):
+            print("Warning: No @imgui annotated structs found!", file=sys.stderr)
+            return
+
+    structs = parse_header(source)
 
     if not structs:
         print("Warning: No @imgui annotated structs found!", file=sys.stderr)
