@@ -1,7 +1,7 @@
 #pragma once
 
+#include <detail.hpp>
 #include <entt/entt.hpp>
-#include <reflection/detail.hpp>
 
 class entity
 {
@@ -28,7 +28,7 @@ public:
     entity shallow_clone(const entity& source)
     {
         entity clone(source.m_registry.create(), source.m_registry);
-        reflection::detail::for_each_type<Components...>(
+        detail::for_each_type<std::tuple<Components...>>(
             [&]<typename T>()
             {
                 if (this->has_component<T>())

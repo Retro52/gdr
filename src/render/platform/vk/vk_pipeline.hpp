@@ -1,11 +1,35 @@
 #pragma once
 
+#include <fs/path.hpp>
 #include <render/platform/vk/vk_error.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
 #include <result.hpp>
 
 namespace render
 {
+    class shader
+    {
+    public:
+        struct shader_meta
+        {
+            ivec3 local_size;
+            VkShaderStageFlagBits stage;
+            u32 resources_mask;
+            bool uses_desc_array;
+            bool uses_push_constants;
+        };
+
+    public:
+        static result<shader> load(const vk_renderer& renderer, const fs::path& path);
+
+    private:
+        static shader_meta parse_spirv(const bytes& spv);
+
+    public:
+        VkShaderModule module;
+        shader_meta meta;
+    };
+
     class pipeline
     {
     public:
@@ -16,9 +40,9 @@ namespace render
         };
 
     public:
-        static result<pipeline> create_graphics(const vk_renderer& renderer, VkShaderModule vertex,
-                                                VkShaderModule fragment, const VkPushConstantRange* push_constants,
-                                                u32 pc_count, VkVertexInputBindingDescription vertex_bind,
+        static result<pipeline> create_graphics(const vk_renderer& renderer, const shader* shaders, u32 shaders_count,
+                                                const VkPushConstantRange* push_constants, u32 pc_count,
+                                                VkVertexInputBindingDescription vertex_bind,
                                                 const VkVertexInputAttributeDescription* vertex_attr,
                                                 u32 vertex_attr_count);
 

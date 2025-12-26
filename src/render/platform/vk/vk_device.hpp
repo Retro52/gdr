@@ -20,11 +20,12 @@ namespace render
         enum flag
         {
             eValidation       = 1 << 0,
-            eDynamicRender    = 1 << 1,
-            eSynchronization2 = 1 << 2,
+            eMeshShading      = 1 << 1,
+            eDynamicRender    = 1 << 2,
+            eSynchronization2 = 1 << 3,
         };
 
-        bool required(rendering_features_table::flag flag) const noexcept
+        [[nodiscard]] bool required(rendering_features_table::flag flag) const noexcept
         {
             return (flag & features) > 0;
         }
@@ -40,11 +41,9 @@ namespace render
 
     struct instance_desc
     {
-        const char* app_name {""};
-
-        u32 app_version {0};
-
         ext_array device_extensions;
+        const char* app_name {""};
+        u32 app_version {0};
         rendering_features_table device_features;
     };
 

@@ -7,6 +7,7 @@
 #include <ranges>
 #include <unordered_set>
 #include <vector>
+#include <tracy/Tracy.hpp>
 
 using namespace render;
 
@@ -90,6 +91,7 @@ void insert_video_driver_extensions(const window& window, std::vector<const char
 
 VkResult video_driver_create_surface(const window& window, VkInstance instance, VkSurfaceKHR* surface)
 {
+    ZoneScoped;
     const auto native = window.get_native_handle();
     switch (native.type)
     {
@@ -176,6 +178,7 @@ void load_instance_layers_and_extensions(const window& window, const instance_de
 
 bool choose_queue_families(VkPhysicalDevice phys, VkSurfaceKHR surface, u32& gfx, u32& cmp, u32& transfer, u32& present)
 {
+    ZoneScoped;
     u32 count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(phys, &count, nullptr);
 
@@ -243,6 +246,7 @@ bool choose_queue_families(VkPhysicalDevice phys, VkSurfaceKHR surface, u32& gfx
 
 std::vector<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysicalDevice device, VkSurfaceKHR surface)
 {
+    ZoneScoped;
     // 1st - gfx, 2nd - compute, 3rd - transfer.
     u32 families[queue_kind::COUNT];
     std::fill(families, std::end(families), VK_QUEUE_FAMILY_IGNORED);
@@ -285,6 +289,7 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
                                          const ext_array& required_extensions,
                                          const rendering_features_table& required_features)
 {
+    ZoneScoped;
     u32 families[queue_kind::COUNT];
     std::fill(families, std::end(families), VK_QUEUE_FAMILY_IGNORED);
 
@@ -347,6 +352,7 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
 
 u32 rate_device(VkPhysicalDevice physical_device)
 {
+    ZoneScoped;
     VkPhysicalDeviceProperties device_properties;
     vkGetPhysicalDeviceProperties(physical_device, &device_properties);
 
@@ -362,6 +368,7 @@ u32 rate_device(VkPhysicalDevice physical_device)
 VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface, const ext_array& required_extensions,
                                       const rendering_features_table& required_features)
 {
+    ZoneScoped;
     u32 device_count = 0;
     vkEnumeratePhysicalDevices(instance, &device_count, nullptr);
 
@@ -388,6 +395,7 @@ VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
 VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhysicalDevice physical_device,
                               VmaAllocator* allocator)
 {
+    ZoneScoped;
     const VmaVulkanFunctions vma_vulkan_functions = {
         .vkGetInstanceProcAddr                   = vkGetInstanceProcAddr,
         .vkGetDeviceProcAddr                     = vkGetDeviceProcAddr,
@@ -434,6 +442,7 @@ VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhysicalDe
 
 result<context> create_vk_context(const window& window, const instance_desc& desc)
 {
+    ZoneScoped;
     VK_RETURN_ON_FAIL(volkInitialize())
     context context {};
 
@@ -497,6 +506,15 @@ result<context> create_vk_context(const window& window, const instance_desc& des
         .dynamicRendering = desc.device_features.required(rendering_features_table::eDynamicRender),
     };
 
+    if (desc.device_features.required(rendering_features_table::eMeshShading))
+    {
+        VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features = {
+            .sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
+            .taskShader = true,
+            .meshShader = true};
+        vk13_features.pNext = &mesh_features;
+    }
+
     VkPhysicalDeviceFeatures2 device_features {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &vk13_features, .features = {}};
 
@@ -542,6 +560,7 @@ VkExtent2D choose_extent(const VkSurfaceCapabilitiesKHR& caps, VkExtent2D reques
 
 VkPresentModeKHR choose_present_mode(VkPhysicalDevice device, VkSurfaceKHR surface, bool vsync)
 {
+    ZoneScoped;
     if (vsync)
     {
         return VK_PRESENT_MODE_FIFO_KHR;
@@ -566,6 +585,7 @@ VkPresentModeKHR choose_present_mode(VkPhysicalDevice device, VkSurfaceKHR surfa
 
 VkFormat choose_depth_format(VkPhysicalDevice device)
 {
+    ZoneScoped;
     constexpr VkFormatFeatureFlags features = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
     constexpr VkFormat candidates[] = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
     for (auto candidate : candidates)
@@ -589,6 +609,7 @@ bool format_has_stencil_component(VkFormat format)
 
 VkSurfaceFormatKHR choose_swapchain_format(VkPhysicalDevice device, VkSurfaceKHR surface, VkFormat format)
 {
+    ZoneScoped;
     u32 surface_formats = 0;
     vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_formats, nullptr);
 
@@ -641,6 +662,7 @@ VkSurfaceFormatKHR choose_swapchain_format(VkPhysicalDevice device, VkSurfaceKHR
 
 void render::destroy_swapchain(const context& vk_context, swapchain& swapchain)
 {
+    ZoneScoped;
     VK_DO_IF_NOT_NULL(vk_context.device, vkDeviceWaitIdle(vk_context.device));
 
     if (swapchain.vk_swapchain != VK_NULL_HANDLE)
@@ -664,6 +686,7 @@ void render::destroy_swapchain(const context& vk_context, swapchain& swapchain)
 result<swapchain> render::create_swapchain(const context& vk_context, VkFormat format, ivec2 size, u32 frames_in_flight,
                                            bool vsync, VkSwapchainKHR old_swapchain)
 {
+    ZoneScoped;
     swapchain sc_data;
     sc_data.surface_format = choose_swapchain_format(vk_context.physical_device, vk_context.surface, format);
 
@@ -765,6 +788,7 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
 
 void render::destroy_context(context& ctx)
 {
+    ZoneScoped;
     VK_DO_IF_NOT_NULL(ctx.device, vkDeviceWaitIdle(ctx.device));
 
     VK_DO_IF_NOT_NULL(ctx.allocator, vmaDestroyAllocator(ctx.allocator));
@@ -777,6 +801,7 @@ void render::destroy_context(context& ctx)
 
 result<context> render::create_context(const window& window, const instance_desc& instance_desc)
 {
+    ZoneScoped;
     auto r_created_context = create_vk_context(window, instance_desc);
     if (!r_created_context)
     {

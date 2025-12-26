@@ -78,7 +78,7 @@ namespace render
              },
         };
 
-        *size = DYE_ARR_SIZE(kVertexDesc);
+        *size = COUNT_OF(kVertexDesc);
         return kVertexDesc;
     }
 }

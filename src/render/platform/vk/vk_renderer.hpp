@@ -50,8 +50,6 @@ namespace render
 
         [[nodiscard]] render::swapchain_image get_frame_swapchain_image() const;
 
-        void destroy_shader_module(VkShaderModule module) const;
-
         [[nodiscard]] VkShaderModule create_shader_module(const bytes& binary) const;
 
         template<typename Func>

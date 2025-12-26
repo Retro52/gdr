@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<imgui_generator>
+    <fallback><![CDATA[false; ImGui::TextDisabled("{display}: [{type}]")]]></fallback>
+
+    <bindings>
+        <binding type="float">
+            <widget><![CDATA[ImGui::DragFloat("{display}", &data.{var}, 0.01f, {min}, {max})]]></widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: %.3f", data.{var})]]></readonly_widget>
+        </binding>
+        <binding type="f32">
+            <widget><![CDATA[ImGui::DragFloat("{display}", &data.{var}, 0.01f, {min}, {max})]]></widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: %.3f", data.{var})]]></readonly_widget>
+        </binding>
+        <binding type="double">
+            <widget><![CDATA[ImGui::DragScalar("{display}", ImGuiDataType_Double, &data.{var}, 0.01)]]></widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: %.6f", data.{var})]]></readonly_widget>
+        </binding>
+        <binding type="f64">
+            <widget><![CDATA[ImGui::DragScalar("{display}", ImGuiDataType_Double, &data.{var}, 0.01)]]></widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: %.6f", data.{var})]]></readonly_widget>
+        </binding>
+        <binding type="int">
+            <widget><![CDATA[ImGui::DragInt("{display}", &data.{var}, 1.0f, {min_int}, {max_int})]]></widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: %d", data.{var})]]></readonly_widget>
+        </binding>
+        <binding type="i32">
+            <widget><![CDATA[ImGui::DragInt("{display}", &data.{var}, 1.0f, {min_int}, {max_int})]]></widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: %d", data.{var})]]></readonly_widget>
+        </binding>
+        <binding type="i64">
+            <widget><![CDATA[ImGui::DragScalar("{display}", ImGuiDataType_S64, &data.{var})]]></widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: %lld", data.{var})]]></readonly_widget>
+        </binding>
+        <binding type="u32">
+            <widget><![CDATA[ImGui::DragScalar("{display}", ImGuiDataType_U32, &data.{var})]]></widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: %u", data.{var})]]></readonly_widget>
+        </binding>
+        <binding type="u64">
+            <widget><![CDATA[ImGui::DragScalar("{display}", ImGuiDataType_U64, &data.{var})]]></widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: %llu", data.{var})]]></readonly_widget>
+        </binding>
+        <binding type="bool">
+            <widget><![CDATA[ImGui::Checkbox("{display}", &data.{var})]]></widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: %s", data.{var} ? "true" : "false")]]></readonly_widget>
+        </binding>
+        <binding type="vec2">
+            <widget><![CDATA[ImGui::DragFloat2("{display}", glm::value_ptr(data.{var}), 0.01f)]]></widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: (%.2f, %.2f)", data.{var}.x, data.{var}.y)]]></readonly_widget>
+        </binding>
+        <binding type="glm::vec2">
+            <widget><![CDATA[ImGui::DragFloat2("{display}", glm::value_ptr(data.{var}), 0.01f)]]></widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: (%.2f, %.2f)", data.{var}.x, data.{var}.y)]]></readonly_widget>
+        </binding>
+        <binding type="vec3">
+            <widget><![CDATA[ImGui::DragFloat3("{display}", glm::value_ptr(data.{var}), 0.01f)]]></widget>
+            <color_widget><![CDATA[ImGui::ColorEdit3("{display}", glm::value_ptr(data.{var}))]]></color_widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: (%.2f, %.2f, %.2f)", data.{var}.x, data.{var}.y, data.{var}.z)]]></readonly_widget>
+        </binding>
+        <binding type="glm::vec3">
+            <widget><![CDATA[ImGui::DragFloat3("{display}", glm::value_ptr(data.{var}), 0.01f)]]></widget>
+            <color_widget><![CDATA[ImGui::ColorEdit3("{display}", glm::value_ptr(data.{var}))]]></color_widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: (%.2f, %.2f, %.2f)", data.{var}.x, data.{var}.y, data.{var}.z)]]></readonly_widget>
+        </binding>
+        <binding type="vec4">
+            <widget><![CDATA[ImGui::DragFloat4("{display}", glm::value_ptr(data.{var}), 0.01f)]]></widget>
+            <color_widget><![CDATA[ImGui::ColorEdit4("{display}", glm::value_ptr(data.{var}))]]></color_widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: (%.2f, %.2f, %.2f, %.2f)", data.{var}.x, data.{var}.y, data.{var}.z, data.{var}.w)]]></readonly_widget>
+        </binding>
+        <binding type="glm::vec4">
+            <widget><![CDATA[ImGui::DragFloat4("{display}", glm::value_ptr(data.{var}), 0.01f)]]></widget>
+            <color_widget><![CDATA[ImGui::ColorEdit4("{display}", glm::value_ptr(data.{var}))]]></color_widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: (%.2f, %.2f, %.2f, %.2f)", data.{var}.x, data.{var}.y, data.{var}.z, data.{var}.w)]]></readonly_widget>
+        </binding>
+        <binding type="ivec2">
+            <widget><![CDATA[ImGui::DragInt2("{display}", glm::value_ptr(data.{var}))]]></widget>
+        </binding>
+        <binding type="glm::ivec2">
+            <widget><![CDATA[ImGui::DragInt2("{display}", glm::value_ptr(data.{var}))]]></widget>
+        </binding>
+        <binding type="ivec3">
+            <widget><![CDATA[ImGui::DragInt3("{display}", glm::value_ptr(data.{var}))]]></widget>
+        </binding>
+        <binding type="glm::ivec3">
+            <widget><![CDATA[ImGui::DragInt3("{display}", glm::value_ptr(data.{var}))]]></widget>
+        </binding>
+        <binding type="ivec4">
+            <widget><![CDATA[ImGui::DragInt4("{display}", glm::value_ptr(data.{var}))]]></widget>
+        </binding>
+        <binding type="glm::ivec4">
+            <widget><![CDATA[ImGui::DragInt4("{display}", glm::value_ptr(data.{var}))]]></widget>
+        </binding>
+        <binding type="quat">
+            <widget>
+            <![CDATA[
+                [&]() -> bool
+                {
+                    glm::vec3 euler = glm::degrees(glm::eulerAngles(data.{var}));
+                    if (ImGui::DragFloat3("{display} (euler)", glm::value_ptr(euler), 0.5f))
+                    {
+                    data.{var} = glm::quat(glm::radians(euler));
+                    return true;
+                    }
+                return false;
+                }()
+            ]]>
+            </widget>
+            <readonly_widget><![CDATA[[&]() { glm::vec3 e = glm::degrees(glm::eulerAngles(data.{var})); ImGui::Text("{display}: (%.1f, %.1f, %.1f)", e.x, e.y, e.z); return false; }()]]></readonly_widget>
+        </binding>
+        <binding type="glm::quat">
+            <widget>
+                <![CDATA[
+                [&]() -> bool
+                {
+                    glm::vec3 euler = glm::degrees(glm::eulerAngles(data.{var}));
+                    if (ImGui::DragFloat3("{display} (euler)", glm::value_ptr(euler), 0.5f))
+                    {
+                        data.{var} = glm::quat(glm::radians(euler));
+                        return true;
+                    }
+                    return false;
+                }()
+                ]]>
+            </widget>
+            <readonly_widget><![CDATA[[&]() { glm::vec3 e = glm::degrees(glm::eulerAngles(data.{var})); ImGui::Text("{display}: (%.1f, %.1f, %.1f)", e.x, e.y, e.z); return false; }()]]></readonly_widget>
+        </binding>
+        <binding type="std::string">
+            <widget>
+            <![CDATA[
+                [&]() -> bool
+                {
+                    static char buf[256];
+                    std::strncpy(buf, data.{var}.c_str(), sizeof(buf) - 1);
+                    buf[sizeof(buf) - 1] = '\0';
+                    if (ImGui::InputText("{display}", buf, sizeof(buf)))
+                    {
+                        data.{var} = buf;
+                        return true;
+                    }
+                    return false;
+                }()
+            ]]>
+            </widget>
+            <readonly_widget><![CDATA[ImGui::Text("{display}: %s", data.{var}.c_str())]]></readonly_widget>
+        </binding>
+    </bindings>
+
+</imgui_generator>

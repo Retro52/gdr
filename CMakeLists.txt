@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.17)
 
-project(dye LANGUAGES C CXX VERSION 1.0)
+project(gdr LANGUAGES C CXX VERSION 1.0)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,7 +32,7 @@ foreach (SHADER IN LISTS SHADERS)
     get_filename_component(FILENAME ${SHADER} NAME)
     get_filename_component(SHADER_DIRECTORY ${SHADER} DIRECTORY)
     add_custom_command(OUTPUT ${SHADER_DIRECTORY}/${FILENAME}.spv
-            COMMAND ${Vulkan_GLSLC_EXECUTABLE} ${SHADER} -o ${SHADER_DIRECTORY}/${FILENAME}.spv
+            COMMAND ${Vulkan_GLSLC_EXECUTABLE} ${SHADER} -o ${SHADER_DIRECTORY}/${FILENAME}.spv --target-env=vulkan1.3
             DEPENDS ${SHADER}
             COMMENT "Compiling ${FILENAME}")
     list(APPEND SPV_SHADERS ${SHADER_DIRECTORY}/${FILENAME}.spv)
@@ -40,13 +40,22 @@ endForeach ()
 
 add_custom_target(shaders ALL DEPENDS ${SPV_SHADERS})
 
-file(GLOB_RECURSE SOURCES "${CMAKE_SOURCE_DIR}/src/*.cpp" "${CMAKE_SOURCE_DIR}/src/*.c" "${CMAKE_SOURCE_DIR}/src/*.cc")
+file(GLOB_RECURSE SOURCES
+        "${CMAKE_SOURCE_DIR}/src/*.cpp"
+        "${CMAKE_SOURCE_DIR}/src/*.hpp"
+        "${CMAKE_SOURCE_DIR}/src/*.c"
+        "${CMAKE_SOURCE_DIR}/src/*.cc"
+)
 
 if (UNIX)
     enable_language(ASM)
     file(GLOB_RECURSE ASM_SOURCES "${CMAKE_SOURCE_DIR}/src/*.S")
     list(APPEND SOURCES ${ASM_SOURCES})
 endif ()
+
+include(cmake/codegen/codegen.cmake)
+set(CODEGEN_ROOT "${CMAKE_BINARY_DIR}/.codegen")
+run_codegen(ROOT "${CODEGEN_ROOT}" SOURCES ${SOURCES})
 
 add_executable(${CMAKE_PROJECT_NAME} ${SOURCES} ${SHADERS})
 add_dependencies(${CMAKE_PROJECT_NAME} shaders)
@@ -57,6 +66,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
         volk::volk
         assimp::assimp
         Vulkan::Vulkan
+        Tracy::TracyClient
         GPUOpen::VulkanMemoryAllocator
 
         imgui
@@ -69,4 +79,5 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
 
 target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC
         "${PROJECT_SOURCE_DIR}/src"
+        "${CODEGEN_ROOT}"
 )

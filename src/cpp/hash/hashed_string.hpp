@@ -1,23 +1,18 @@
 #pragma once
 
+#include <types.hpp>
+
 #include <cpp/alg_constexpr.hpp>
 #include <cpp/hash/crc_hash.hpp>
 #include <cpp/string/stack_string.hpp>
 
 #if !defined(CPP_HS_STORE_SOURCE)
-#if !defined(PRODUCTION_BUILD)
+#if !defined(NDEBUG)
 #define CPP_HS_STORE_SOURCE 1
 #else
 #define CPP_HS_STORE_SOURCE 0
 #endif  // !defined(PRODUCTION_BUILD)
 #endif  // !defined(CPP_HS_STORE_SOURCE)
-
-// Set this to 1 to comment out <, == and > operators with std::string
-// This will, likely, break the build in a lot of places - but in doing so, you may find more places where std::string
-// can be replaced with hash
-#if 0
-#define CPP_HS_DISABLE_OBSOLETE_OPERATORS
-#endif
 
 namespace cpp
 {
@@ -69,13 +64,13 @@ namespace cpp
 #endif
         }
 
-        [[nodiscard]] constexpr cpp::crc::hash64_t hash() const
+        [[nodiscard]] constexpr u64 hash() const
         {
             return m_hash;
         }
 
         // NOLINTNEXTLINE(*-explicit-constructor)
-        /* implicit */ constexpr operator cpp::crc::hash64_t() const
+        /* implicit */ constexpr operator u64() const
         {
             return m_hash;
         }
@@ -94,23 +89,6 @@ namespace cpp
         {
             return m_hash < other.m_hash;
         }
-
-#if !defined(CPP_HS_DISABLE_OBSOLETE_OPERATORS)
-        bool operator==(const std::string& other) const
-        {
-            return m_hash == hashed_string(other);
-        }
-
-        bool operator!=(const std::string& other) const
-        {
-            return m_hash != hashed_string(other);
-        }
-
-        bool operator<(const std::string& other) const
-        {
-            return m_hash < hashed_string(other);
-        }
-#endif
 
         constexpr static bool has_debug_string()
         {

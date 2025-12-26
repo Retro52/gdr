@@ -3,6 +3,7 @@
 #include <assimp/scene.h>
 #include <render/platform/vk/vk_error.hpp>
 #include <render/static_model.hpp>
+#include <Tracy/Tracy.hpp>
 
 using namespace render;
 
@@ -11,6 +12,7 @@ namespace
     // TODO: staging buffer
     void upload_data(const vk_renderer& renderer, const vk_buffer& buffer, const void* data, const u64 size)
     {
+        ZoneScoped;
         const auto allocator = renderer.get_context().allocator;
 
         void* mapped;
@@ -21,6 +23,7 @@ namespace
 
     static_model::mesh_data load_mesh(const aiMesh* mesh) noexcept
     {
+        ZoneScoped;
         assert(mesh->HasNormals());
 
         static_model::mesh_data data;
@@ -61,6 +64,7 @@ namespace
 
     static_model::mesh_buffers make_buffers_for_mesh(const vk_renderer& renderer, const static_model::mesh_data& mesh)
     {
+        ZoneScoped;
         static_model::mesh_buffers buffers {
             .indices_count = mesh.indices.size(),
         };
@@ -96,10 +100,16 @@ namespace
 
 result<static_model> static_model::load_model(render::vk_renderer& renderer, const bytes& data)
 {
+    ZoneScoped;
+#if 0
     thread_local Assimp::Importer importer;
     thread_local std::vector<mesh_data> meshes;
     thread_local std::stack<aiNode*> process_nodes;
-
+#else
+    Assimp::Importer importer;
+    std::vector<mesh_data> meshes;
+    std::stack<aiNode*> process_nodes;
+#endif
     constexpr auto flags =
         aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_FlipUVs | aiProcess_CalcTangentSpace;
     auto* scene = importer.ReadFileFromMemory(data.data(), data.size(), flags);
@@ -142,6 +152,7 @@ result<static_model> static_model::load_model(render::vk_renderer& renderer, con
 
 void static_model::draw(VkCommandBuffer buffer)
 {
+    ZoneScoped;
     const VkDeviceSize offset = 0;
     for (const auto& mesh : m_meshes)
     {

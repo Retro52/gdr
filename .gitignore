@@ -43,10 +43,9 @@ x64/
 *.user
 *.sln
 
-# CMAke files and directories
-Graphics.dir/
-CMAkeFiles/
-CMAkeCache.txt
+# CMake files and directories
+CMakeFiles/
+CMakeCache.txt
 *.cmake
 
 # Compiled shaders

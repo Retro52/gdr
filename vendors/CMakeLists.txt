@@ -4,6 +4,11 @@ add_subdirectory(sdl3)
 add_subdirectory(entt)
 add_subdirectory(json)
 add_subdirectory(assimp)
+add_subdirectory(tinyxml2)
+
+set(TRACY_ENABLE ON)
+set(TRACY_ON_DEMAND ON)
+add_subdirectory(tracy)
 
 if (WIN32)
     set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_WIN32_KHR)

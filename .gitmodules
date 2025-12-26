@@ -28,3 +28,9 @@
 [submodule "vendors/meshoptimizer"]
 	path = vendors/meshoptimizer
 	url = https://github.com/zeux/meshoptimizer.git
+[submodule "vendors/tracy"]
+	path = vendors/tracy
+	url = https://github.com/wolfpld/tracy.git
+[submodule "vendors/tinyxml2"]
+	path = vendors/tinyxml2
+	url = https://github.com/leethomason/tinyxml2.git

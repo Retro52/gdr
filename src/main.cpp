@@ -5,8 +5,9 @@
 
 #include <types.hpp>
 
+#include <codegen/scene/components.hpp>
 #include <events_queue.hpp>
-#include <fs.hpp>
+#include <fs/fs.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <imgui/imgui_layer.hpp>
@@ -15,6 +16,9 @@
 #include <render/platform/vk/vk_renderer.hpp>
 #include <render/platform/vk/vk_vertex_desc.hpp>
 #include <scene/components.hpp>
+#include <scene/entity.hpp>
+#include <scene/scene.hpp>
+#include <tracy/Tracy.hpp>
 #include <window.hpp>
 
 #include <vector>
@@ -28,21 +32,25 @@ struct pc_data
 
 int main(int argc, char* argv[])
 {
+    ZoneScoped;
+    TracySetProgramName("gdr");
+
     window client_window("VK window", {1920, 960}, false);
     events_queue client_events(client_window);
 
     auto features_table = render::rendering_features_table()
                               .enable(render::rendering_features_table::eValidation)
+                              .enable(render::rendering_features_table::eMeshShading)
                               .enable(render::rendering_features_table::eDynamicRender)
                               .enable(render::rendering_features_table::eSynchronization2);
 
     render::vk_renderer renderer(
         render::instance_desc {
+            .device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_MESH_SHADER_EXTENSION_NAME},
             .app_name          = "DYE",
             .app_version       = 1,
-            .device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME},
             .device_features   = features_table,
-        },
+    },
         client_window);
 
     bool exit = false;
@@ -57,9 +65,6 @@ int main(int argc, char* argv[])
                                   renderer.resize_swapchain(client_window.get_size_in_px());
                               });
 
-    const auto vert_shader_module = renderer.create_shader_module(read_file("../shaders/bf.vert.spv"));
-    const auto frag_shader_module = renderer.create_shader_module(read_file("../shaders/bf.frag.spv"));
-
     const VkPushConstantRange range {
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
         .offset     = 0,
@@ -70,27 +75,48 @@ int main(int argc, char* argv[])
     const auto vertex_bind = render::get_vertex_binding<static_model::static_model_vertex>();
     const auto vertex_desc = render::get_vertex_description<static_model::static_model_vertex>(&vertex_desc_count);
 
-    const auto render_pipeline = *render::pipeline::create_graphics(
-        renderer, vert_shader_module, frag_shader_module, &range, 1, vertex_bind, vertex_desc, vertex_desc_count);
+    render::shader shaders[] = {
+        *render::shader::load(renderer, "../shaders/mesh.vert.spv"),
+        // *render::shader::load(renderer, "../shaders/meshlets.task.spv"),
+        // *render::shader::load(renderer, "../shaders/meshlets.frag.spv"),
+        *render::shader::load(renderer, "../shaders/meshlets.frag.spv"),
+    };
 
-    renderer.destroy_shader_module(vert_shader_module);
-    renderer.destroy_shader_module(frag_shader_module);
+    const auto render_pipeline = *render::pipeline::create_graphics(
+        renderer, shaders, ARRAYSIZE(shaders), &range, 1, vertex_bind, vertex_desc, vertex_desc_count);
 
     imgui_layer editor(client_window, renderer);
 
-    static_model model = *static_model::load_model(renderer, read_file("../data/kitten.obj"));
-    // static_model model = *static_model::load_model(renderer, read_file("../data/backpack/backpack.obj"));
+    // test scene stuff
+    scene client_scene;
+    auto kitten   = client_scene.create_entity();
+    auto backpack = client_scene.create_entity();
+    auto camera   = client_scene.create_entity();
+    auto sun      = client_scene.create_entity();
 
-    constexpr camera_component camera {
+    sun.add_component<id_component>(DEBUG_ONLY(id_component("sun")));
+    sun.add_component<transform_component>();
+    sun.add_component<directional_light_component>(
+        directional_light_component {.color = vec3(1.0F, 1.0F, 1.0F), .direction = vec3(0.5, 0.5, -0.5)});
+
+    camera.add_component<id_component>(DEBUG_ONLY(id_component("camera")));
+    camera.add_component<transform_component>(transform_component {.position = vec3(0, 0, 5)});
+    camera.add_component<camera_component>(camera_component {
         .far_plane      = 1000.0F,
         .near_plane     = 0.01F,
         .aspect_ratio   = 16.0F / 9.0F,
         .horizontal_fov = glm::radians(90.0F),
-    };
+    });
 
-    vec3 sun_pos         = {0.5, 0.5, -0.5};
-    vec3 camera_pos      = {0, 0, 5};
-    const glm::quat kRot = vec3 {glm::radians(0.0F), glm::radians(-5.0F), glm::radians(0.0F)};
+    kitten.add_component<id_component>(DEBUG_ONLY(id_component("kitten model")));
+    kitten.add_component<transform_component>();
+    kitten.add_component<static_model_component>(
+        *static_model::load_model(renderer, fs::read_file("../data/kitten.obj")));
+
+    backpack.add_component<id_component>(DEBUG_ONLY(id_component("backpack model")));
+    backpack.add_component<transform_component>();
+    backpack.add_component<static_model_component>(
+        *static_model::load_model(renderer, fs::read_file("../data/backpack/backpack.obj")));
 
     auto render_loop = [&](auto&)
     {
@@ -102,6 +128,7 @@ int main(int argc, char* argv[])
         renderer.submit(
             [&](VkCommandBuffer buffer)
             {
+                ZoneScoped;
                 const VkCommandBufferBeginInfo command_buffer_begin_info {
                     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = 0};
 
@@ -153,21 +180,70 @@ int main(int argc, char* argv[])
                 vkCmdBeginRendering(buffer, &rendering_info);
 
                 render_pipeline.bind(buffer);
+                auto& camera_transform = camera.get_component<transform_component>();
+                auto& camera_data      = camera.get_component<camera_component>();
+
                 render_pipeline.push_constant(
                     buffer,
-                    pc_data {.pv         = camera.get_projection_matrix() * camera.get_view_matrix(camera_pos, kRot),
-                             .sun_pos    = vec4(sun_pos, 0.0F),
-                             .camera_pos = vec4(camera_pos, 1.0F)});
+                    pc_data {.pv = camera_data.get_projection_matrix()
+                                 * camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation),
+                             .sun_pos    = vec4(sun.get_component<directional_light_component>().direction, 0.0F),
+                             .camera_pos = vec4(camera_transform.position, 1.0F)});
 
                 vkCmdSetScissor(buffer, 0, 1, &scissor);
                 vkCmdSetViewport(buffer, 0, 1, &viewport);
 
-                model.draw(buffer);
+                client_scene.get_view<static_model_component>().each(
+                    [&buffer](static_model_component& component)
+                    {
+                        ZoneScoped;
+                        component.model.draw(buffer);
+                    });
 
-                editor.begin_frame();
-                ImGui::DragFloat3("Camera pos: ", &camera_pos.x, 0.25F);
-                ImGui::DragFloat3("Sun pos: ", &sun_pos.x, 0.25F);
-                editor.end_frame(renderer);
+                {
+                    ZoneScoped;
+
+                    editor.begin_frame();
+                    client_scene.get_view<entt::entity>().each(
+                        [&](const entt::entity entity)
+                        {
+                            cpp::stack_string label;
+
+                            if (client_scene.has_component<id_component>(entity))
+                            {
+                                DEBUG_ONLY(auto& id = client_scene.get_component<id_component>(entity));
+                                DEBUG_ONLY(label = cpp::stack_string::make_formatted("Entity '%s'", id.name.c_str()))
+
+                                NDEBUG_ONLY(label = cpp::stack_string::make_formatted("Entity (id: %d)",
+                                                                                      static_cast<const int>(entity)));
+                            }
+                            else
+                            {
+                                label = cpp::stack_string::make_formatted("Entity (id: %d)",
+                                                                          static_cast<const int>(entity));
+                            }
+
+                            if (ImGui::CollapsingHeader(label.c_str()))
+                            {
+                                ImGui::PushID(static_cast<const int>(entity));
+
+                                codegen::components::for_each_type(
+                                    [&]<typename component>()
+                                    {
+                                        if (client_scene.has_component<component>(entity))
+                                        {
+                                            auto& data = client_scene.get_component<component>(entity);
+                                            DEBUG_ONLY()
+                                            ImGui::SeparatorText((codegen::type_name<component>).data());
+                                            codegen::draw(data);
+                                        }
+                                    });
+                                ImGui::PopID();
+                            }
+                        });
+
+                    editor.end_frame(renderer);
+                }
 
                 vkCmdEndRendering(buffer);
 
@@ -178,6 +254,7 @@ int main(int argc, char* argv[])
 
                 vkEndCommandBuffer(buffer);
                 renderer.present_frame(buffer);
+                FrameMark;
             });
     };
 

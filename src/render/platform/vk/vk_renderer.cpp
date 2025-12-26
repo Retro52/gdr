@@ -1,11 +1,14 @@
 #include <render/platform/vk/vk_error.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
+#include <tracy/Tracy.hpp>
 
 using namespace render;
 
 vk_renderer::vk_renderer(const render::instance_desc& desc, const window& window)
     : m_context(*render::create_context(window, desc))
 {
+    ZoneScoped;
+
     resize_swapchain(window.get_size_in_px());
     m_in_flight_frames.resize(m_swapchain.images.size());
 
@@ -38,6 +41,8 @@ vk_renderer::vk_renderer(const render::instance_desc& desc, const window& window
 
 void vk_renderer::resize_swapchain(ivec2 new_size)
 {
+    ZoneScoped;
+
     if (new_size == m_swapchain_size || new_size.x < 1 || new_size.y < 1)
     {
         return;
@@ -53,6 +58,7 @@ void vk_renderer::resize_swapchain(ivec2 new_size)
 
 result<vk_renderer::command_buffer> vk_renderer::create_command_buffer() const
 {
+    ZoneScoped;
     command_buffer buffer;
 
     const VkCommandPoolCreateInfo cmd_pool_create_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -75,6 +81,7 @@ result<vk_renderer::command_buffer> vk_renderer::create_command_buffer() const
 
 [[nodiscard]] bool vk_renderer::acquire_frame()
 {
+    ZoneScoped;
     vkWaitForFences(m_context.device, 1, &m_in_flight_frames[m_frame_index].fence, VK_TRUE, UINT64_MAX);
 
     const auto acquire_result = vkAcquireNextImageKHR(m_context.device,
@@ -100,6 +107,7 @@ result<vk_renderer::command_buffer> vk_renderer::create_command_buffer() const
 
 void vk_renderer::present_frame(VkCommandBuffer buffer)
 {
+    ZoneScoped;
     const VkSemaphoreSubmitInfo wait_semaphore_info {
         .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
         .pNext     = nullptr,
@@ -199,23 +207,4 @@ u32 vk_renderer::get_frames_in_flight() const
 [[nodiscard]] render::swapchain_image vk_renderer::get_frame_swapchain_image() const
 {
     return m_swapchain.images[m_image_index];
-}
-
-void vk_renderer::destroy_shader_module(VkShaderModule module) const
-{
-    vkDestroyShaderModule(m_context.device, module, nullptr);
-}
-
-[[nodiscard]] VkShaderModule vk_renderer::create_shader_module(const bytes& binary) const
-{
-    VkShaderModuleCreateInfo module_create_info {
-        .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = binary.size(),
-        .pCode    = reinterpret_cast<const u32*>(binary.data()),
-    };
-
-    VkShaderModule shader_module;
-    VK_ASSERT_ON_FAIL(vkCreateShaderModule(m_context.device, &module_create_info, nullptr, &shader_module))
-
-    return shader_module;
 }
