@@ -108,15 +108,16 @@ int main(int argc, char* argv[])
         .horizontal_fov = glm::radians(90.0F),
     });
 
+    render::vk_scene_geometry_pool geometry_pool;
     kitten.add_component<id_component>(DEBUG_ONLY(id_component("kitten model")));
     kitten.add_component<transform_component>();
     kitten.add_component<static_model_component>(
-        *static_model::load_model(renderer, fs::read_file("../data/kitten.obj")));
+        *static_model::load_model(fs::read_file("../data/kitten.obj"), renderer, geometry_pool));
 
     backpack.add_component<id_component>(DEBUG_ONLY(id_component("backpack model")));
     backpack.add_component<transform_component>();
     backpack.add_component<static_model_component>(
-        *static_model::load_model(renderer, fs::read_file("../data/backpack/backpack.obj")));
+        *static_model::load_model(fs::read_file("../data/backpack/backpack.obj"), renderer, geometry_pool));
 
     auto render_loop = [&](auto&)
     {

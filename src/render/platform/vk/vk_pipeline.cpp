@@ -1,51 +1,78 @@
 #include <cpp/hash/hashed_string.hpp>
 #include <fs/fs.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
+
+#define SPV_ENABLE_UTILITY_CODE
 #include <spirv-headers/spirv.h>
+#include <Tracy/Tracy.hpp>
+
+#include <iostream>
 
 using namespace render;
 
+namespace
+{
+    std::string parse_spv_string(const u32* raw)
+    {
+        std::string result;
+        const char* stream = reinterpret_cast<const char*>(raw);
+        while (*stream)
+        {
+            result += *stream++;
+        }
+
+        return result;
+    }
+
+    VkShaderStageFlagBits get_shader_stage(u32 word)
+    {
+        switch (static_cast<SpvExecutionModel>(word))
+        {
+        case SpvExecutionModelFragment :
+            return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case SpvExecutionModelVertex :
+            return VK_SHADER_STAGE_VERTEX_BIT;
+        case SpvExecutionModelMeshEXT :
+            return VK_SHADER_STAGE_MESH_BIT_EXT;
+        case SpvExecutionModelTaskEXT :
+            return VK_SHADER_STAGE_TASK_BIT_EXT;
+        case SpvExecutionModelGLCompute :
+            return VK_SHADER_STAGE_COMPUTE_BIT;
+        default :
+            break;
+        }
+
+        return VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
+    }
+}
+
 result<shader> shader::load(const vk_renderer& renderer, const fs::path& path)
 {
+    ZoneScoped;
     const auto binary = fs::read_file(path);
     const VkShaderModuleCreateInfo module_create_info {
         .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = binary.size(),
-        .pCode    = reinterpret_cast<const u32*>(binary.data()),
+        .pCode    = binary.get<u32>(),
     };
 
     VkShaderModule shader_module;
     VK_RETURN_ON_FAIL(vkCreateShaderModule(renderer.get_context().device, &module_create_info, nullptr, &shader_module))
 
-    shader_meta meta {};
-    switch (cpp::hashed_string(path.stem().extension().c_str()))
-    {
-    case ".vert"_hs :
-        meta.stage = VK_SHADER_STAGE_VERTEX_BIT;
-        break;
-    case ".frag"_hs :
-        meta.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        break;
-    case ".mesh"_hs :
-        meta.stage = VK_SHADER_STAGE_MESH_BIT_EXT;
-        break;
-    case ".task"_hs :
-        meta.stage = VK_SHADER_STAGE_TASK_BIT_EXT;
-        break;
-    default :
-        return "Failed to deduce shader stage";
-    }
-
-    return shader {.module = shader_module, .meta = meta};
-    // return shader {.module = shader_module, .meta = parse_spirv(binary)};
+    return shader {.module = shader_module, .meta = parse_spirv(binary)};
 }
 
 shader::shader_meta shader::parse_spirv(const bytes& spv)
 {
+    ZoneScoped;
+
     struct spv_id
     {
+        u32 name;                       // numerical name
+        SpvStorageClass storage_class;  // variable type?
     };
 
+    shader_meta result {};
     assert(!spv.empty() && spv.size() % 4 == 0 && "SPV shall not be empty, and contain a stream of u32 packed data");
 
     // As per Khronos spec:
@@ -56,38 +83,82 @@ shader::shader_meta shader::parse_spirv(const bytes& spv)
     // 4 - reserved
     // 5 - first word of an instruction stream
 
-    const u32* spv_ptr       = reinterpret_cast<const u32*>(spv.data());
-    const u32* const spv_end = reinterpret_cast<const u32*>(spv.data() + spv.size());
-    assert(spv_ptr[0] == SpvMagicNumber);
+    const u32* inst = static_cast<const u32*>(spv.data());
+    assert(inst[0] == SpvMagicNumber);
 
-    const u32 id_count = spv_ptr[3];
+    const u32 id_count = inst[3];
     std::vector<spv_id> spv_ids(id_count);
 
-    constexpr u32 first_instruction_word_id = 5;
-    spv_ptr += first_instruction_word_id;
+    // 5 = first actual instruction offset as per specification
+    inst += 5;
+    std::cerr << "=================================================\n";
 
     // TODO: an actual parsing
-    // TODO: parse shader stage
     // TODO: parse shader binding layout
     // TODO: parse shader push range
-    while (spv_ptr != spv_end)
+    const u32* end = static_cast<const u32*>(spv.end());
+    while (inst < end)
     {
-        u32 word = *spv_ptr;
+        u32 word = inst[0];
 
-        u16 op_code       = static_cast<u16>(word & 0xFF00);
-        u16 op_word_count = static_cast<u16>((word & 0x00FF) << 16);
+        u16 op_code       = static_cast<u16>(word);
+        u16 op_word_count = static_cast<u16>(word >> 16);
+
+        std::cerr << "[" << inst - spv.get<u32>() << "/" << spv.length<u32>() << "] "
+                  << "st: " << SpvOpToString(SpvOp(op_code)) << "; "
+                  << "wc: " << op_word_count << "; ";
 
         switch (op_code)
         {
+        case SpvOpMemoryModel :
+            std::cerr << "am: " << SpvAddressingModelToString(SpvAddressingModel(inst[1])) << "; ";
+            std::cerr << "mm: " << SpvMemoryModelToString(SpvMemoryModel(inst[2])) << "; ";
+            break;
+        case SpvOpExecutionMode :
+            std::cerr << "ep: " << inst[1] << "; ";
+            std::cerr << "md: " << SpvExecutionModeToString(SpvExecutionMode(inst[2])) << "; ";
+            break;
+        case SpvOpName :
+            std::cerr << "id: " << inst[1] << "; ";
+            std::cerr << "nm: " << parse_spv_string(inst + 2) << "; ";
+            break;
+        case SpvOpMemberName :
+            std::cerr << "tp: " << inst[1] << "; ";
+            std::cerr << "mb: " << inst[2] << "; ";
+            std::cerr << "nm: " << parse_spv_string(inst + 3) << "; ";
+            break;
+        case SpvOpExtInstImport:
+            // <extinst-id> OpExtInstImport "name-of-extended-instruction-set"
+            // extinst-id - id of the extensions set
+            // OpExtInst <extinst-id> instruction-number operand0, operand1, ...
+            std::cerr << "ed: " << inst[1] << "; ";
+            std::cerr << "nm: " << parse_spv_string(inst + 2) << "; ";
+            break;
+        case SpvOpSourceExtension :
+            std::cerr << "et: " << parse_spv_string(inst + 1) << "; ";
+            break;
+        case SpvOpEntryPoint :
+            result.stage = get_shader_stage(inst[1]);
+            std::cerr << "em: " << SpvExecutionModelToString(SpvExecutionModel(inst[1])) << "; ";
+            std::cerr << "ep: " << inst[2] << "; ";
+            std::cerr << "nm: " << parse_spv_string(inst + 3) << "; ";
+            break;
         default :
+            std::cerr << "words: [";
+            for (u32 id = 1; id < op_word_count; ++id)
+            {
+                std::cerr << inst[id] << (id == op_word_count - 1 ? "" : ", ");
+            }
+            std::cerr << "]; ";
             break;
         }
 
-        assert(spv_ptr + op_word_count < spv_end);
-        spv_ptr += op_word_count;
+        inst += op_word_count;
+        std::cerr << "\n";
     }
+    std::cerr << "=================================================\n";
 
-    return {};
+    return result;
 }
 
 result<pipeline> pipeline::create_graphics(const vk_renderer& renderer, const shader* shaders, u32 shaders_count,
@@ -95,6 +166,7 @@ result<pipeline> pipeline::create_graphics(const vk_renderer& renderer, const sh
                                            VkVertexInputBindingDescription vertex_bind,
                                            const VkVertexInputAttributeDescription* vertex_attr, u32 vertex_attr_count)
 {
+    ZoneScoped;
     std::vector<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
     for (u32 i = 0; i < shaders_count; ++i)
     {

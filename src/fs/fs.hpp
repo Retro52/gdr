@@ -1,6 +1,7 @@
 #pragma once
 
 #include <types.hpp>
+#include <bytes.hpp>
 
 #include <fs/path.hpp>
 
@@ -16,7 +17,7 @@ namespace fs
         const auto size = file.tellg();
         bytes data(size);
         file.seekg(0, std::ios::beg);
-        file.read(reinterpret_cast<char*>(data.data()), size);
+        file.read(data.get<char>(), size);
 
         return data;
     }

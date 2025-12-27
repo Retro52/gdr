@@ -45,5 +45,3 @@ using uvec4 = glm::uvec4;
 
 // type-erased pointer
 using vptr = std::uintptr_t;
-
-using bytes = std::vector<u8>;

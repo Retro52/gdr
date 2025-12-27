@@ -12,11 +12,7 @@ namespace render
     public:
         struct shader_meta
         {
-            ivec3 local_size;
             VkShaderStageFlagBits stage;
-            u32 resources_mask;
-            bool uses_desc_array;
-            bool uses_push_constants;
         };
 
     public:

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <render/platform/vk/vk_device.hpp>
+#include <bytes.hpp>
 #include <window.hpp>
 
 namespace render
