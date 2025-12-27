@@ -23,7 +23,6 @@
 
 namespace codegen
 {
-
 {% if opts.generate_names %}
 // Type name traits
 template<typename T>
@@ -72,14 +71,12 @@ inline bool draw_header({{ struct.full_name }}& {{ opts.param_name }}, ImGuiTree
 
     return false;
 }
-
 {% endfor %}
 }
 
 {% if opts.generate_type_list %}
 namespace codegen::{{ opts.namespace }}
 {
-
 // Type list for template metaprogramming
 using {{ opts.type_list_name }} = std::tuple<{{ structs | map(attribute='full_name') | join(', ') }}>;
 
@@ -99,6 +96,5 @@ constexpr void for_each_type(F&& f)
 {
     for_each_type_impl(std::forward<F>(f), std::make_index_sequence<type_count>{});
 }
-
 }
 {% endif %}

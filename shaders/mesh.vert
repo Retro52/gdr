@@ -1,10 +1,17 @@
 #version 450
 
-layout (location = 0) in vec3 v_position;
-layout (location = 1) in vec3 v_normal;
-layout (location = 2) in vec2 v_uv;
-layout (location = 3) in vec3 v_tangent;
+struct Vertex
+{
+    vec3 position;
+    vec3 normal;
+    vec2 uv;
+    vec3 tangent;
+};
 
+layout (binding = 0) buffer Vertices
+{
+    Vertex vertices[];
+};
 
 layout (push_constant) uniform constants
 {
@@ -24,11 +31,13 @@ out VS_OUT {
 
 void main()
 {
-    vs_out.uv = v_uv;
-    vs_out.normal = v_normal;
-    vs_out.tangent = v_tangent;
+    Vertex v = vertices[gl_VertexIndex];
+
+    vs_out.uv = v.uv;
+    vs_out.normal = v.normal;
+    vs_out.tangent = v.tangent;
     vs_out.sun_pos = pc.sun_pos;
-    vs_out.world_pos = vec4(v_position, 1.0F);
+    vs_out.world_pos = vec4(v.position, 1.0F);
     vs_out.bitangent = cross(vs_out.tangent, vs_out.normal);
 
     gl_Position = pc.vp * vs_out.world_pos;

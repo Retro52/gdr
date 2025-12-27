@@ -10,14 +10,15 @@ using namespace render;
 namespace
 {
     // TODO: staging buffer
-    void upload_data(const vk_renderer& renderer, const vk_buffer& buffer, const void* data, const u64 size)
+    void upload_data(const vk_renderer& renderer, const vk_buffer& buffer, const u64 offset, const void* data,
+                     const u64 size)
     {
         ZoneScoped;
         const auto allocator = renderer.get_context().allocator;
 
         void* mapped;
         vmaMapMemory(allocator, buffer.allocation, &mapped);
-        memcpy(mapped, data, size);
+        memcpy((static_cast<u8*>(mapped)) + offset, data, size);
         vmaUnmapMemory(allocator, buffer.allocation);
     }
 
@@ -62,46 +63,27 @@ namespace
         return data;
     }
 
-    static_model::mesh_buffers make_buffers_for_mesh(const vk_renderer& renderer, const static_model::mesh_data& mesh)
+    // FIXME: use staging buffers
+    void upload_to_scene(const static_model::mesh_data& mesh, const vk_renderer& renderer,
+                         vk_scene_geometry_pool& geometry_pool)
     {
         ZoneScoped;
-        static_model::mesh_buffers buffers {
-            .indices_count = mesh.indices.size(),
-        };
 
-        const VkBufferCreateInfo vertex_buffer_create_info {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size  = mesh.vertices.size() * sizeof(static_model::static_model_vertex),
-            .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        };
-
-        VK_ASSERT_ON_FAIL(render::create_buffer(vertex_buffer_create_info,
-                                                renderer.get_context().allocator,
-                                                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-                                                &buffers.vertex));
-
-        const VkBufferCreateInfo index_buffer_create_info {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size  = mesh.indices.size() * sizeof(static_model::static_model_index),
-            .usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-        };
-
-        VK_ASSERT_ON_FAIL(render::create_buffer(index_buffer_create_info,
-                                                renderer.get_context().allocator,
-                                                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-                                                &buffers.index));
-
-        upload_data(renderer, buffers.index, mesh.indices.data(), index_buffer_create_info.size);
-        upload_data(renderer, buffers.vertex, mesh.vertices.data(), vertex_buffer_create_info.size);
-
-        return buffers;
+        upload_data(
+            renderer, geometry_pool.index.buffer, geometry_pool.index.offset, mesh.indices.data(), mesh.indices.size());
+        upload_data(renderer,
+                    geometry_pool.vertex.buffer,
+                    geometry_pool.vertex.offset,
+                    mesh.vertices.data(),
+                    mesh.vertices.size());
     }
 }
 
-result<static_model> static_model::load_model(render::vk_renderer& renderer, const bytes& data)
+result<static_model> static_model::load_model(const bytes& data, render::vk_renderer& renderer,
+                                              render::vk_scene_geometry_pool& geometry_pool)
 {
     ZoneScoped;
-#if 0
+#if 1
     thread_local Assimp::Importer importer;
     thread_local std::vector<mesh_data> meshes;
     thread_local std::stack<aiNode*> process_nodes;
@@ -141,29 +123,38 @@ result<static_model> static_model::load_model(render::vk_renderer& renderer, con
         }
     }
 
-    std::vector<mesh_buffers> mesh_buffers(meshes.size());
-    for (u32 i = 0; i < mesh_buffers.size(); i++)
+    offsets offsets {
+        .vertex_offset = geometry_pool.vertex.offset,
+        .index_offset  = geometry_pool.index.offset,
+    };
+    for (auto& mesh : meshes)
     {
-        mesh_buffers[i] = make_buffers_for_mesh(renderer, meshes[i]);
+        offsets.index_count += mesh.indices.size();
+        offsets.vertex_count += mesh.vertices.size();
+
+        upload_to_scene(mesh, renderer, geometry_pool);
     }
 
-    return static_model {mesh_buffers};
+    geometry_pool.vertex.offset += offsets.vertex_offset;
+    geometry_pool.index.offset += offsets.index_offset;
+
+    return static_model {offsets};
 }
 
 void static_model::draw(VkCommandBuffer buffer)
 {
     ZoneScoped;
-    const VkDeviceSize offset = 0;
-    for (const auto& mesh : m_meshes)
-    {
-        vkCmdBindVertexBuffers(buffer, 0, 1, &mesh.vertex.buffer, &offset);
-        vkCmdBindIndexBuffer(buffer, mesh.index.buffer, offset, VK_INDEX_TYPE_UINT32);
-
-        vkCmdDrawIndexed(buffer, mesh.indices_count, 1, 0, 0, 0);
-    }
+    // const VkDeviceSize offset = 0;
+    // for (const auto& mesh : m_meshes)
+    // {
+    //     vkCmdBindVertexBuffers(buffer, 0, 1, &mesh.vertex.buffer, &offset);
+    //     vkCmdBindIndexBuffer(buffer, mesh.index.buffer, offset, VK_INDEX_TYPE_UINT32);
+    //
+    //     vkCmdDrawIndexed(buffer, mesh.indices_count, 1, 0, 0, 0);
+    // }
 }
 
-static_model::static_model(const std::vector<mesh_buffers>& meshes)
-    : m_meshes(meshes)
+static_model::static_model(const offsets& offsets)
+    : m_offsets(offsets)
 {
 }

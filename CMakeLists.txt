@@ -53,13 +53,11 @@ if (UNIX)
     list(APPEND SOURCES ${ASM_SOURCES})
 endif ()
 
-# FIXME: mb move to the build stage and take advantage of caching?
-# It also may make sense to merge all the codegen into a single header, and use a precompiled header?
 include(cmake/codegen/codegen.cmake)
 set(CODEGEN_ROOT "${CMAKE_BINARY_DIR}/.codegen")
 run_codegen(ROOT "${CODEGEN_ROOT}" SOURCES ${SOURCES})
 
-add_executable(${CMAKE_PROJECT_NAME} ${SOURCES} ${SHADERS})
+add_executable(${CMAKE_PROJECT_NAME} ${SOURCES} ${SHADERS} ${CODEGEN_GENERATED_HEADERS})
 add_dependencies(${CMAKE_PROJECT_NAME} shaders)
 
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE

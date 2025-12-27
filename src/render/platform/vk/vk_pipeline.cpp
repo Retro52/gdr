@@ -66,6 +66,10 @@ shader::shader_meta shader::parse_spirv(const bytes& spv)
     constexpr u32 first_instruction_word_id = 5;
     spv_ptr += first_instruction_word_id;
 
+    // TODO: an actual parsing
+    // TODO: parse shader stage
+    // TODO: parse shader binding layout
+    // TODO: parse shader push range
     while (spv_ptr != spv_end)
     {
         u32 word = *spv_ptr;

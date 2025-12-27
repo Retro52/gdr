@@ -641,15 +641,14 @@ def main():
     with open(args.input, 'rb') as f:
         source: bytes = f.read()
 
-        if not "@imgui" in str(source):
-            print("Warning: No @imgui annotated structs found!", file=sys.stderr)
-            return
-
     structs = parse_header(source)
 
     if not structs:
-        print("Warning: No @imgui annotated structs found!", file=sys.stderr)
-        return
+        if args.verbose:
+            print("Warning: No @imgui annotated structs found!", file=sys.stderr)
+        with open(args.output, "w") as f:
+            f.write(f"#pragma once\n// no annotated data found for {args.input}\n")
+            return
 
     if args.verbose:
         print(f"Found {len(structs)} annotated structs:", file=sys.stderr)
@@ -673,7 +672,8 @@ def main():
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         with open(args.output, "w") as f:
             f.write(code)
-        print(f"Generated {args.output}: {len(structs)} types", file=sys.stderr)
+        if args.verbose:
+            print(f"Generated {args.output}: {len(structs)} types", file=sys.stderr)
     else:
         print(code)
 

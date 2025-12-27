@@ -1,11 +1,11 @@
 #pragma once
 
 #include <render/platform/vk/vk_buffer.hpp>
+#include <render/platform/vk/vk_geometry_pool.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
 
 #include <stack>
 
-// @imgui
 class static_model
 {
 public:
@@ -33,13 +33,22 @@ public:
     };
 
 public:
-    static result<static_model> load_model(render::vk_renderer& renderer, const bytes& data);
+    static result<static_model> load_model(const bytes& data, render::vk_renderer& renderer,
+                                           render::vk_scene_geometry_pool& geometry_pool);
 
     void draw(VkCommandBuffer buffer);
 
 private:
-    explicit static_model(const std::vector<mesh_buffers>& meshes);
+    struct offsets
+    {
+        u64 vertex_offset;
+        u64 vertex_count;
+        u64 index_offset;
+        u64 index_count;
+    };
+
+    explicit static_model(const offsets& offsets);
 
 private:
-    std::vector<mesh_buffers> m_meshes;
+    offsets m_offsets;
 };
