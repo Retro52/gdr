@@ -1,6 +1,8 @@
 #pragma once
 #include <types.hpp>
 
+#include <Tracy/Tracy.hpp>
+
 #include <memory>
 
 struct bytes
@@ -15,6 +17,7 @@ public:
     bytes(u64 size, const void* data)
         : bytes(size)
     {
+        ZoneScoped;
         std::copy_n(static_cast<const u8*>(data), size, m_memory.get());
     }
 

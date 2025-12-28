@@ -14,7 +14,6 @@
 #include <render/platform/vk/vk_image.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
-#include <render/platform/vk/vk_vertex_desc.hpp>
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 #include <scene/scene.hpp>
@@ -32,7 +31,6 @@ struct pc_data
 
 int main(int argc, char* argv[])
 {
-    ZoneScoped;
     TracySetProgramName("gdr");
 
     window client_window("VK window", {1920, 960}, false);
@@ -46,8 +44,9 @@ int main(int argc, char* argv[])
 
     render::vk_renderer renderer(
         render::instance_desc {
-            .device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_MESH_SHADER_EXTENSION_NAME},
-            .app_name          = "DYE",
+            .device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+                                  VK_EXT_MESH_SHADER_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME},
+            .app_name          = "Vulkan renderer",
             .app_version       = 1,
             .device_features   = features_table,
     },
@@ -71,19 +70,15 @@ int main(int argc, char* argv[])
         .size       = sizeof(pc_data),
     };
 
-    u32 vertex_desc_count  = 0;
-    const auto vertex_bind = render::get_vertex_binding<static_model::static_model_vertex>();
-    const auto vertex_desc = render::get_vertex_description<static_model::static_model_vertex>(&vertex_desc_count);
-
-    render::shader shaders[] = {
-        *render::shader::load(renderer, "../shaders/mesh.vert.spv"),
+    render::vk_shader shaders[] = {
+        // *render::vk_shader::load(renderer, "../shaders/parse_test.comp.spv"),
+        *render::vk_shader::load(renderer, "../shaders/mesh.vert.spv"),
+        *render::vk_shader::load(renderer, "../shaders/meshlets.frag.spv"),
         // *render::shader::load(renderer, "../shaders/meshlets.task.spv"),
         // *render::shader::load(renderer, "../shaders/meshlets.frag.spv"),
-        *render::shader::load(renderer, "../shaders/meshlets.frag.spv"),
     };
 
-    const auto render_pipeline = *render::pipeline::create_graphics(
-        renderer, shaders, COUNT_OF(shaders), &range, 1, vertex_bind, vertex_desc, vertex_desc_count);
+    const auto render_pipeline = *render::vk_pipeline::create_graphics(renderer, shaders, COUNT_OF(shaders), &range, 1);
 
     imgui_layer editor(client_window, renderer);
 
@@ -97,7 +92,7 @@ int main(int argc, char* argv[])
     sun.add_component<id_component>(DEBUG_ONLY(id_component("sun")));
     sun.add_component<transform_component>();
     sun.add_component<directional_light_component>(
-        directional_light_component {.color = vec3(1.0F, 1.0F, 1.0F), .direction = vec3(0.5, 0.5, -0.5)});
+        directional_light_component {.color = vec3(1.0F, 1.0F, 1.0F), .direction = vec3(0.5)});
 
     camera.add_component<id_component>(DEBUG_ONLY(id_component("camera")));
     camera.add_component<transform_component>(transform_component {.position = vec3(0, 0, 5)});
@@ -108,7 +103,11 @@ int main(int argc, char* argv[])
         .horizontal_fov = glm::radians(90.0F),
     });
 
-    render::vk_scene_geometry_pool geometry_pool;
+    render::vk_scene_geometry_pool geometry_pool {
+        .vertex = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .index  = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+    };
+
     kitten.add_component<id_component>(DEBUG_ONLY(id_component("kitten model")));
     kitten.add_component<transform_component>();
     kitten.add_component<static_model_component>(
@@ -129,8 +128,8 @@ int main(int argc, char* argv[])
         renderer.submit(
             [&](VkCommandBuffer buffer)
             {
-                ZoneScoped;
-                const VkCommandBufferBeginInfo command_buffer_begin_info {
+                ZoneScopedN("main.renderer.submit");
+                constexpr VkCommandBufferBeginInfo command_buffer_begin_info {
                     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = 0};
 
                 VkRenderingAttachmentInfo color_attachment_info {
@@ -180,10 +179,10 @@ int main(int argc, char* argv[])
 
                 vkCmdBeginRendering(buffer, &rendering_info);
 
-                render_pipeline.bind(buffer);
                 auto& camera_transform = camera.get_component<transform_component>();
                 auto& camera_data      = camera.get_component<camera_component>();
 
+                render_pipeline.bind(buffer);
                 render_pipeline.push_constant(
                     buffer,
                     pc_data {.pv = camera_data.get_projection_matrix()
@@ -191,9 +190,13 @@ int main(int argc, char* argv[])
                              .sun_pos    = vec4(sun.get_component<directional_light_component>().direction, 0.0F),
                              .camera_pos = vec4(camera_transform.position, 1.0F)});
 
+                render::vk_descriptor_info updates[] = {geometry_pool.vertex.buffer.buffer};
+                render_pipeline.push_descriptor_set(buffer, updates);
+
                 vkCmdSetScissor(buffer, 0, 1, &scissor);
                 vkCmdSetViewport(buffer, 0, 1, &viewport);
 
+                vkCmdBindIndexBuffer(buffer, geometry_pool.index.buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
                 client_scene.get_view<static_model_component>().each(
                     [&buffer](static_model_component& component)
                     {
@@ -234,7 +237,6 @@ int main(int argc, char* argv[])
                                         if (client_scene.has_component<component>(entity))
                                         {
                                             auto& data = client_scene.get_component<component>(entity);
-                                            DEBUG_ONLY()
                                             ImGui::SeparatorText((codegen::type_name<component>).data());
                                             codegen::draw(data);
                                         }

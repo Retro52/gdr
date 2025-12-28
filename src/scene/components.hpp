@@ -29,8 +29,6 @@ struct directional_light_component
 {
     /// @color
     vec3 color;
-
-    /// @color
     vec3 direction;
 };
 

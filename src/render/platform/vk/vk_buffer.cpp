@@ -1,4 +1,5 @@
 #include <render/platform/vk/vk_buffer.hpp>
+#include <Tracy/Tracy.hpp>
 
 void render::destroy_buffer(VmaAllocator allocator, const vk_buffer& buffer)
 {
@@ -8,6 +9,8 @@ void render::destroy_buffer(VmaAllocator allocator, const vk_buffer& buffer)
 VkResult render::create_buffer(const VkBufferCreateInfo& buffer_create_info, VmaAllocator allocator,
                                VmaAllocationCreateFlags allocation_flags, vk_buffer* buffer)
 {
+    ZoneScoped;
+
     const VmaAllocationCreateInfo alloc_info = {.flags = allocation_flags, .usage = VMA_MEMORY_USAGE_AUTO};
     return vmaCreateBuffer(allocator, &buffer_create_info, &alloc_info, &buffer->buffer, &buffer->allocation, nullptr);
 }
@@ -15,6 +18,8 @@ VkResult render::create_buffer(const VkBufferCreateInfo& buffer_create_info, Vma
 VkResult render::create_buffer_view(VkDevice device, VkBuffer buffer, VkFormat format, u64 offset, u64 range,
                                     VkBufferView* view)
 {
+    ZoneScoped;
+
     const VkBufferViewCreateInfo buffer_view_create_info = {
         .sType  = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
         .pNext  = nullptr,

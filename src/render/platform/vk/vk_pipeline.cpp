@@ -24,6 +24,27 @@ namespace
         return result;
     }
 
+    VkDescriptorType get_descriptor_type(u32 word)
+    {
+        switch (static_cast<SpvOp>(word))
+        {
+        case SpvOpTypeStruct :
+            return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        case SpvOpTypeImage :
+            return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        case SpvOpTypeSampler :
+            return VK_DESCRIPTOR_TYPE_SAMPLER;
+        case SpvOpTypeSampledImage :
+            return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        case SpvOpTypeAccelerationStructureKHR :
+            return VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+        default :
+            break;
+        }
+
+        return VK_DESCRIPTOR_TYPE_MAX_ENUM;
+    }
+
     VkShaderStageFlagBits get_shader_stage(u32 word)
     {
         switch (static_cast<SpvExecutionModel>(word))
@@ -44,9 +65,61 @@ namespace
 
         return VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
     }
+
+    VkResult create_update_template(VkDevice device, VkPipelineBindPoint bind_point, VkPipelineLayout layout,
+                                    VkDescriptorUpdateTemplate* update_template)
+    {
+        VkDescriptorUpdateTemplateEntry entry = {
+            .dstBinding      = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .offset          = 0,
+            .stride          = sizeof(vk_descriptor_info),
+        };
+
+        VkDescriptorUpdateTemplateCreateInfo create_info = {
+            .sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO,
+            .descriptorUpdateEntryCount = 1,
+            .pDescriptorUpdateEntries   = &entry,
+            .templateType               = VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR,
+            .pipelineBindPoint          = bind_point,
+            .pipelineLayout             = layout,
+        };
+
+        return vkCreateDescriptorUpdateTemplate(device, &create_info, nullptr, update_template);
+    }
+
+    VkResult create_pipeline_layout(VkDevice device, const VkPushConstantRange* push_constants, u32 pc_count,
+                                    VkPipelineLayout* layout)
+    {
+        const VkDescriptorSetLayoutBinding binding {.binding         = 0,
+                                                    .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                    .descriptorCount = 1,
+                                                    .stageFlags      = VK_SHADER_STAGE_VERTEX_BIT};
+
+        const VkDescriptorSetLayoutCreateInfo desc_set_layout_info {
+            .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
+            .bindingCount = 1,
+            .pBindings    = &binding};
+
+        VkDescriptorSetLayout desc_set_layout;
+        VK_ASSERT_ON_FAIL(vkCreateDescriptorSetLayout(device, &desc_set_layout_info, nullptr, &desc_set_layout));
+
+        const VkPipelineLayoutCreateInfo pipeline_layout_create_info {
+            .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            .setLayoutCount         = 1,
+            .pSetLayouts            = &desc_set_layout,
+            .pushConstantRangeCount = pc_count,
+            .pPushConstantRanges    = push_constants,
+        };
+
+        // vkDestroyDescriptorSetLayout(device, desc_set_layout, nullptr);
+        return vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, layout);
+    }
 }
 
-result<shader> shader::load(const vk_renderer& renderer, const fs::path& path)
+result<vk_shader> vk_shader::load(const vk_renderer& renderer, const fs::path& path)
 {
     ZoneScoped;
     const auto binary = fs::read_file(path);
@@ -59,18 +132,38 @@ result<shader> shader::load(const vk_renderer& renderer, const fs::path& path)
     VkShaderModule shader_module;
     VK_RETURN_ON_FAIL(vkCreateShaderModule(renderer.get_context().device, &module_create_info, nullptr, &shader_module))
 
-    return shader {.module = shader_module, .meta = parse_spirv(binary)};
+    return vk_shader {.module = shader_module, .meta = parse_spirv(binary)};
 }
 
-shader::shader_meta shader::parse_spirv(const bytes& spv)
+vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
 {
     ZoneScoped;
 
     struct spv_id
     {
-        u32 name;                       // numerical name
-        SpvStorageClass storage_class;  // variable type?
+        u32 name;                               // numerical name
+        SpvOp op_code;                          // associated op type
+        SpvStorageClass storage_class;          // variable storage class
+        u32 constant;                           // constant value
+        spv_id* type;                           // type reference
+        DEBUG_ONLY(std::string readable_name);  // parsed from debug info
     };
+
+    struct spv_uniform
+    {
+        spv_id* variable;
+        u32 location;
+    };
+
+    struct spv_push_desc
+    {
+        spv_id* variable;
+        u32 binding;
+        u32 set;
+    };
+
+    std::unordered_map<u32, spv_uniform> uniforms;
+    std::unordered_map<u32, spv_push_desc> push_descriptors;
 
     shader_meta result {};
     assert(!spv.empty() && spv.size() % 4 == 0 && "SPV shall not be empty, and contain a stream of u32 packed data");
@@ -91,9 +184,7 @@ shader::shader_meta shader::parse_spirv(const bytes& spv)
 
     // 5 = first actual instruction offset as per specification
     inst += 5;
-    std::cerr << "=================================================\n";
 
-    // TODO: an actual parsing
     // TODO: parse shader binding layout
     // TODO: parse shader push range
     const u32* end = static_cast<const u32*>(spv.end());
@@ -104,67 +195,79 @@ shader::shader_meta shader::parse_spirv(const bytes& spv)
         u16 op_code       = static_cast<u16>(word);
         u16 op_word_count = static_cast<u16>(word >> 16);
 
-        std::cerr << "[" << inst - spv.get<u32>() << "/" << spv.length<u32>() << "] "
-                  << "st: " << SpvOpToString(SpvOp(op_code)) << "; "
-                  << "wc: " << op_word_count << "; ";
-
         switch (op_code)
         {
-        case SpvOpMemoryModel :
-            std::cerr << "am: " << SpvAddressingModelToString(SpvAddressingModel(inst[1])) << "; ";
-            std::cerr << "mm: " << SpvMemoryModelToString(SpvMemoryModel(inst[2])) << "; ";
+        case SpvOpDecorate :
+        {
+            switch (static_cast<SpvDecoration>(inst[2]))
+            {
+            case SpvDecorationBinding :
+                push_descriptors[inst[1]].binding = inst[3];
+                break;
+            case SpvDecorationDescriptorSet :
+                push_descriptors[inst[1]].set      = inst[3];
+                push_descriptors[inst[1]].variable = &spv_ids[inst[1]];
+                break;
+            default :
+                break;
+            }
             break;
-        case SpvOpExecutionMode :
-            std::cerr << "ep: " << inst[1] << "; ";
-            std::cerr << "md: " << SpvExecutionModeToString(SpvExecutionMode(inst[2])) << "; ";
-            break;
+        }
         case SpvOpName :
-            std::cerr << "id: " << inst[1] << "; ";
-            std::cerr << "nm: " << parse_spv_string(inst + 2) << "; ";
-            break;
-        case SpvOpMemberName :
-            std::cerr << "tp: " << inst[1] << "; ";
-            std::cerr << "mb: " << inst[2] << "; ";
-            std::cerr << "nm: " << parse_spv_string(inst + 3) << "; ";
-            break;
-        case SpvOpExtInstImport:
-            // <extinst-id> OpExtInstImport "name-of-extended-instruction-set"
-            // extinst-id - id of the extensions set
-            // OpExtInst <extinst-id> instruction-number operand0, operand1, ...
-            std::cerr << "ed: " << inst[1] << "; ";
-            std::cerr << "nm: " << parse_spv_string(inst + 2) << "; ";
-            break;
-        case SpvOpSourceExtension :
-            std::cerr << "et: " << parse_spv_string(inst + 1) << "; ";
+            DEBUG_ONLY(spv_ids[inst[1]].readable_name = parse_spv_string(inst + 2));
             break;
         case SpvOpEntryPoint :
             result.stage = get_shader_stage(inst[1]);
-            std::cerr << "em: " << SpvExecutionModelToString(SpvExecutionModel(inst[1])) << "; ";
-            std::cerr << "ep: " << inst[2] << "; ";
-            std::cerr << "nm: " << parse_spv_string(inst + 3) << "; ";
+            break;
+        case SpvOpTypeStruct :
+        case SpvOpTypeImage :
+        case SpvOpTypeSampler :
+        case SpvOpTypeSampledImage :
+        case SpvOpTypeAccelerationStructureKHR :
+            spv_ids[inst[1]].name    = inst[1];
+            spv_ids[inst[1]].op_code = static_cast<SpvOp>(op_code);
+            break;
+        case SpvOpTypePointer :
+            spv_ids[inst[1]].name          = inst[1];
+            spv_ids[inst[1]].type          = &spv_ids[inst[3]];
+            spv_ids[inst[1]].op_code       = static_cast<SpvOp>(op_code);
+            spv_ids[inst[1]].storage_class = static_cast<SpvStorageClass>(inst[2]);
+            break;
+        case SpvOpVariable :
+            spv_ids[inst[2]].name          = inst[2];
+            spv_ids[inst[2]].type          = &spv_ids[inst[1]];
+            spv_ids[inst[2]].op_code       = static_cast<SpvOp>(op_code);
+            spv_ids[inst[2]].storage_class = static_cast<SpvStorageClass>(inst[3]);
+            break;
+        case SpvOpConstant :
+            spv_ids[inst[2]].name     = inst[2];
+            spv_ids[inst[2]].constant = inst[3];
+            spv_ids[inst[2]].type     = &spv_ids[inst[1]];
+            spv_ids[inst[2]].op_code  = static_cast<SpvOp>(op_code);
             break;
         default :
-            std::cerr << "words: [";
-            for (u32 id = 1; id < op_word_count; ++id)
-            {
-                std::cerr << inst[id] << (id == op_word_count - 1 ? "" : ", ");
-            }
-            std::cerr << "]; ";
             break;
         }
 
         inst += op_word_count;
-        std::cerr << "\n";
     }
-    std::cerr << "=================================================\n";
+
+    u32 idx = 0;
+    VkDescriptorSetLayoutBinding bindings[32];
+    for (const auto& [_, push_desc] : push_descriptors)
+    {
+        bindings[idx] = {
+            .binding = push_desc.binding,
+            // .descriptorCount =
+        };
+    }
 
     return result;
 }
 
-result<pipeline> pipeline::create_graphics(const vk_renderer& renderer, const shader* shaders, u32 shaders_count,
-                                           const VkPushConstantRange* push_constants, u32 pc_count,
-                                           VkVertexInputBindingDescription vertex_bind,
-                                           const VkVertexInputAttributeDescription* vertex_attr, u32 vertex_attr_count)
+result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
+                                                 u32 shaders_count, const VkPushConstantRange* push_constants,
+                                                 u32 pc_count)
 {
     ZoneScoped;
     std::vector<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
@@ -188,11 +291,7 @@ result<pipeline> pipeline::create_graphics(const vk_renderer& renderer, const sh
     };
 
     const VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info {
-        .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount   = 1,
-        .pVertexBindingDescriptions      = &vertex_bind,
-        .vertexAttributeDescriptionCount = vertex_attr_count,
-        .pVertexAttributeDescriptions    = vertex_attr,
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
     };
 
     const VkPipelineInputAssemblyStateCreateInfo assembly_state_create_info {
@@ -254,18 +353,6 @@ result<pipeline> pipeline::create_graphics(const vk_renderer& renderer, const sh
         .blendConstants  = {0.0f, 0.0f, 0.0f, 0.0f},
     };
 
-    const VkPipelineLayoutCreateInfo pipeline_layout_create_info {
-        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount         = 0,
-        .pSetLayouts            = nullptr,
-        .pushConstantRangeCount = pc_count,
-        .pPushConstantRanges    = push_constants,
-    };
-
-    VkPipelineLayout vk_pipeline_layout;
-    VK_RETURN_ON_FAIL(vkCreatePipelineLayout(
-        renderer.get_context().device, &pipeline_layout_create_info, nullptr, &vk_pipeline_layout));
-
     const VkPipelineRenderingCreateInfo pipeline_rendering_create_info {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
         .pNext                   = nullptr,
@@ -286,6 +373,9 @@ result<pipeline> pipeline::create_graphics(const vk_renderer& renderer, const sh
         .maxDepthBounds        = 1.0f,
     };
 
+    VkPipelineLayout pipeline_layout;
+    create_pipeline_layout(renderer.get_context().device, push_constants, pc_count, &pipeline_layout);
+
     const VkGraphicsPipelineCreateInfo pipeline_create_info {
         .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext               = &pipeline_rendering_create_info,
@@ -299,35 +389,46 @@ result<pipeline> pipeline::create_graphics(const vk_renderer& renderer, const sh
         .pDepthStencilState  = &depth_stencil_state_create_info,
         .pColorBlendState    = &color_blend_state_create_info,
         .pDynamicState       = &dynamic_state_create_info,
-        .layout              = vk_pipeline_layout,
+        .layout              = pipeline_layout,
         .renderPass          = VK_NULL_HANDLE,
         .subpass             = 0,
         .basePipelineHandle  = VK_NULL_HANDLE,
         .basePipelineIndex   = -1,
     };
 
-    VkPipeline vk_pipeline;
+    VkPipeline vk_handle;
     VK_RETURN_ON_FAIL(vkCreateGraphicsPipelines(
-        renderer.get_context().device, VK_NULL_HANDLE, 1, &pipeline_create_info, nullptr, &vk_pipeline));
+        renderer.get_context().device, VK_NULL_HANDLE, 1, &pipeline_create_info, nullptr, &vk_handle));
 
-    return pipeline {renderer.get_context().device, vk_pipeline, vk_pipeline_layout, VK_PIPELINE_BIND_POINT_GRAPHICS};
+    VkDescriptorUpdateTemplate update_template;
+    VK_RETURN_ON_FAIL(create_update_template(
+        renderer.get_context().device, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, &update_template));
+
+    return vk_pipeline {
+        renderer.get_context().device, vk_handle, pipeline_layout, update_template, VK_PIPELINE_BIND_POINT_GRAPHICS};
 }
 
-void pipeline::bind(VkCommandBuffer command_buffer) const
+void vk_pipeline::bind(VkCommandBuffer command_buffer) const
 {
     vkCmdBindPipeline(command_buffer, m_pipeline_bind_point, m_pipeline);
 }
 
-void pipeline::push_constant(VkCommandBuffer command_buffer, u32 size, const void* data) const
+void vk_pipeline::push_constant(VkCommandBuffer command_buffer, u32 size, const void* data) const
 {
     vkCmdPushConstants(command_buffer, m_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, size, data);
 }
 
-pipeline::pipeline(VkDevice device, VkPipeline pipeline, VkPipelineLayout pipeline_layout,
-                   VkPipelineBindPoint pipeline_bind_point)
+void vk_pipeline::push_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_info* updates) const
+{
+    vkCmdPushDescriptorSetWithTemplateKHR(command_buffer, m_descriptor_update_template, m_pipeline_layout, 0, updates);
+}
+
+vk_pipeline::vk_pipeline(VkDevice device, VkPipeline pipeline, VkPipelineLayout pipeline_layout,
+                         VkDescriptorUpdateTemplate update_template, VkPipelineBindPoint pipeline_bind_point)
     : m_device(device)
     , m_pipeline(pipeline)
     , m_pipeline_layout(pipeline_layout)
+    , m_descriptor_update_template(update_template)
     , m_pipeline_bind_point(pipeline_bind_point)
 {
 }

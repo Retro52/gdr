@@ -57,10 +57,10 @@ include(cmake/codegen/codegen.cmake)
 set(CODEGEN_ROOT "${CMAKE_BINARY_DIR}/.codegen")
 run_codegen(ROOT "${CODEGEN_ROOT}" SOURCES ${SOURCES})
 
-add_executable(${CMAKE_PROJECT_NAME} ${SOURCES} ${SHADERS} ${CODEGEN_GENERATED_HEADERS})
-add_dependencies(${CMAKE_PROJECT_NAME} shaders)
+add_executable(${PROJECT_NAME} ${SOURCES} ${SHADERS} ${CODEGEN_GENERATED_HEADERS})
+add_dependencies(${PROJECT_NAME} shaders)
 
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
+target_link_libraries(${PROJECT_NAME} PRIVATE
         glm::glm
         EnTT::EnTT
         volk::volk
@@ -70,14 +70,15 @@ target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
         GPUOpen::VulkanMemoryAllocator
 
         imgui
+        meshoptimizer
         nlohmann_json
 )
 
-target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+target_compile_definitions(${PROJECT_NAME} PRIVATE
         VK_NO_PROTOTYPES
 )
 
-target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC
+target_include_directories(${PROJECT_NAME} PUBLIC
         "${PROJECT_SOURCE_DIR}/src"
         "${CODEGEN_ROOT}"
 )

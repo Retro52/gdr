@@ -8,7 +8,7 @@ struct Vertex
     vec3 tangent;
 };
 
-layout (binding = 0) buffer Vertices
+layout (binding = 0) readonly buffer Vertices
 {
     Vertex vertices[];
 };

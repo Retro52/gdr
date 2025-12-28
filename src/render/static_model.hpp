@@ -11,18 +11,24 @@ class static_model
 public:
     using static_model_index = u32;
 
-    struct static_model_vertex
+    struct alignas(16) static_model_vertex
     {
-        vec3 position;
-        vec3 normal;
-        vec2 uv;
-        vec3 tangent;
+        vec3 position; float _0;
+        vec3 normal; float _1;
+        vec2 uv; vec2 _2;
+        vec3 tangent; float _3;
     };
 
     struct mesh_data
     {
+#if 0
+        std::vector<meshopt_Meshlet> meshlets;
+        std::vector<unsigned int> meshlet_vertices;
+        std::vector<unsigned char> meshlet_triangles;
+#else
         std::vector<u32> indices;
         std::vector<static_model_vertex> vertices;
+#endif
     };
 
     struct mesh_buffers

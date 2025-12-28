@@ -2,6 +2,7 @@
 
 #include <detail.hpp>
 #include <entt/entt.hpp>
+#include <Tracy/Tracy.hpp>
 
 class entity
 {
@@ -9,24 +10,28 @@ public:
     template<typename T, typename... Args>
     T& add_component(Args&&... args) const
     {
+        ZoneScoped;
         return m_registry.emplace<T>(m_entity, std::forward<Args>(args)...);
     }
 
     template<typename T>
     [[nodiscard]] bool has_component() const
     {
+        ZoneScoped;
         return m_registry.all_of<T>(m_entity);
     }
 
     template<typename T>
     [[nodiscard]] T& get_component() const
     {
+        ZoneScoped;
         return m_registry.get<T>(m_entity);
     }
 
     template<typename... Components>
     entity shallow_clone(const entity& source)
     {
+        ZoneScoped;
         entity clone(source.m_registry.create(), source.m_registry);
         detail::for_each_type<std::tuple<Components...>>(
             [&]<typename T>()

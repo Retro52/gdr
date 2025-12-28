@@ -1,9 +1,10 @@
 #pragma once
 
 #include <types.hpp>
-#include <bytes.hpp>
 
+#include <bytes.hpp>
 #include <fs/path.hpp>
+#include <Tracy/Tracy.hpp>
 
 #include <fstream>
 #include <vector>
@@ -12,6 +13,7 @@ namespace fs
 {
     inline bytes read_file(const fs::path& path)
     {
+        ZoneScoped;
         std::ifstream file(path.c_str(), std::ios::binary | std::ios::ate);
 
         const auto size = file.tellg();

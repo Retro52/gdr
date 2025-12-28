@@ -5,6 +5,7 @@ add_subdirectory(entt)
 add_subdirectory(json)
 add_subdirectory(assimp)
 add_subdirectory(tinyxml2)
+add_subdirectory(meshoptimizer)
 
 set(TRACY_ENABLE ON)
 set(TRACY_ON_DEMAND ON)
