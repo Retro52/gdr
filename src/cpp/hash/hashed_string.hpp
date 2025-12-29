@@ -2,9 +2,9 @@
 
 #include <types.hpp>
 
+#include <cpp/containers/stack_string.hpp>
 #include <cpp/alg_constexpr.hpp>
 #include <cpp/hash/crc_hash.hpp>
-#include <cpp/string/stack_string.hpp>
 
 #if !defined(CPP_HS_STORE_SOURCE)
 #if !defined(NDEBUG)
@@ -29,7 +29,7 @@ namespace cpp
         }
 
         constexpr hashed_string(const char* str)
-            : m_hash(crc::crc64(str, cpp::strlen_c(str)))
+            : m_hash(crc::crc64(str, cpp::cx_strlen(str)))
 #if CPP_HS_STORE_SOURCE
             , m_str(str)
 #endif

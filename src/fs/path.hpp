@@ -2,7 +2,7 @@
 
 #include <types.hpp>
 
-#include <cpp/string/stack_string.hpp>
+#include <cpp/containers/stack_string.hpp>
 #include <fs/path_utils.hpp>
 
 #include <filesystem>
@@ -15,7 +15,7 @@ namespace fs
         constexpr path() = default;
 
         constexpr path(const char* p)
-            : m_path(::fs::normalize_path(p, cpp::strlen_c(p)))
+            : m_path(::fs::normalize_path(p, cpp::cx_strlen(p)))
         {
         }
 

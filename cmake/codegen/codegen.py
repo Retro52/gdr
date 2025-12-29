@@ -6,6 +6,7 @@ Usage:
     python codegen.py input.hpp -o output.hpp
 
 Supported annotations:
+    // @widget          - Custom widget template
     // @imgui           - Mark struct/class for ImGui generation
     // @color           - Treat field as color
     // @range(min, max) - Lower/Upper bounds for sliders, drags, etc.
@@ -56,6 +57,8 @@ class FieldInfo:
     name: str
     type_name: str
     attributes: set[FieldAttribute] = field(default_factory=set)
+    widget: Optional[str] = None
+    widget_is_named: bool = False
     range_min: Optional[float] = None
     range_max: Optional[float] = None
     display_name: Optional[str] = None
@@ -104,8 +107,12 @@ class WidgetBinding:
 @dataclass
 class Config:
     bindings: list[WidgetBinding] = field(default_factory=list)
+    templates: dict[str, str] = field(default_factory=dict)
     param_name: str = 'data'
     fallback_widget: str = 'false; ImGui::TextDisabled("{display}: [{type}]")'
+
+    def get_template(self, name: str) -> Optional[str]:
+        return self.templates.get(name)
 
     def get_binding(self, type_name: str) -> Optional[WidgetBinding]:
         # Normalize type name (remove const, &, *, extra spaces)
@@ -137,6 +144,13 @@ def load_config(path: str) -> Config:
     if param_name is not None and param_name.text:
         config.param_name = param_name.text.strip()
 
+    templates_elem = root.find("templates")
+    if templates_elem is not None:
+        for t_elem in templates_elem.findall("template"):
+            name = t_elem.get("name", "")
+            if name and t_elem.text:
+                config.templates[name] = t_elem.text.strip()
+
     bindings_elem = root.find("bindings")
     if bindings_elem is not None:
         for b_elem in bindings_elem.findall("binding"):
@@ -165,6 +179,8 @@ ANNOTATION_PATTERNS = {
     'rad2deg': re.compile(r'@rad2deg\b'),
     'range': re.compile(r'@range\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)'),
     'name': re.compile(r'@name\s*\(\s*"([^"]+)"\s*\)'),
+    'widget_inline': re.compile(r'@widget\s*\(\s*"([^"]+)"\s*\)'),  # @widget("...")
+    'widget_named': re.compile(r'@widget\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)'),  # @widget(name)
 }
 
 
@@ -178,6 +194,8 @@ def parse_annotations(comment: str) -> dict:
         'rad2deg': False,
         'range': None,
         'name': None,
+        'widget': None,
+        'widget_is_named': False,
     }
 
     if ANNOTATION_PATTERNS['imgui'].search(comment):
@@ -190,6 +208,16 @@ def parse_annotations(comment: str) -> dict:
         result['hide'] = True
     if ANNOTATION_PATTERNS['rad2deg'].search(comment):
         result['rad2deg'] = True
+
+    widget_match = ANNOTATION_PATTERNS['widget_inline'].search(comment)
+    if widget_match:
+        result['widget'] = widget_match.group(1)
+        result['widget_is_named'] = False
+    else:
+        widget_match = ANNOTATION_PATTERNS['widget_named'].search(comment)
+        if widget_match:
+            result['widget'] = widget_match.group(1)
+            result['widget_is_named'] = True
 
     range_match = ANNOTATION_PATTERNS['range'].search(comment)
     if range_match:
@@ -209,6 +237,9 @@ def apply_annotations_to_field(field: FieldInfo, anns: dict):
     """Apply parsed annotations to a field."""
     if anns['color']:
         field.attributes.add(FieldAttribute.COLOR)
+    if anns['widget']:
+        field.widget = anns['widget']
+        field.widget_is_named = anns['widget_is_named']
     if anns['readonly']:
         field.attributes.add(FieldAttribute.READONLY)
     if anns['hide']:
@@ -505,7 +536,15 @@ def generate_widget(field: FieldInfo, config: Config, indent: str = "    ") -> O
 
     binding = config.get_binding(type_name)
 
-    if not binding:
+    if field.widget is not None:
+        if field.widget_is_named:
+            template = config.get_template(field.widget)
+            if template is None:
+                print(f"Warning: Unknown widget template '{field.widget}' for field '{field.name}'", file=sys.stderr)
+                template = config.fallback_widget
+        else:
+            template = field.widget
+    elif not binding:
         template = config.fallback_widget
     elif is_readonly and binding.readonly_widget:
         template = binding.readonly_widget

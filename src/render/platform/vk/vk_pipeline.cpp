@@ -67,20 +67,35 @@ namespace
     }
 
     VkResult create_update_template(VkDevice device, VkPipelineBindPoint bind_point, VkPipelineLayout layout,
+                                    const vk_shader* shaders, u32 shaders_count,
                                     VkDescriptorUpdateTemplate* update_template)
     {
-        VkDescriptorUpdateTemplateEntry entry = {
-            .dstBinding      = 0,
-            .descriptorCount = 1,
-            .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .offset          = 0,
-            .stride          = sizeof(vk_descriptor_info),
-        };
+        u32 entries_count = 0;
+        VkDescriptorUpdateTemplateEntry entries[COUNT_OF(vk_shader::shader_meta::bindings)] {};
+
+        for (u32 i = 0; i < shaders_count; ++i)
+        {
+            const auto& shader_meta = shaders[i].meta;
+            for (u32 j = 0; j < shader_meta.bindings_count; ++j)
+            {
+                if (shader_meta.bindings[j] != VK_DESCRIPTOR_TYPE_MAX_ENUM)
+                {
+                    entries_count = std::max(entries_count, j + 1);
+                    entries[j]    = {
+                           .dstBinding      = j,
+                           .descriptorCount = 1,
+                           .descriptorType  = shader_meta.bindings[j],
+                           .offset          = sizeof(vk_descriptor_info) * j,
+                           .stride          = sizeof(vk_descriptor_info),
+                    };
+                }
+            }
+        }
 
         VkDescriptorUpdateTemplateCreateInfo create_info = {
             .sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO,
-            .descriptorUpdateEntryCount = 1,
-            .pDescriptorUpdateEntries   = &entry,
+            .descriptorUpdateEntryCount = entries_count,
+            .pDescriptorUpdateEntries   = entries,
             .templateType               = VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR,
             .pipelineBindPoint          = bind_point,
             .pipelineLayout             = layout,
@@ -90,18 +105,33 @@ namespace
     }
 
     VkResult create_pipeline_layout(VkDevice device, const VkPushConstantRange* push_constants, u32 pc_count,
-                                    VkPipelineLayout* layout)
+                                    const vk_shader* shaders, u32 shaders_count, VkPipelineLayout* layout)
     {
-        const VkDescriptorSetLayoutBinding binding {.binding         = 0,
-                                                    .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                                                    .descriptorCount = 1,
-                                                    .stageFlags      = VK_SHADER_STAGE_VERTEX_BIT};
+        u32 entries_count = 0;
+        VkDescriptorSetLayoutBinding entries[COUNT_OF(vk_shader::shader_meta::bindings)] {};
+
+        for (u32 i = 0; i < shaders_count; ++i)
+        {
+            const auto& shader_meta = shaders[i].meta;
+            for (u32 j = 0; j < shader_meta.bindings_count; ++j)
+            {
+                if (shader_meta.bindings[j] != VK_DESCRIPTOR_TYPE_MAX_ENUM)
+                {
+                    entries_count = std::max(entries_count, j + 1);
+
+                    entries[j].binding         = j;
+                    entries[j].descriptorType  = shader_meta.bindings[j];
+                    entries[j].descriptorCount = 1;
+                    entries[j].stageFlags |= shader_meta.stage;
+                }
+            }
+        }
 
         const VkDescriptorSetLayoutCreateInfo desc_set_layout_info {
             .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
             .flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
-            .bindingCount = 1,
-            .pBindings    = &binding};
+            .bindingCount = entries_count,
+            .pBindings    = entries};
 
         VkDescriptorSetLayout desc_set_layout;
         VK_ASSERT_ON_FAIL(vkCreateDescriptorSetLayout(device, &desc_set_layout_info, nullptr, &desc_set_layout));
@@ -114,6 +144,7 @@ namespace
             .pPushConstantRanges    = push_constants,
         };
 
+        // FIXME: memory leak
         // vkDestroyDescriptorSetLayout(device, desc_set_layout, nullptr);
         return vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, layout);
     }
@@ -252,14 +283,19 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
         inst += op_word_count;
     }
 
-    u32 idx = 0;
-    VkDescriptorSetLayoutBinding bindings[32];
     for (const auto& [_, push_desc] : push_descriptors)
     {
-        bindings[idx] = {
-            .binding = push_desc.binding,
-            // .descriptorCount =
-        };
+        assert(push_desc.binding < COUNT_OF(result.bindings) && "binding id too high?");
+
+        // find the root type declaration
+        spv_id* variable = push_desc.variable;
+        while (variable->type)
+        {
+            variable = variable->type;
+        }
+
+        result.bindings_count              = std::max(result.bindings_count, push_desc.binding + 1);
+        result.bindings[push_desc.binding] = get_descriptor_type(variable->op_code);
     }
 
     return result;
@@ -374,7 +410,8 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     };
 
     VkPipelineLayout pipeline_layout;
-    create_pipeline_layout(renderer.get_context().device, push_constants, pc_count, &pipeline_layout);
+    create_pipeline_layout(
+        renderer.get_context().device, push_constants, pc_count, shaders, shaders_count, &pipeline_layout);
 
     const VkGraphicsPipelineCreateInfo pipeline_create_info {
         .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -401,8 +438,12 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
         renderer.get_context().device, VK_NULL_HANDLE, 1, &pipeline_create_info, nullptr, &vk_handle));
 
     VkDescriptorUpdateTemplate update_template;
-    VK_RETURN_ON_FAIL(create_update_template(
-        renderer.get_context().device, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, &update_template));
+    VK_RETURN_ON_FAIL(create_update_template(renderer.get_context().device,
+                                             VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                             pipeline_layout,
+                                             shaders,
+                                             shaders_count,
+                                             &update_template));
 
     return vk_pipeline {
         renderer.get_context().device, vk_handle, pipeline_layout, update_template, VK_PIPELINE_BIND_POINT_GRAPHICS};

@@ -5,7 +5,6 @@
 #include <cpp/math.hpp>
 
 #include <cassert>
-#include <cstring>
 #include <string>
 #include <string_view>
 
@@ -35,7 +34,7 @@ namespace cpp
 
         // NOLINTNEXTLINE(*-explicit-constructor)
         /* implicit */ [[maybe_unused]] constexpr stack_string_base(const char* str)
-            : stack_string_base(str, cpp::strlen_c(str))
+            : stack_string_base(str, cpp::cx_strlen(str))
         {
         }
 
@@ -64,7 +63,7 @@ namespace cpp
 
         constexpr void clear()
         {
-            memset_c(m_str, 0, sizeof(char) * N);
+            cpp::cx_memset(m_str, 0, sizeof(char) * N);
         }
 
         [[nodiscard]] constexpr bool empty() const
@@ -74,7 +73,7 @@ namespace cpp
 
         [[nodiscard]] constexpr size_t length() const
         {
-            return cpp::strlen_c(m_str);
+            return cpp::cx_strlen(m_str);
         }
 
         [[nodiscard]] constexpr static size_t capacity()
@@ -134,22 +133,22 @@ namespace cpp
 
         constexpr bool operator==(const char* other) const
         {
-            return cpp::strcmp_c(m_str, other) == 0;
+            return cpp::cx_strcmp(m_str, other) == 0;
         }
 
         constexpr bool operator==(const std::string& other) const
         {
-            return cpp::strcmp_c(m_str, other.c_str()) == 0;
+            return cpp::cx_strcmp(m_str, other.c_str()) == 0;
         }
 
         constexpr bool operator==(const stack_string_base& rhs) const
         {
-            return cpp::strcmp_c(m_str, rhs.m_str) == 0;
+            return cpp::cx_strcmp(m_str, rhs.m_str) == 0;
         }
 
         constexpr auto& operator=(const char* other)
         {
-            set_value(other, cpp::strlen_c(other));
+            set_value(other, cpp::cx_strlen(other));
             return *this;
         }
 
@@ -208,7 +207,7 @@ namespace cpp
             const auto size_clamped = std::min(N - 1, size);
 
             m_str[size_clamped] = 0;
-            cpp::memcpy_c(m_str, data, sizeof(char) * size_clamped);
+            cpp::cx_copy_n(m_str, data, sizeof(char) * size_clamped);
         }
 
         constexpr void append_value(const char* data, size_t size, size_t offset)
@@ -216,7 +215,7 @@ namespace cpp
             const auto size_clamped = std::min(N - 1 - offset, size);
 
             m_str[offset + size_clamped] = 0;
-            cpp::memcpy_c(m_str + offset, data, sizeof(char) * size_clamped);
+            cpp::cx_copy_n(m_str + offset, data, sizeof(char) * size_clamped);
         }
 
     private:

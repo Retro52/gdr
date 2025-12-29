@@ -3,6 +3,24 @@
     <param_name>data</param_name>>
     <fallback><![CDATA[false; ImGui::TextDisabled("{display}: [{type}]")]]></fallback>
 
+    <templates>
+        <template name="aspect_ratio_editor"><![CDATA[
+            [&]() -> bool {
+                ivec2 ar;
+                for(u32 i = 1; i < 32; ++i) {
+                    const float fi = static_cast<float>(i);
+                    if (({var} * fi - static_cast<int>({var} * fi)) < 1e-6f) {
+                        ar = ivec2(int({var} * float(i)), i);
+                        break;
+                    }
+                }
+                bool result = ImGui::DragInt2("{display}", glm::value_ptr(ar));
+                {var} = static_cast<float>(ar.x) / static_cast<float>(ar.y);
+                return result;
+            }()
+        ]]></template>
+    </templates>
+
     <bindings>
         <binding type="float">
             <widget><![CDATA[ImGui::DragFloat("{display}", &{var}, 0.01f, {min}, {max})]]></widget>
@@ -55,22 +73,26 @@
         <binding type="vec3">
             <widget><![CDATA[ImGui::DragFloat3("{display}", glm::value_ptr({var}), 0.01f)]]></widget>
             <color_widget><![CDATA[ImGui::ColorEdit3("{display}", glm::value_ptr({var}))]]></color_widget>
-            <readonly_widget><![CDATA[ImGui::Text("{display}: (%.2f, %.2f, %.2f)", {var}.x, {var}.y, {var}.z)]]></readonly_widget>
+            <readonly_widget>
+                <![CDATA[ImGui::Text("{display}: (%.2f, %.2f, %.2f)", {var}.x, {var}.y, {var}.z)]]></readonly_widget>
         </binding>
         <binding type="glm::vec3">
             <widget><![CDATA[ImGui::DragFloat3("{display}", glm::value_ptr({var}), 0.01f)]]></widget>
             <color_widget><![CDATA[ImGui::ColorEdit3("{display}", glm::value_ptr({var}))]]></color_widget>
-            <readonly_widget><![CDATA[ImGui::Text("{display}: (%.2f, %.2f, %.2f)", {var}.x, {var}.y, {var}.z)]]></readonly_widget>
+            <readonly_widget>
+                <![CDATA[ImGui::Text("{display}: (%.2f, %.2f, %.2f)", {var}.x, {var}.y, {var}.z)]]></readonly_widget>
         </binding>
         <binding type="vec4">
             <widget><![CDATA[ImGui::DragFloat4("{display}", glm::value_ptr({var}), 0.01f)]]></widget>
             <color_widget><![CDATA[ImGui::ColorEdit4("{display}", glm::value_ptr({var}))]]></color_widget>
-            <readonly_widget><![CDATA[ImGui::Text("{display}: (%.2f, %.2f, %.2f, %.2f)", {var}.x, {var}.y, {var}.z, {var}.w)]]></readonly_widget>
+            <readonly_widget>
+                <![CDATA[ImGui::Text("{display}: (%.2f, %.2f, %.2f, %.2f)", {var}.x, {var}.y, {var}.z, {var}.w)]]></readonly_widget>
         </binding>
         <binding type="glm::vec4">
             <widget><![CDATA[ImGui::DragFloat4("{display}", glm::value_ptr({var}), 0.01f)]]></widget>
             <color_widget><![CDATA[ImGui::ColorEdit4("{display}", glm::value_ptr({var}))]]></color_widget>
-            <readonly_widget><![CDATA[ImGui::Text("{display}: (%.2f, %.2f, %.2f, %.2f)", {var}.x, {var}.y, {var}.z, {var}.w)]]></readonly_widget>
+            <readonly_widget>
+                <![CDATA[ImGui::Text("{display}: (%.2f, %.2f, %.2f, %.2f)", {var}.x, {var}.y, {var}.z, {var}.w)]]></readonly_widget>
         </binding>
         <binding type="ivec2">
             <widget><![CDATA[ImGui::DragInt2("{display}", glm::value_ptr({var}))]]></widget>
@@ -92,7 +114,7 @@
         </binding>
         <binding type="quat">
             <widget>
-            <![CDATA[
+                <![CDATA[
                 [&]() -> bool
                 {
                     glm::vec3 euler = glm::degrees(glm::eulerAngles({var}));
@@ -105,7 +127,8 @@
                 }()
             ]]>
             </widget>
-            <readonly_widget><![CDATA[[&]() { glm::vec3 e = glm::degrees(glm::eulerAngles({var})); ImGui::Text("{display}: (%.1f, %.1f, %.1f)", e.x, e.y, e.z); return false; }()]]></readonly_widget>
+            <readonly_widget>
+                <![CDATA[[&]() { glm::vec3 e = glm::degrees(glm::eulerAngles({var})); ImGui::Text("{display}: (%.1f, %.1f, %.1f)", e.x, e.y, e.z); return false; }()]]></readonly_widget>
         </binding>
         <binding type="glm::quat">
             <widget>
@@ -122,11 +145,12 @@
                 }()
                 ]]>
             </widget>
-            <readonly_widget><![CDATA[[&]() { glm::vec3 e = glm::degrees(glm::eulerAngles({var})); ImGui::Text("{display}: (%.1f, %.1f, %.1f)", e.x, e.y, e.z); return false; }()]]></readonly_widget>
+            <readonly_widget>
+                <![CDATA[[&]() { glm::vec3 e = glm::degrees(glm::eulerAngles({var})); ImGui::Text("{display}: (%.1f, %.1f, %.1f)", e.x, e.y, e.z); return false; }()]]></readonly_widget>
         </binding>
         <binding type="std::string">
             <widget>
-            <![CDATA[
+                <![CDATA[
                 [&]() -> bool
                 {
                     static char buf[256];

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cpp/string/stack_string.hpp>
+#include <cpp/containers/stack_string.hpp>
 
 #include <filesystem>
 

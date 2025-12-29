@@ -45,7 +45,9 @@ namespace render
         struct shader_meta
         {
             VkShaderStageFlagBits stage;
-            VkDescriptorSetLayout set_layout;
+
+            u32 bindings_count {0};
+            VkDescriptorType bindings[32] {VK_DESCRIPTOR_TYPE_MAX_ENUM};
         };
 
     public:

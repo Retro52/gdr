@@ -2,7 +2,7 @@
 
 #include <types.hpp>
 
-#include <cpp/string/stack_string.hpp>
+#include <cpp/containers/stack_string.hpp>
 
 #include <atomic>
 
@@ -53,6 +53,7 @@ struct camera_component
     f32 far_plane;
     f32 near_plane;
 
+    /// @widget (aspect_ratio_editor)
     f32 aspect_ratio;
     /// @rad2deg
     f32 horizontal_fov;
