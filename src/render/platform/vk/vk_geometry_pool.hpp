@@ -18,13 +18,8 @@ namespace render
             : size(size)
             , offset(0)
         {
-            const VkBufferCreateInfo buffer_info {
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size  = size,
-                .usage = usage,
-            };
-
-            VK_ASSERT_ON_FAIL(render::create_buffer(buffer_info,
+            VK_ASSERT_ON_FAIL(render::create_buffer(size,
+                                                    usage,
                                                     renderer.get_context().allocator,
                                                     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
                                                     &buffer))

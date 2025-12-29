@@ -200,12 +200,12 @@ int main(int argc, char* argv[])
                 client_scene.get_view<static_model_component>().each(
                     [&buffer](static_model_component& component)
                     {
-                        ZoneScoped;
+                        ZoneScopedN("main.component.model.draw");
                         component.model.draw(buffer);
                     });
 
                 {
-                    ZoneScoped;
+                    ZoneScopedN("main.draw.editor");
 
                     editor.begin_frame();
                     client_scene.get_view<entt::entity>().each(

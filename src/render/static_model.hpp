@@ -11,12 +11,12 @@ class static_model
 public:
     using static_model_index = u32;
 
-    struct alignas(16) static_model_vertex
+    struct alignas(sizeof(f32)) static_model_vertex
     {
-        vec3 position; float _0;
-        vec3 normal; float _1;
-        vec2 uv; vec2 _2;
-        vec3 tangent; float _3;
+        vec3 position;
+        vec3 normal;
+        vec2 uv;
+        vec3 tangent;
     };
 
     struct mesh_data

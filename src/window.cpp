@@ -1,8 +1,11 @@
 #include <render/static_model.hpp>
+#include <Tracy/Tracy.hpp>
 #include <window.hpp>
 
 window::window(std::string_view title, ivec2 size, bool fullscreen)
 {
+    ZoneScoped;
+
     SDL_Init(SDL_INIT_VIDEO);
     m_window = SDL_CreateWindow(title.data(),
                                 size.x,
@@ -17,6 +20,7 @@ window::window(std::string_view title, ivec2 size, bool fullscreen)
 
 window::~window()
 {
+    ZoneScoped;
 #if defined(SDL_PLATFORM_APPLE)
     SDL_Metal_DestroyView(m_metal_view);
 #endif
@@ -25,6 +29,8 @@ window::~window()
 
 [[nodiscard]] window::native window::get_native_handle() const noexcept
 {
+    ZoneScoped;
+
     native handle                = {.window = m_window};
     const SDL_PropertiesID props = SDL_GetWindowProperties(m_window);
 
@@ -56,11 +62,14 @@ window::~window()
 
 bool window::set_size(ivec2 size) const noexcept
 {
+    ZoneScoped;
     return SDL_SetWindowSize(m_window, size.x, size.y);
 }
 
 [[nodiscard]] ivec2 window::get_size() const noexcept
 {
+    ZoneScoped;
+
     ivec2 ret;
     SDL_GetWindowSize(m_window, &ret.x, &ret.y);
 
@@ -69,6 +78,8 @@ bool window::set_size(ivec2 size) const noexcept
 
 [[nodiscard]] ivec2 window::get_size_in_px() const noexcept
 {
+    ZoneScoped;
+
     ivec2 ret;
     SDL_GetWindowSizeInPixels(m_window, &ret.x, &ret.y);
 

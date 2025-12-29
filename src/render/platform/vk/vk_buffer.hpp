@@ -1,9 +1,10 @@
 #pragma once
 
+#include <volk.h>
+
 #include <types.hpp>
 
 #include <render/platform/vk/vma.hpp>
-#include <volk.h>
 
 namespace render
 {
@@ -14,6 +15,9 @@ namespace render
     };
 
     void destroy_buffer(VmaAllocator allocator, const vk_buffer& buffer);
+
+    VkResult create_buffer(u64 size, VkBufferUsageFlags usage, VmaAllocator allocator,
+                           VmaAllocationCreateFlags allocation_flags, vk_buffer* buffer);
 
     VkResult create_buffer(const VkBufferCreateInfo& buffer_create_info, VmaAllocator allocator,
                            VmaAllocationCreateFlags allocation_flags, vk_buffer* buffer);

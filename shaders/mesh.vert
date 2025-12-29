@@ -2,10 +2,10 @@
 
 struct Vertex
 {
-    vec3 position;
-    vec3 normal;
-    vec2 uv;
-    vec3 tangent;
+    float px, py, pz;
+    float nx, ny, nz;
+    float ux, uy;
+    float tx, ty, tz;
 };
 
 layout (binding = 0) readonly buffer Vertices
@@ -33,12 +33,12 @@ void main()
 {
     Vertex v = vertices[gl_VertexIndex];
 
-    vs_out.uv = v.uv;
-    vs_out.normal = v.normal;
-    vs_out.tangent = v.tangent;
-    vs_out.sun_pos = pc.sun_pos;
-    vs_out.world_pos = vec4(v.position, 1.0F);
+    vs_out.uv = vec2(v.ux, v.uy);
+    vs_out.normal = vec3(v.nx, v.ny, v.nz);
+    vs_out.tangent = vec3(v.tx, v.ty, v.tz);
+    vs_out.world_pos = vec4(v.px, v.py, v.pz, 1.0F);
     vs_out.bitangent = cross(vs_out.tangent, vs_out.normal);
 
+    vs_out.sun_pos = pc.sun_pos;
     gl_Position = pc.vp * vs_out.world_pos;
 }

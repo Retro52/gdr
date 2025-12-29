@@ -3,7 +3,22 @@
 
 void render::destroy_buffer(VmaAllocator allocator, const vk_buffer& buffer)
 {
+    ZoneScoped;
     vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
+}
+
+VkResult render::create_buffer(u64 size, VkBufferUsageFlags usage, VmaAllocator allocator,
+                               VmaAllocationCreateFlags allocation_flags, vk_buffer* buffer)
+{
+    ZoneScoped;
+
+    const VkBufferCreateInfo buffer_info {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size  = size,
+        .usage = usage,
+    };
+
+    return render::create_buffer(buffer_info, allocator, allocation_flags, buffer);
 }
 
 VkResult render::create_buffer(const VkBufferCreateInfo& buffer_create_info, VmaAllocator allocator,

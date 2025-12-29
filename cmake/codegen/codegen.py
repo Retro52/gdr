@@ -47,7 +47,7 @@ class FieldAttribute(Enum):
     COLOR = auto()
     READONLY = auto()
     HIDDEN = auto()
-    RAD2DEG = auto()
+    RAD2DEG = auto()  # FIXME: make it a template, that seems like a better way
     DEBUG_ONLY = auto()
     NDEBUG_ONLY = auto()
 
@@ -58,7 +58,6 @@ class FieldInfo:
     type_name: str
     attributes: set[FieldAttribute] = field(default_factory=set)
     widget: Optional[str] = None
-    widget_is_named: bool = False
     range_min: Optional[float] = None
     range_max: Optional[float] = None
     display_name: Optional[str] = None
@@ -179,7 +178,6 @@ ANNOTATION_PATTERNS = {
     'rad2deg': re.compile(r'@rad2deg\b'),
     'range': re.compile(r'@range\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)'),
     'name': re.compile(r'@name\s*\(\s*"([^"]+)"\s*\)'),
-    'widget_inline': re.compile(r'@widget\s*\(\s*"([^"]+)"\s*\)'),  # @widget("...")
     'widget_named': re.compile(r'@widget\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)'),  # @widget(name)
 }
 
@@ -209,15 +207,10 @@ def parse_annotations(comment: str) -> dict:
     if ANNOTATION_PATTERNS['rad2deg'].search(comment):
         result['rad2deg'] = True
 
-    widget_match = ANNOTATION_PATTERNS['widget_inline'].search(comment)
+    widget_match = ANNOTATION_PATTERNS['widget_named'].search(comment)
     if widget_match:
         result['widget'] = widget_match.group(1)
-        result['widget_is_named'] = False
-    else:
-        widget_match = ANNOTATION_PATTERNS['widget_named'].search(comment)
-        if widget_match:
-            result['widget'] = widget_match.group(1)
-            result['widget_is_named'] = True
+        result['widget_is_named'] = True
 
     range_match = ANNOTATION_PATTERNS['range'].search(comment)
     if range_match:
@@ -239,7 +232,6 @@ def apply_annotations_to_field(field: FieldInfo, anns: dict):
         field.attributes.add(FieldAttribute.COLOR)
     if anns['widget']:
         field.widget = anns['widget']
-        field.widget_is_named = anns['widget_is_named']
     if anns['readonly']:
         field.attributes.add(FieldAttribute.READONLY)
     if anns['hide']:
@@ -537,13 +529,10 @@ def generate_widget(field: FieldInfo, config: Config, indent: str = "    ") -> O
     binding = config.get_binding(type_name)
 
     if field.widget is not None:
-        if field.widget_is_named:
-            template = config.get_template(field.widget)
-            if template is None:
-                print(f"Warning: Unknown widget template '{field.widget}' for field '{field.name}'", file=sys.stderr)
-                template = config.fallback_widget
-        else:
-            template = field.widget
+        template = config.get_template(field.widget)
+        if template is None:
+            print(f"Warning: Unknown widget template '{field.widget}' for field '{field.name}'", file=sys.stderr)
+            template = config.fallback_widget
     elif not binding:
         template = config.fallback_widget
     elif is_readonly and binding.readonly_widget:
