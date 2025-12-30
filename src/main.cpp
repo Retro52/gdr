@@ -5,15 +5,18 @@
 
 #include <types.hpp>
 
+#include <codegen/imgui/gpu_profile_data.hpp>
 #include <codegen/scene/components.hpp>
 #include <events_queue.hpp>
 #include <fs/fs.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
+#include <imgui/gpu_profile_data.hpp>
 #include <imgui/imgui_layer.hpp>
 #include <render/platform/vk/vk_image.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
+#include <render/platform/vk/vk_timestamp.hpp>
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 #include <scene/scene.hpp>
@@ -21,6 +24,8 @@
 #include <window.hpp>
 
 #include <vector>
+
+#define PROFILE 0
 
 struct pc_data
 {
@@ -108,15 +113,25 @@ int main(int argc, char* argv[])
         .index  = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
     };
 
+    // FIXME: multiple object support
+#if 0  // It was broken quite a while actually, ever since I moved vertices into SSBO
     kitten.add_component<id_component>(DEBUG_ONLY(id_component("kitten model")));
     kitten.add_component<transform_component>();
     kitten.add_component<static_model_component>(
         *static_model::load_model(fs::read_file("../data/kitten.obj"), renderer, geometry_pool));
+#endif
 
     backpack.add_component<id_component>(DEBUG_ONLY(id_component("backpack model")));
     backpack.add_component<transform_component>();
     backpack.add_component<static_model_component>(
         *static_model::load_model(fs::read_file("../data/backpack/backpack.obj"), renderer, geometry_pool));
+
+    constexpr u32 kQueryPoolCount = 64;
+    VkQueryPool timestamp_query_pool {VK_NULL_HANDLE};
+    VK_ASSERT_ON_FAIL(
+        render::create_vk_query_pool(renderer.get_context().device, kQueryPoolCount, &timestamp_query_pool));
+
+    gpu_profile_data profile_data;
 
     auto render_loop = [&](auto&)
     {
@@ -172,6 +187,9 @@ int main(int argc, char* argv[])
 
                 vkBeginCommandBuffer(buffer, &command_buffer_begin_info);
 
+                vkCmdResetQueryPool(buffer, timestamp_query_pool, 0, kQueryPoolCount);
+                vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool, 0);
+
                 render::transition_image(buffer,
                                          renderer.get_frame_swapchain_image().image,
                                          VK_IMAGE_LAYOUT_UNDEFINED,
@@ -197,17 +215,30 @@ int main(int argc, char* argv[])
                 vkCmdSetViewport(buffer, 0, 1, &viewport);
 
                 vkCmdBindIndexBuffer(buffer, geometry_pool.index.buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+                u32 scene_triangles        = 0;
+                constexpr u32 kRepeatDraws = 100;
+
                 client_scene.get_view<static_model_component>().each(
-                    [&buffer](static_model_component& component)
+                    [&](static_model_component& component)
                     {
                         ZoneScopedN("main.component.model.draw");
-                        component.model.draw(buffer);
+
+                        scene_triangles += component.model.indices_count() / 3;
+                        for (u32 i = 0; i < kRepeatDraws; ++i)
+                        {
+                            component.model.draw(buffer);
+                        }
                     });
 
+#if !PROFILE
                 {
                     ZoneScopedN("main.draw.editor");
 
                     editor.begin_frame();
+                    ImGui::SeparatorText("gpu timings");
+                    codegen::draw(profile_data);
+
                     client_scene.get_view<entt::entity>().each(
                         [&](const entt::entity entity)
                         {
@@ -231,7 +262,7 @@ int main(int argc, char* argv[])
                             {
                                 ImGui::PushID(static_cast<const int>(entity));
 
-                                codegen::components::for_each_type(
+                                codegen::detail_components::for_each_type(
                                     [&]<typename component>()
                                     {
                                         if (client_scene.has_component<component>(entity))
@@ -247,6 +278,7 @@ int main(int argc, char* argv[])
 
                     editor.end_frame(renderer);
                 }
+#endif
 
                 vkCmdEndRendering(buffer);
 
@@ -254,9 +286,35 @@ int main(int argc, char* argv[])
                                          renderer.get_frame_swapchain_image().image,
                                          VK_IMAGE_LAYOUT_GENERAL,
                                          VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+                vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool, 1);
 
                 vkEndCommandBuffer(buffer);
                 renderer.present_frame(buffer);
+                vkDeviceWaitIdle(renderer.get_context().device);
+
+#if !defined(NDEBUG) || 1
+                uint64_t query_results[2];
+                VK_ASSERT_ON_FAIL(vkGetQueryPoolResults(renderer.get_context().device,
+                                                        timestamp_query_pool,
+                                                        0,
+                                                        ARRAYSIZE(query_results),
+                                                        sizeof(query_results),
+                                                        query_results,
+                                                        sizeof(query_results[0]),
+                                                        VK_QUERY_RESULT_64_BIT));
+
+                VkPhysicalDeviceProperties props = {};
+                vkGetPhysicalDeviceProperties(renderer.get_context().physical_device, &props);
+
+                profile_data.update(static_cast<f64>(query_results[0]) * props.limits.timestampPeriod * 1e-6,
+                                    static_cast<f64>(query_results[1]) * props.limits.timestampPeriod * 1e-6,
+                                    kRepeatDraws * scene_triangles);
+
+                auto str = cpp::stack_string::make_formatted(
+                    "GPU time: %lf; Tris/s (B): %lf", profile_data.gpu_render_time, profile_data.tris_per_second);
+                SDL_SetWindowTitle(client_window.get_native_handle().window, str.c_str());
+#endif
+
                 FrameMark;
             });
     };

@@ -19,6 +19,8 @@ function(run_codegen)
     list(FILTER RC_ARGS_SOURCES INCLUDE REGEX ".*\\.hpp$")
     set(CODEGEN_OUTPUTS "")
 
+    file(COPY_FILE "${CMAKE_SOURCE_DIR}/cmake/codegen/common.hpp" "${RC_ARGS_ROOT}/codegen/common.hpp")
+
     foreach (SOURCE ${RC_ARGS_SOURCES})
         string(REPLACE "${CMAKE_SOURCE_DIR}" "" SOURCE_REL "${SOURCE}")
         string(REGEX REPLACE "^[\/|\\]src[\/|\\]" "" SOURCE_REL "${SOURCE_REL}")
@@ -33,7 +35,8 @@ function(run_codegen)
                 -c ${CODEGEN_CONFIG}
                 -o ${SOURCE_CODEGEN_OUTPUT}
                 --include "<${SOURCE_REL}>"
-                --namespace ${SOURCE_STEM}
+                --include "<codegen/common.hpp>"
+                --namespace detail_${SOURCE_STEM}
                 --type-list ${SOURCE_STEM}
                 --format
         )

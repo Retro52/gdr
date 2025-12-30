@@ -11,7 +11,7 @@ class static_model
 public:
     using static_model_index = u32;
 
-    struct alignas(sizeof(f32)) static_model_vertex
+    struct static_model_vertex
     {
         vec3 position;
         vec3 normal;
@@ -42,7 +42,9 @@ public:
     static result<static_model> load_model(const bytes& data, render::vk_renderer& renderer,
                                            render::vk_scene_geometry_pool& geometry_pool);
 
-    void draw(VkCommandBuffer buffer);
+    void draw(VkCommandBuffer buffer) const;
+
+    u32 indices_count() const;
 
 private:
     struct offsets

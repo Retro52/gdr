@@ -30,39 +30,37 @@ namespace
         ZoneScoped;
         assert(mesh->HasNormals());
 
-        std::vector<u32> indices;
-        std::vector<static_model::static_model_vertex> vertices;
-
+        std::vector<static_model::static_model_vertex> raw_vertices(mesh->mNumVertices);
         for (u32 i = 0; i < mesh->mNumVertices; i++)
         {
             if (mesh->mTextureCoords[0]) [[likely]]
             {
-                vertices.emplace_back() = {
-                    .position = {mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z},
-                    .normal   = {mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z},
-                    .uv       = {mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y},
-                    .tangent  = {mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z},
-                };
+                raw_vertices[i].position = {mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z};
+                raw_vertices[i].normal   = {mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z};
+                raw_vertices[i].uv       = {mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y};
+                raw_vertices[i].tangent  = {mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z};
             }
             else
             {
-                vertices.emplace_back() = {
-                    .position = {mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z},
-                    .normal   = {mesh->mNormals[i].x,  mesh->mNormals[i].y,  mesh->mNormals[i].z }
-                };
+                raw_vertices[i].position = {mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z};
+                raw_vertices[i].normal   = {mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z};
             }
         }
 
         // now wak through each of the mesh's faces (a face is a mesh its triangle) and retrieve the corresponding
         // vertex indices.
+        // aiProcess_Triangulate guarantees every face will only contain triangles, except line/point faces,
+        // but we don't care about those
+        std::vector<u32> indices(mesh->mNumFaces * 3);
         for (u32 i = 0; i < mesh->mNumFaces; i++)
         {
-            aiFace face = mesh->mFaces[i];
-            // retrieve all indices of the face and store them in the indices vector
-            for (u32 j = 0; j < face.mNumIndices; j++)
-            {
-                indices.push_back(face.mIndices[j]);
-            }
+            const u32 base = i * 3;
+            const u32* src = mesh->mFaces[i].mIndices;
+            assert(mesh->mFaces[i].mNumIndices == 3);
+
+            indices[base + 0] = src[0];
+            indices[base + 1] = src[1];
+            indices[base + 2] = src[2];
         }
 
 #if 0
@@ -99,6 +97,48 @@ namespace
 
         return mesh_data;
 #else
+        u64 vertex_count = 0;
+        std::vector<u32> remap(indices.size());
+
+        {
+            ZoneScopedN("static_model.load_mesh.meshopt_generateVertexRemap");
+
+            vertex_count = meshopt_generateVertexRemap(remap.data(),
+                                                       indices.data(),
+                                                       indices.size(),
+                                                       raw_vertices.data(),
+                                                       raw_vertices.size(),
+                                                       sizeof(static_model::static_model_vertex));
+        }
+
+        std::vector<static_model::static_model_vertex> vertices(vertex_count);
+
+        {
+            ZoneScopedN("static_model.load_mesh.meshopt_remap[Vertex/Index]Buffer");
+
+            meshopt_remapVertexBuffer(vertices.data(),
+                                      raw_vertices.data(),
+                                      raw_vertices.size(),
+                                      sizeof(static_model::static_model_vertex),
+                                      remap.data());
+            meshopt_remapIndexBuffer(indices.data(), indices.data(), indices.size(), remap.data());
+        }
+
+        {
+            ZoneScopedN("static_model.load_mesh.meshopt_optimizeVertexCache");
+            meshopt_optimizeVertexCache(indices.data(), indices.data(), indices.size(), vertices.size());
+        }
+
+        {
+            ZoneScopedN("static_model.load_mesh.meshopt_optimizeVertexFetch");
+            meshopt_optimizeVertexFetch(vertices.data(),
+                                        indices.data(),
+                                        indices.size(),
+                                        vertices.data(),
+                                        vertices.size(),
+                                        sizeof(static_model::static_model_vertex));
+        }
+
         return {indices, vertices};
 #endif
     }
@@ -198,10 +238,15 @@ result<static_model> static_model::load_model(const bytes& data, render::vk_rend
     return static_model {offsets};
 }
 
-void static_model::draw(VkCommandBuffer buffer)
+void static_model::draw(VkCommandBuffer buffer) const
 {
     ZoneScoped;
     vkCmdDrawIndexed(buffer, m_offsets.index_count, 1, m_offsets.index_offset, 0, 0);
+}
+
+u32 static_model::indices_count() const
+{
+    return m_offsets.index_count;
 }
 
 static_model::static_model(const offsets& offsets)

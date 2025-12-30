@@ -2,17 +2,22 @@
 #extension GL_EXT_mesh_shader: require
 
 layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-layout (triangles, max_vertices = 64, max_primitives = 96) out;
+layout (triangles, max_vertices = 64, max_primitives = 126) out;
 
 struct Vertex
 {
-    vec3 position;
-    vec3 normal;
-    vec2 uv;
-    vec3 tangent;
+    float px, py, pz;
+    float nx, ny, nz;
+    float ux, uy;
+    float tx, ty, tz;
 };
 
-layout (binding = 0) buffer Vertices
+struct Meshlet
+{
+    float _;
+};
+
+layout (binding = 0) readonly buffer Vertices
 {
     Vertex vertices[];
 };
@@ -26,6 +31,4 @@ layout (push_constant) uniform constants
 
 void main()
 {
-//    Vertex v = vertices[gl_VertexIndex];
-//    vec3 v_pos = pc.vp * vs_out.world_pos;
 }

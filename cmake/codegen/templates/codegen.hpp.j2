@@ -14,9 +14,6 @@
 {% if opts.generate_type_list %}
 #include <tuple>
 {% endif %}
-{% if opts.generate_names %}
-#include <string_view>
-{% endif %}
 {% for inc in opts.includes %}
 #include {{ inc if inc.startswith('<') or inc.startswith('"') else '"%s"' % inc }}
 {% endfor %}
@@ -24,10 +21,6 @@
 namespace codegen
 {
 {% if opts.generate_names %}
-// Type name traits
-template<typename T>
-constexpr std::string_view type_name = "Unknown";
-
 {% for struct in structs %}
 template<>
 constexpr std::string_view type_name<{{ struct.full_name }}> = "{{ struct.display_name or struct.name | prettify }}";
