@@ -1,12 +1,6 @@
 #version 450
 
-struct Vertex
-{
-    float px, py, pz;
-    float nx, ny, nz;
-    float ux, uy;
-    float tx, ty, tz;
-};
+#include "types.h"
 
 layout (binding = 0) readonly buffer Vertices
 {

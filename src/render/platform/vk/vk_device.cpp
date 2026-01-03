@@ -1,5 +1,6 @@
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
+#include <Tracy/Tracy.hpp>
 
 #include <algorithm>
 #include <cstdio>
@@ -7,7 +8,6 @@
 #include <ranges>
 #include <unordered_set>
 #include <vector>
-#include <Tracy/Tracy.hpp>
 
 using namespace render;
 
@@ -344,7 +344,9 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
     vkGetPhysicalDeviceFeatures2(device, &device_features2);
 
     const bool features_supported =
-        vk13_features.dynamicRendering >= required_features.required(rendering_features_table::eDynamicRender)
+        vk12_features.storageBuffer8BitAccess >= required_features.required(rendering_features_table::eMeshShading)
+        && vk13_features.maintenance4 >= required_features.required(rendering_features_table::eMeshShading)
+        && vk13_features.dynamicRendering >= required_features.required(rendering_features_table::eDynamicRender)
         && vk13_features.synchronization2 >= required_features.required(rendering_features_table::eSynchronization2);
 
     return not_found_extensions.empty() && features_supported;
@@ -504,7 +506,7 @@ result<context> create_vk_context(const window& window, const instance_desc& des
         .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
         .synchronization2 = desc.device_features.required(rendering_features_table::eSynchronization2),
         .dynamicRendering = desc.device_features.required(rendering_features_table::eDynamicRender),
-    };
+        .maintenance4     = desc.device_features.required(rendering_features_table::eMeshShading)};
 
     if (desc.device_features.required(rendering_features_table::eMeshShading))
     {
@@ -515,8 +517,13 @@ result<context> create_vk_context(const window& window, const instance_desc& des
         vk13_features.pNext = &mesh_features;
     }
 
+    VkPhysicalDeviceVulkan12Features vk12_features {
+        .sType                   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .pNext                   = &vk13_features,
+        .storageBuffer8BitAccess = desc.device_features.required(rendering_features_table::eMeshShading)};
+
     VkPhysicalDeviceFeatures2 device_features {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &vk13_features, .features = {}};
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &vk12_features, .features = {}};
 
     VkDeviceCreateInfo device_create_info {
         .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,

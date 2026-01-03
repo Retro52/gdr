@@ -14,6 +14,8 @@ namespace render
         u64 offset;
         vk_buffer buffer;
 
+        vk_shared_buffer() = default;
+
         explicit vk_shared_buffer(const render::vk_renderer& renderer, const u64 size, VkBufferUsageFlags usage)
             : size(size)
             , offset(0)
@@ -28,7 +30,8 @@ namespace render
 
     struct vk_scene_geometry_pool
     {
-        vk_shared_buffer vertex;
         vk_shared_buffer index;
+        vk_shared_buffer vertex;
+        vk_shared_buffer meshlets;
     };
 }

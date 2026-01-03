@@ -22,6 +22,27 @@ public:
         std::copy_n(static_cast<const u8*>(data), size, m_memory.get());
     }
 
+    bytes(bytes&&)            = default;
+    bytes& operator=(bytes&&) = default;
+
+    bytes(const bytes& other)
+        : bytes(other.size())
+    {
+        std::copy_n(other.get<u8>(), other.size(), m_memory.get());
+    }
+
+    bytes& operator=(const bytes& other)
+    {
+        if (this == &other)
+        {
+            return *this;
+        }
+
+        m_memory = std::make_unique<u8[]>(other.size());
+        std::copy_n(other.get<u8>(), other.size(), m_memory.get());
+        return *this;
+    }
+
     [[nodiscard]] void* data() noexcept
     {
         return m_memory.get();

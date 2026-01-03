@@ -153,7 +153,7 @@ namespace
 result<vk_shader> vk_shader::load(const vk_renderer& renderer, const fs::path& path)
 {
     ZoneScoped;
-    const auto binary = fs::read_file(path);
+    const auto binary = *fs::read_file(path);
     const VkShaderModuleCreateInfo module_create_info {
         .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = binary.size(),
@@ -456,7 +456,7 @@ void vk_pipeline::bind(VkCommandBuffer command_buffer) const
 
 void vk_pipeline::push_constant(VkCommandBuffer command_buffer, u32 size, const void* data) const
 {
-    vkCmdPushConstants(command_buffer, m_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, size, data);
+    vkCmdPushConstants(command_buffer, m_pipeline_layout, VK_SHADER_STAGE_ALL, 0, size, data);
 }
 
 void vk_pipeline::push_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_info* updates) const

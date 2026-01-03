@@ -4,6 +4,7 @@
 
 #include <bytes.hpp>
 #include <fs/path.hpp>
+#include <result.hpp>
 #include <Tracy/Tracy.hpp>
 
 #include <fstream>
@@ -11,10 +12,14 @@
 
 namespace fs
 {
-    inline bytes read_file(const fs::path& path)
+    inline result<bytes> read_file(const fs::path& path)
     {
         ZoneScoped;
         std::ifstream file(path.c_str(), std::ios::binary | std::ios::ate);
+        if (!file)
+        {
+            return "failed to open file";
+        }
 
         const auto size = file.tellg();
         bytes data(size);

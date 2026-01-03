@@ -50,8 +50,10 @@ int main(int argc, char* argv[])
     render::vk_renderer renderer(
         render::instance_desc {
             .device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-                                  VK_EXT_MESH_SHADER_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
-                                  TRACY_ONLY(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME)},
+                                  VK_EXT_MESH_SHADER_EXTENSION_NAME,
+                                  VK_KHR_MAINTENANCE_4_EXTENSION_NAME,
+                                  VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+                                  VK_KHR_8BIT_STORAGE_EXTENSION_NAME, TRACY_ONLY(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME)},
             .app_name          = "Vulkan renderer",
             .app_version       = 1,
             .device_features   = features_table,
@@ -71,15 +73,20 @@ int main(int argc, char* argv[])
                               });
 
     const VkPushConstantRange range {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .stageFlags = VK_SHADER_STAGE_ALL,
         .offset     = 0,
         .size       = sizeof(pc_data),
     };
 
     render::vk_shader shaders[] = {
-        // *render::vk_shader::load(renderer, "../shaders/parse_test.comp.spv"),
+    // *render::vk_shader::load(renderer, "../shaders/parse_test.comp.spv"),
+#if SM_USE_MESHLETS
+        *render::vk_shader::load(renderer, "../shaders/meshlets.mesh.spv"),
+        *render::vk_shader::load(renderer, "../shaders/meshlets_tmp.frag.spv"),
+#else
         *render::vk_shader::load(renderer, "../shaders/mesh.vert.spv"),
         *render::vk_shader::load(renderer, "../shaders/meshlets.frag.spv"),
+#endif
         // *render::shader::load(renderer, "../shaders/meshlets.task.spv"),
         // *render::shader::load(renderer, "../shaders/meshlets.frag.spv"),
     };
@@ -110,8 +117,13 @@ int main(int argc, char* argv[])
     });
 
     render::vk_scene_geometry_pool geometry_pool {
+#if !SM_USE_MESHLETS
+        .index = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+#endif
         .vertex = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-        .index  = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+#if SM_USE_MESHLETS
+        .meshlets = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+#endif
     };
 
     // FIXME: multiple object support
@@ -125,7 +137,7 @@ int main(int argc, char* argv[])
     backpack.add_component<id_component>(DEBUG_ONLY(id_component("backpack model")));
     backpack.add_component<transform_component>();
     backpack.add_component<static_model_component>(
-        *static_model::load_model(fs::read_file("../data/backpack/backpack.obj"), renderer, geometry_pool));
+        *static_model::load_model(*fs::read_file("../data/backpack/backpack.obj"), renderer, geometry_pool));
 
     constexpr u32 kQueryPoolCount = 64;
     VkQueryPool timestamp_query_pool {VK_NULL_HANDLE};
@@ -210,13 +222,21 @@ int main(int argc, char* argv[])
                              .sun_pos    = vec4(sun.get_component<directional_light_component>().direction, 0.0F),
                              .camera_pos = vec4(camera_transform.position, 1.0F)});
 
-                render::vk_descriptor_info updates[] = {geometry_pool.vertex.buffer.buffer};
+#if SM_USE_MESHLETS
+                const render::vk_descriptor_info updates[] = {geometry_pool.vertex.buffer.buffer,
+                                                              geometry_pool.meshlets.buffer.buffer};
                 render_pipeline.push_descriptor_set(buffer, updates);
+#else
+                const render::vk_descriptor_info updates[] = {geometry_pool.vertex.buffer.buffer};
+                render_pipeline.push_descriptor_set(buffer, updates);
+#endif
 
                 vkCmdSetScissor(buffer, 0, 1, &scissor);
                 vkCmdSetViewport(buffer, 0, 1, &viewport);
 
+#if !SM_USE_MESHLETS
                 vkCmdBindIndexBuffer(buffer, geometry_pool.index.buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+#endif
 
                 u32 scene_triangles        = 0;
                 constexpr u32 kRepeatDraws = 100;

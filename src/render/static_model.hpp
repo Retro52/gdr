@@ -1,5 +1,7 @@
 #pragma once
 
+#define SM_USE_MESHLETS 1
+
 #include <render/platform/vk/vk_buffer.hpp>
 #include <render/platform/vk/vk_geometry_pool.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
@@ -19,12 +21,25 @@ public:
         vec3 tangent;
     };
 
+#if SM_USE_MESHLETS
+    constexpr static u32 kMaxVerticesPerMeshlet  = 64;
+    constexpr static u32 kMaxTrianglesPerMeshlet = 126;
+
+    struct static_model_meshlet
+    {
+        u32 vertices[kMaxVerticesPerMeshlet];
+        u8 indices[kMaxTrianglesPerMeshlet * 3];
+        u8 vertices_count;
+        u8 triangles_count;
+        // f32 cull_cone[4];  // xyz - axis, w - angle
+    };
+#endif
+
     struct mesh_data
     {
-#if 0
-        std::vector<meshopt_Meshlet> meshlets;
-        std::vector<unsigned int> meshlet_vertices;
-        std::vector<unsigned char> meshlet_triangles;
+#if SM_USE_MESHLETS
+        std::vector<static_model_vertex> vertices;
+        std::vector<static_model_meshlet> meshlets;
 #else
         std::vector<u32> indices;
         std::vector<static_model_vertex> vertices;
@@ -44,11 +59,12 @@ public:
 
     void draw(VkCommandBuffer buffer) const;
 
-    u32 indices_count() const;
+    [[nodiscard]] u32 indices_count() const;
 
 private:
     struct offsets
     {
+        u64 meshlets_count;
         u64 vertex_offset;
         u64 vertex_count;
         u64 index_offset;

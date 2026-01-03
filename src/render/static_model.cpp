@@ -63,36 +63,48 @@ namespace
             indices[base + 2] = src[2];
         }
 
-#if 0
-        constexpr u32 kMaxVerticesPerMeshlet  = 64;
-        constexpr u32 kMaxTrianglesPerMeshlet = 126;
+#if SM_USE_MESHLETS
+        const u64 meshlets_upper_bound = meshopt_buildMeshletsBound(
+            indices.size(), static_model::kMaxVerticesPerMeshlet, static_model::kMaxTrianglesPerMeshlet);
 
-        const u64 meshlets_upper_bound =
-            meshopt_buildMeshletsBound(indices.size(), kMaxVerticesPerMeshlet, kMaxTrianglesPerMeshlet);
+        static_model::mesh_data mesh_data;
 
-        static_model::mesh_data mesh_data {
-            .meshlets {meshlets_upper_bound},
-        };
-
-        const u64 meshlets_count = meshopt_buildMeshlets(mesh_data.meshlets.data(),
-                                                         mesh_data.meshlet_vertices.data(),
-                                                         mesh_data.meshlet_triangles.data(),
+        std::vector<meshopt_Meshlet> meshopt_meshlets(meshlets_upper_bound);
+        std::vector<u32> meshlet_vertices(indices.size());
+        std::vector<u8> meshlet_triangles(indices.size());
+        const u64 meshlets_count = meshopt_buildMeshlets(meshopt_meshlets.data(),
+                                                         meshlet_vertices.data(),
+                                                         meshlet_triangles.data(),
                                                          indices.data(),
                                                          indices.size(),
-                                                         &vertices.data()->position.x,
-                                                         vertices.size(),
+                                                         &raw_vertices.data()->position.x,
+                                                         raw_vertices.size(),
                                                          sizeof(static_model::static_model_vertex),
-                                                         kMaxVerticesPerMeshlet,
-                                                         kMaxTrianglesPerMeshlet,
+                                                         static_model::kMaxVerticesPerMeshlet,
+                                                         static_model::kMaxTrianglesPerMeshlet,
                                                          0.0F);
 
+        mesh_data.vertices = raw_vertices;
+        meshopt_meshlets.resize(meshlets_count);
         mesh_data.meshlets.resize(meshlets_count);
-        for (auto& meshlet : mesh_data.meshlets)
+
+        for (u32 i = 0; i < meshlets_count; i++)
         {
-            meshopt_optimizeMeshlet(&mesh_data.meshlet_vertices[meshlet.vertex_offset],
-                                    &mesh_data.meshlet_triangles[meshlet.triangle_offset],
-                                    meshlet.triangle_count,
-                                    meshlet.vertex_count);
+            auto& meshopt_meshlet = meshopt_meshlets[i];
+            meshopt_optimizeMeshlet(&meshlet_vertices[meshopt_meshlet.vertex_offset],
+                                    &meshlet_triangles[meshopt_meshlet.triangle_offset],
+                                    meshopt_meshlet.triangle_count,
+                                    meshopt_meshlet.vertex_count);
+
+            auto& meshlet           = mesh_data.meshlets[i];
+            meshlet.triangles_count = meshopt_meshlet.triangle_count;
+            meshlet.vertices_count  = meshopt_meshlet.vertex_count;
+            std::copy_n(meshlet_vertices.data() + meshopt_meshlet.vertex_offset,
+                        meshopt_meshlet.vertex_count,
+                        meshlet.vertices);
+            std::copy_n(meshlet_triangles.data() + meshopt_meshlet.triangle_offset,
+                        meshopt_meshlet.triangle_count * 3,
+                        meshlet.indices);
         }
 
         return mesh_data;
@@ -149,7 +161,17 @@ namespace
     {
         ZoneScoped;
 
-#if 0
+#if SM_USE_MESHLETS
+        upload_data(renderer,
+                    geometry_pool.vertex.buffer,
+                    geometry_pool.vertex.offset,
+                    mesh.vertices.data(),
+                    mesh.vertices.size());
+        upload_data(renderer,
+                    geometry_pool.meshlets.buffer,
+                    geometry_pool.meshlets.offset,
+                    mesh.meshlets.data(),
+                    mesh.meshlets.size());
 #else
         upload_data(
             renderer, geometry_pool.index.buffer, geometry_pool.index.offset, mesh.indices.data(), mesh.indices.size());
@@ -220,6 +242,22 @@ result<static_model> static_model::load_model(const bytes& data, render::vk_rend
         .index_offset  = geometry_pool.index.offset,
     };
 
+#if SM_USE_MESHLETS
+    {
+        ZoneScopedN("static_model::load_model: upload meshlets data");
+
+        for (auto& mesh : meshes)
+        {
+            offsets.vertex_count += mesh.vertices.size();
+            offsets.meshlets_count += mesh.meshlets.size();
+
+            upload_to_scene(mesh, renderer, geometry_pool);
+
+            geometry_pool.vertex.offset += mesh.vertices.size();
+            geometry_pool.meshlets.offset += mesh.meshlets.size();
+        }
+    }
+#else
     {
         ZoneScopedN("static_model::load_model: upload data");
 
@@ -230,18 +268,23 @@ result<static_model> static_model::load_model(const bytes& data, render::vk_rend
 
             upload_to_scene(mesh, renderer, geometry_pool);
 
-            geometry_pool.index.offset += offsets.index_count;
-            geometry_pool.vertex.offset += offsets.vertex_count;
+            geometry_pool.index.offset += mesh.indices.size();
+            geometry_pool.vertex.offset += mesh.vertices.size();
         }
     }
-
+#endif
     return static_model {offsets};
 }
 
 void static_model::draw(VkCommandBuffer buffer) const
 {
     ZoneScoped;
+
+#if SM_USE_MESHLETS
+    vkCmdDrawMeshTasksEXT(buffer, m_offsets.meshlets_count, 1, 1);
+#else
     vkCmdDrawIndexed(buffer, m_offsets.index_count, 1, m_offsets.index_offset, 0, 0);
+#endif
 }
 
 u32 static_model::indices_count() const
