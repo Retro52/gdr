@@ -50,10 +50,9 @@ int main(int argc, char* argv[])
     render::vk_renderer renderer(
         render::instance_desc {
             .device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-                                  VK_EXT_MESH_SHADER_EXTENSION_NAME,
-                                  VK_KHR_MAINTENANCE_4_EXTENSION_NAME,
-                                  VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
-                                  VK_KHR_8BIT_STORAGE_EXTENSION_NAME, TRACY_ONLY(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME)},
+                                  VK_EXT_MESH_SHADER_EXTENSION_NAME, VK_KHR_MAINTENANCE_4_EXTENSION_NAME,
+                                  VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME, VK_KHR_8BIT_STORAGE_EXTENSION_NAME,
+                                  TRACY_ONLY(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME)},
             .app_name          = "Vulkan renderer",
             .app_version       = 1,
             .device_features   = features_table,
@@ -79,16 +78,12 @@ int main(int argc, char* argv[])
     };
 
     render::vk_shader shaders[] = {
-    // *render::vk_shader::load(renderer, "../shaders/parse_test.comp.spv"),
 #if SM_USE_MESHLETS
         *render::vk_shader::load(renderer, "../shaders/meshlets.mesh.spv"),
-        *render::vk_shader::load(renderer, "../shaders/meshlets_tmp.frag.spv"),
 #else
         *render::vk_shader::load(renderer, "../shaders/mesh.vert.spv"),
-        *render::vk_shader::load(renderer, "../shaders/meshlets.frag.spv"),
 #endif
-        // *render::shader::load(renderer, "../shaders/meshlets.task.spv"),
-        // *render::shader::load(renderer, "../shaders/meshlets.frag.spv"),
+        *render::vk_shader::load(renderer, "../shaders/meshlets.frag.spv"),
     };
 
     const auto render_pipeline = *render::vk_pipeline::create_graphics(renderer, shaders, COUNT_OF(shaders), &range, 1);

@@ -20,7 +20,6 @@ out VS_OUT {
     layout (location = 2) out vec3 tangent;
     layout (location = 3) out vec3 bitangent;
     layout (location = 4) out vec4 world_pos;
-    layout (location = 5) out vec4 sun_pos;
 } vs_out;
 
 void main()
@@ -33,6 +32,5 @@ void main()
     vs_out.world_pos = vec4(v.px, v.py, v.pz, 1.0F);
     vs_out.bitangent = cross(vs_out.tangent, vs_out.normal);
 
-    vs_out.sun_pos = pc.sun_pos;
     gl_Position = pc.vp * vs_out.world_pos;
 }
