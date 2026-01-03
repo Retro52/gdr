@@ -1,6 +1,6 @@
 #include <render/platform/vk/vk_error.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
-#include <tracy/Tracy.hpp>
+#include <Tracy/Tracy.hpp>
 
 using namespace render;
 
@@ -26,6 +26,12 @@ vk_renderer::vk_renderer(const render::instance_desc& desc, const window& window
         VK_ASSERT_ON_FAIL(vkCreateFence(m_context.device, &fence_create_info, nullptr, &frame.fence));
         VK_ASSERT_ON_FAIL(
             vkCreateSemaphore(m_context.device, &semaphore_create_info, nullptr, &frame.acquire_semaphore));
+        TRACY_ONLY(frame.tracy_ctx = TracyVkContextCalibrated(m_context.physical_device,
+                                                              m_context.device,
+                                                              m_context.queues[render::queue_kind::eGfx].queue,
+                                                              frame.command_buffer.vk_buffer,
+                                                              vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
+                                                              vkGetCalibratedTimestampsEXT))
     }
 }
 
@@ -198,6 +204,13 @@ u32 vk_renderer::get_frames_in_flight() const
         .maxDepth = 1.0f,
     };
 }
+
+#if TRACY_ENABLE
+[[nodiscard]] TracyVkCtx vk_renderer::get_frame_tracy_context() const
+{
+    return m_in_flight_frames[m_frame_index].tracy_ctx;
+}
+#endif
 
 [[nodiscard]] VkCommandBuffer vk_renderer::get_frame_command_buffer() const
 {

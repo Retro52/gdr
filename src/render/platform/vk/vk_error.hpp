@@ -95,6 +95,7 @@
         FAIL_OP(#EXPR " failed. Reason: Unknown VK error");                                        \
     }
 
+#if !defined(NDEBUG)
 #define VK_ASSERT(MSG) assert(false && (MSG))
 
 #define VK_ASSERT_ON_FAIL(EXPR)                   \
@@ -102,6 +103,10 @@
     {                                             \
         VK_FAIL_HANDLE(EXPR, VK_ASSERT)           \
     }
+#else
+#define VK_ASSERT(MSG)
+#define VK_ASSERT_ON_FAIL(EXPR) EXPR;
+#endif
 
 #define VK_RETURN_ON_FAIL(EXPR)                   \
     if (const auto res = EXPR; res != VK_SUCCESS) \

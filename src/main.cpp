@@ -20,7 +20,7 @@
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 #include <scene/scene.hpp>
-#include <tracy/Tracy.hpp>
+#include <Tracy/Tracy.hpp>
 #include <window.hpp>
 
 #include <vector>
@@ -50,7 +50,8 @@ int main(int argc, char* argv[])
     render::vk_renderer renderer(
         render::instance_desc {
             .device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-                                  VK_EXT_MESH_SHADER_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME},
+                                  VK_EXT_MESH_SHADER_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+                                  TRACY_ONLY(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME)},
             .app_name          = "Vulkan renderer",
             .app_version       = 1,
             .device_features   = features_table,
@@ -186,6 +187,7 @@ int main(int argc, char* argv[])
                 const auto scissor  = renderer.get_scissor();
 
                 vkBeginCommandBuffer(buffer, &command_buffer_begin_info);
+                TRACY_ONLY(TracyVkCollect(renderer.get_frame_tracy_context(), buffer));
 
                 vkCmdResetQueryPool(buffer, timestamp_query_pool, 0, kQueryPoolCount);
                 vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool, 0);
@@ -223,6 +225,7 @@ int main(int argc, char* argv[])
                     [&](static_model_component& component)
                     {
                         ZoneScopedN("main.component.model.draw");
+                        TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "draw call"));
 
                         scene_triangles += component.model.indices_count() / 3;
                         for (u32 i = 0; i < kRepeatDraws; ++i)
@@ -234,6 +237,7 @@ int main(int argc, char* argv[])
 #if !PROFILE
                 {
                     ZoneScopedN("main.draw.editor");
+                    TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "editor"));
 
                     editor.begin_frame();
                     ImGui::SeparatorText("gpu timings");

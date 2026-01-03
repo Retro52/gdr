@@ -3,6 +3,7 @@
 #include <SDL3/SDL_platform_defines.h>
 
 #include <glm/glm.hpp>
+#include <Tracy/TracyC.h>
 
 #define COUNT_OF(x) \
     ((sizeof(x) / sizeof(0 [x])) / ((size_t)(!(sizeof(x) % sizeof(0 [x])))))  // NOLINT(*-misplaced-array-index)
@@ -16,6 +17,12 @@
 #else
 #define DEBUG_ONLY(EXPR)
 #define NDEBUG_ONLY(EXPR) EXPR
+#endif
+
+#if TRACY_ENABLE
+#define TRACY_ONLY(EXPR) EXPR
+#else
+#define TRACY_ONLY(EXPR)
 #endif
 
 using u8  = std::uint8_t;

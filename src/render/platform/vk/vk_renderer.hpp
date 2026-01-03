@@ -1,7 +1,8 @@
 #pragma once
 
-#include <render/platform/vk/vk_device.hpp>
 #include <bytes.hpp>
+#include <render/platform/vk/vk_device.hpp>
+#include <Tracy/TracyVulkan.hpp>
 #include <window.hpp>
 
 namespace render
@@ -18,10 +19,11 @@ namespace render
     private:
         struct frame_data
         {
+            TRACY_ONLY(TracyVkCtx tracy_ctx {});
+            vk_renderer::command_buffer command_buffer;
+
             VkFence fence {VK_NULL_HANDLE};
             VkSemaphore acquire_semaphore {VK_NULL_HANDLE};
-
-            vk_renderer::command_buffer command_buffer;
         };
 
     public:
@@ -47,11 +49,13 @@ namespace render
 
         [[nodiscard]] VkViewport get_viewport() const;
 
+#if TRACY_ENABLE
+        [[nodiscard]] TracyVkCtx get_frame_tracy_context() const;
+#endif
+
         [[nodiscard]] VkCommandBuffer get_frame_command_buffer() const;
 
         [[nodiscard]] render::swapchain_image get_frame_swapchain_image() const;
-
-        [[nodiscard]] VkShaderModule create_shader_module(const bytes& binary) const;
 
         template<typename Func>
         void submit(Func&& func) const

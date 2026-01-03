@@ -7,7 +7,7 @@
 #include <ranges>
 #include <unordered_set>
 #include <vector>
-#include <tracy/Tracy.hpp>
+#include <Tracy/Tracy.hpp>
 
 using namespace render;
 
