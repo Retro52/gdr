@@ -4,6 +4,13 @@
 
 namespace cpp
 {
+    template<typename T, typename U>
+    constexpr bool cx_implies(T required, U supported) noexcept
+        requires(std::is_integral_v<T> && std::is_integral_v<U>)
+    {
+        return !required || supported;
+    }
+
     template<class It, class V>
     constexpr bool cx_contains(It first, const It end, const V& val)
     {

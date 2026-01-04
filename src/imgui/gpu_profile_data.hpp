@@ -17,7 +17,10 @@ struct gpu_profile_data
     /// @readonly @name(Tris/s (B))
     f64 tris_per_second {0.0F};
 
-    void update(f64 start, f64 end, u64 tris_count)
+    /// @readonly @name(Tris/Meshlet (B))
+    f64 tris_per_meshlet {0.0F};
+
+    void update(f64 start, f64 end, u64 tris_count, u64 meshlets_count)
     {
         frame_start     = start;
         frame_end       = end;
@@ -27,5 +30,7 @@ struct gpu_profile_data
 
         // to convert it to billions we'd use 1e-9, but we also convert ms to s, so 1e-3 cancel out
         tris_per_second = static_cast<f64>(tris_count) * 1e-6 / (gpu_render_time);
+
+        tris_per_meshlet = static_cast<f64>(tris_count) / meshlets_count;
     }
 };

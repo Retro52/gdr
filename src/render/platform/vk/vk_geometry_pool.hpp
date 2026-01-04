@@ -3,7 +3,7 @@
 #include <types.hpp>
 
 #include <render/platform/vk/vk_buffer.hpp>
-#include <render/platform/vk/vk_error.hpp>
+#include <render/platform/vk/vk_buffer_transfer.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
 
 namespace render
@@ -20,11 +20,8 @@ namespace render
             : size(size)
             , offset(0)
         {
-            VK_ASSERT_ON_FAIL(render::create_buffer(size,
-                                                    usage,
-                                                    renderer.get_context().allocator,
-                                                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-                                                    &buffer))
+            buffer = *render::create_buffer(
+                size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, renderer.get_context().allocator, 0);
         }
     };
 
@@ -33,5 +30,7 @@ namespace render
         vk_shared_buffer index;
         vk_shared_buffer vertex;
         vk_shared_buffer meshlets;
+
+        vk_buffer_transfer transfer;
     };
 }

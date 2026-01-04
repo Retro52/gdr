@@ -1,4 +1,5 @@
 #include <render/platform/vk/vk_buffer.hpp>
+#include <render/platform/vk/vk_error.hpp>
 #include <Tracy/Tracy.hpp>
 
 void render::destroy_buffer(VmaAllocator allocator, const vk_buffer& buffer)
@@ -7,8 +8,8 @@ void render::destroy_buffer(VmaAllocator allocator, const vk_buffer& buffer)
     vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
 }
 
-VkResult render::create_buffer(u64 size, VkBufferUsageFlags usage, VmaAllocator allocator,
-                               VmaAllocationCreateFlags allocation_flags, vk_buffer* buffer)
+result<render::vk_buffer> render::create_buffer(u64 size, VkBufferUsageFlags usage, VmaAllocator allocator,
+                                                VmaAllocationCreateFlags allocation_flags)
 {
     ZoneScoped;
 
@@ -18,20 +19,24 @@ VkResult render::create_buffer(u64 size, VkBufferUsageFlags usage, VmaAllocator 
         .usage = usage,
     };
 
-    return render::create_buffer(buffer_info, allocator, allocation_flags, buffer);
+    return render::create_buffer(buffer_info, allocator, allocation_flags);
 }
 
-VkResult render::create_buffer(const VkBufferCreateInfo& buffer_create_info, VmaAllocator allocator,
-                               VmaAllocationCreateFlags allocation_flags, vk_buffer* buffer)
+result<render::vk_buffer> render::create_buffer(const VkBufferCreateInfo& buffer_create_info, VmaAllocator allocator,
+                                                VmaAllocationCreateFlags allocation_flags)
 {
     ZoneScoped;
 
+    vk_buffer result;
     const VmaAllocationCreateInfo alloc_info = {.flags = allocation_flags, .usage = VMA_MEMORY_USAGE_AUTO};
-    return vmaCreateBuffer(allocator, &buffer_create_info, &alloc_info, &buffer->buffer, &buffer->allocation, nullptr);
+    VK_RETURN_ON_FAIL(
+        vmaCreateBuffer(allocator, &buffer_create_info, &alloc_info, &result.buffer, &result.allocation, nullptr));
+
+    return result;
 }
 
-VkResult render::create_buffer_view(VkDevice device, VkBuffer buffer, VkFormat format, u64 offset, u64 range,
-                                    VkBufferView* view)
+result<VkBufferView> render::create_buffer_view(VkDevice device, VkBuffer buffer, VkFormat format, u64 offset,
+                                                u64 range)
 {
     ZoneScoped;
 
@@ -44,5 +49,8 @@ VkResult render::create_buffer_view(VkDevice device, VkBuffer buffer, VkFormat f
         .range  = range,
     };
 
-    return vkCreateBufferView(device, &buffer_view_create_info, nullptr, view);
+    VkBufferView view;
+    VK_RETURN_ON_FAIL(vkCreateBufferView(device, &buffer_view_create_info, nullptr, &view));
+
+    return view;
 }

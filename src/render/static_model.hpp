@@ -60,18 +60,18 @@ public:
 
     [[nodiscard]] u32 indices_count() const;
 
+    [[nodiscard]] u32 meshlets_count() const;
+
 private:
-    struct offsets
+    struct stats
     {
         u64 meshlets_count;
-        u64 vertex_offset;
         u64 vertex_count;
-        u64 index_offset;
         u64 index_count;
     };
 
-    explicit static_model(const offsets& offsets);
+    explicit static_model(const stats& offsets);
 
 private:
-    offsets m_offsets;
+    stats m_stats;
 };

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <render/platform/vk/vma.hpp>
-#include <volk.h>
+#include <result.hpp>
 
 namespace render
 {
@@ -17,8 +17,8 @@ namespace render
 
     void destroy_image(VmaAllocator allocator, const vk_image& image);
 
-    VkResult create_image(const VkImageCreateInfo& image_create_info, VmaAllocator allocator, vk_image* image);
+    result<vk_image> create_image(const VkImageCreateInfo& image_create_info, VmaAllocator allocator);
 
-    VkResult create_image_view(VkDevice device, VkImage image, VkFormat format, VkImageAspectFlags aspect_flags,
-                               VkImageView* view);
+    result<VkImageView> create_image_view(VkDevice device, VkImage image, VkFormat format,
+                                          VkImageAspectFlags aspect_flags);
 }

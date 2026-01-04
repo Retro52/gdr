@@ -2,6 +2,7 @@
 
 #include <bytes.hpp>
 #include <render/platform/vk/vk_device.hpp>
+#include <render/platform/vk/vk_command_buffer.hpp>
 #include <Tracy/TracyVulkan.hpp>
 #include <window.hpp>
 
@@ -9,18 +10,11 @@ namespace render
 {
     class vk_renderer
     {
-    public:
-        struct command_buffer
-        {
-            VkCommandPool vk_pool {VK_NULL_HANDLE};
-            VkCommandBuffer vk_buffer {VK_NULL_HANDLE};
-        };
-
     private:
         struct frame_data
         {
             TRACY_ONLY(TracyVkCtx tracy_ctx {});
-            vk_renderer::command_buffer command_buffer;
+            vk_command_buffer command_buffer;
 
             VkFence fence {VK_NULL_HANDLE};
             VkSemaphore acquire_semaphore {VK_NULL_HANDLE};
@@ -34,8 +28,6 @@ namespace render
         [[nodiscard]] const render::swapchain& get_swapchain() const;
 
         void resize_swapchain(ivec2 new_size);
-
-        [[nodiscard]] result<command_buffer> create_command_buffer() const;
 
         [[nodiscard]] bool acquire_frame();
 

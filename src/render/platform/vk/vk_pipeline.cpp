@@ -216,7 +216,6 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     // 5 = first actual instruction offset as per specification
     inst += 5;
 
-    // TODO: parse shader binding layout
     // TODO: parse shader push range
     const u32* end = static_cast<const u32*>(spv.end());
     while (inst < end)

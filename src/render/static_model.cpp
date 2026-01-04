@@ -6,23 +6,49 @@
 #include <render/static_model.hpp>
 #include <Tracy/Tracy.hpp>
 
+#include <stack>
+
 using namespace render;
 
 namespace
 {
-    // TODO: staging buffer
     template<typename T>
-    void upload_data(const vk_renderer& renderer, const vk_buffer& buffer, const u64 offset, const T* data,
-                     const u64 count)
+    void upload_data(VmaAllocator allocator, const vk_buffer_transfer& transfer, vk_shared_buffer& dst_buffer,
+                     const T* data, const u64 count)
     {
         ZoneScoped;
-        const auto allocator = renderer.get_context().allocator;
 
         void* mapped;
-        vmaMapMemory(allocator, buffer.allocation, &mapped);
+        vmaMapMemory(allocator, transfer.staging_buffer.allocation, &mapped);
         std::copy_n(
-            reinterpret_cast<const u8*>(data), count * sizeof(T), (static_cast<u8*>(mapped)) + (offset * sizeof(T)));
-        vmaUnmapMemory(allocator, buffer.allocation);
+            reinterpret_cast<const u8*>(data), count * sizeof(T), (static_cast<u8*>(mapped)) + dst_buffer.offset);
+        vmaUnmapMemory(allocator, transfer.staging_buffer.allocation);
+        dst_buffer.offset += count * sizeof(T);
+
+        VkCommandBufferBeginInfo begin_info {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        };
+
+        vkBeginCommandBuffer(transfer.staging_command_buffer.cmd_buffer, &begin_info);
+
+        const VkBufferCopy copy_region {.size = count * sizeof(T)};
+        vkCmdCopyBuffer(transfer.staging_command_buffer.cmd_buffer,
+                        transfer.staging_buffer.buffer,
+                        dst_buffer.buffer.buffer,
+                        1,
+                        &copy_region);
+
+        vkEndCommandBuffer(transfer.staging_command_buffer.cmd_buffer);
+
+        VkSubmitInfo submit_info {
+            .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .commandBufferCount = 1,
+            .pCommandBuffers    = &transfer.staging_command_buffer.cmd_buffer,
+        };
+
+        vkQueueSubmit(transfer.queue.queue, 1, &submit_info, VK_NULL_HANDLE);
+        vkQueueWaitIdle(transfer.queue.queue);
     }
 
     static_model::mesh_data load_mesh(const aiMesh* mesh) noexcept
@@ -185,31 +211,22 @@ namespace
 #endif
     }
 
-    // FIXME: use staging buffers
     void upload_to_scene(const static_model::mesh_data& mesh, const vk_renderer& renderer,
                          vk_scene_geometry_pool& geometry_pool)
     {
         ZoneScoped;
 
 #if SM_USE_MESHLETS
-        upload_data(renderer,
-                    geometry_pool.vertex.buffer,
-                    geometry_pool.vertex.offset,
-                    mesh.vertices.data(),
-                    mesh.vertices.size());
-        upload_data(renderer,
-                    geometry_pool.meshlets.buffer,
-                    geometry_pool.meshlets.offset,
-                    mesh.meshlets.data(),
-                    mesh.meshlets.size());
-#else
+        const auto allocator = renderer.get_context().allocator;
         upload_data(
-            renderer, geometry_pool.index.buffer, geometry_pool.index.offset, mesh.indices.data(), mesh.indices.size());
-        upload_data(renderer,
-                    geometry_pool.vertex.buffer,
-                    geometry_pool.vertex.offset,
-                    mesh.vertices.data(),
-                    mesh.vertices.size());
+            allocator, geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
+        upload_data(
+            allocator, geometry_pool.transfer, geometry_pool.meshlets, mesh.meshlets.data(), mesh.meshlets.size());
+#else
+        const auto allocator = renderer.get_context().allocator;
+        upload_data(allocator, geometry_pool.transfer, geometry_pool.index, mesh.indices.data(), mesh.indices.size());
+        upload_data(
+            allocator, geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
 #endif
     }
 }
@@ -220,13 +237,13 @@ result<static_model> static_model::load_model(const bytes& data, render::vk_rend
     ZoneScoped;
 #if 1
     thread_local Assimp::Importer importer;
-    thread_local std::vector<mesh_data> meshes;
-    thread_local std::stack<aiNode*> process_nodes;
 #else
     Assimp::Importer importer;
+#endif
+
     std::vector<mesh_data> meshes;
     std::stack<aiNode*> process_nodes;
-#endif
+
     const aiScene* scene = nullptr;
     {
         ZoneScopedN("static_model::load_model.importer.ReadFileFromMemory");
@@ -244,7 +261,6 @@ result<static_model> static_model::load_model(const bytes& data, render::vk_rend
     {
         ZoneScopedN("static_model::load_model: convert data");
 
-        meshes.clear();
         process_nodes.push(scene->mRootNode);
 
         while (!process_nodes.empty())
@@ -267,30 +283,22 @@ result<static_model> static_model::load_model(const bytes& data, render::vk_rend
         }
     }
 
-    offsets offsets {
-        .vertex_offset = geometry_pool.vertex.offset,
-#if !SM_USE_MESHLETS
-        .index_offset = geometry_pool.index.offset,
-#endif
-    };
-
+    stats model_stats {};
 #if SM_USE_MESHLETS
     {
         ZoneScopedN("static_model::load_model: upload meshlets data");
 
         for (auto& mesh : meshes)
         {
-            offsets.vertex_count += mesh.vertices.size();
-            offsets.meshlets_count += mesh.meshlets.size();
+            model_stats.vertex_count += mesh.vertices.size();
+            model_stats.meshlets_count += mesh.meshlets.size();
             for (auto& meshlet : mesh.meshlets)
             {
-                offsets.index_count += meshlet.triangles_count * 3;
+                model_stats.index_count += meshlet.triangles_count * 3;
             }
 
             upload_to_scene(mesh, renderer, geometry_pool);
-
-            geometry_pool.vertex.offset += mesh.vertices.size();
-            geometry_pool.meshlets.offset += mesh.meshlets.size();
+            break;
         }
     }
 #else
@@ -299,17 +307,14 @@ result<static_model> static_model::load_model(const bytes& data, render::vk_rend
 
         for (auto& mesh : meshes)
         {
-            offsets.index_count += mesh.indices.size();
-            offsets.vertex_count += mesh.vertices.size();
+            model_stats.index_count += mesh.indices.size();
+            model_stats.vertex_count += mesh.vertices.size();
 
             upload_to_scene(mesh, renderer, geometry_pool);
-
-            geometry_pool.index.offset += mesh.indices.size();
-            geometry_pool.vertex.offset += mesh.vertices.size();
         }
     }
 #endif
-    return static_model {offsets};
+    return static_model {model_stats};
 }
 
 void static_model::draw(VkCommandBuffer buffer) const
@@ -317,18 +322,23 @@ void static_model::draw(VkCommandBuffer buffer) const
     ZoneScoped;
 
 #if SM_USE_MESHLETS
-    vkCmdDrawMeshTasksEXT(buffer, m_offsets.meshlets_count, 1, 1);
+    vkCmdDrawMeshTasksEXT(buffer, m_stats.meshlets_count, 1, 1);
 #else
-    vkCmdDrawIndexed(buffer, m_offsets.index_count, 1, m_offsets.index_offset, 0, 0);
+    vkCmdDrawIndexed(buffer, m_stats.index_count, 1, 0, 0, 0);
 #endif
 }
 
 u32 static_model::indices_count() const
 {
-    return m_offsets.index_count;
+    return m_stats.index_count;
 }
 
-static_model::static_model(const offsets& offsets)
-    : m_offsets(offsets)
+[[nodiscard]] u32 static_model::meshlets_count() const
+{
+    return m_stats.meshlets_count;
+}
+
+static_model::static_model(const stats& stats)
+    : m_stats(stats)
 {
 }

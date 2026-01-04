@@ -1,3 +1,6 @@
+#include <volk.h>
+
+#include <render/platform/vk/vk_error.hpp>
 #include <render/platform/vk/vk_image.hpp>
 
 VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspect_flag)
@@ -46,14 +49,18 @@ void render::destroy_image(VmaAllocator allocator, const vk_image& image)
     vmaDestroyImage(allocator, image.image, image.allocation);
 }
 
-VkResult render::create_image(const VkImageCreateInfo& image_create_info, VmaAllocator allocator, vk_image* image)
+result<render::vk_image> render::create_image(const VkImageCreateInfo& image_create_info, VmaAllocator allocator)
 {
-    const VmaAllocationCreateInfo alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO};
-    return vmaCreateImage(allocator, &image_create_info, &alloc_info, &image->image, &image->allocation, nullptr);
+    vk_image image;
+    constexpr VmaAllocationCreateInfo alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO};
+    VK_RETURN_ON_FAIL(
+        vmaCreateImage(allocator, &image_create_info, &alloc_info, &image.image, &image.allocation, nullptr));
+
+    return image;
 }
 
-VkResult render::create_image_view(VkDevice device, VkImage image, VkFormat format, VkImageAspectFlags aspect_flags,
-                                   VkImageView* view)
+result<VkImageView> render::create_image_view(VkDevice device, VkImage image, VkFormat format,
+                                              VkImageAspectFlags aspect_flags)
 {
     const VkImageViewCreateInfo image_view_create_info {.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                                                         .pNext            = nullptr,
@@ -62,5 +69,8 @@ VkResult render::create_image_view(VkDevice device, VkImage image, VkFormat form
                                                         .format           = format,
                                                         .subresourceRange = image_subresource_range(aspect_flags)};
 
-    return vkCreateImageView(device, &image_view_create_info, nullptr, view);
+    VkImageView view;
+    VK_RETURN_ON_FAIL(vkCreateImageView(device, &image_view_create_info, nullptr, &view));
+
+    return view;
 }

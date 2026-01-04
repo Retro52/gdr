@@ -1,10 +1,10 @@
+#include <cpp/alg_constexpr.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
 #include <Tracy/Tracy.hpp>
 
 #include <algorithm>
 #include <cstdio>
-#include <ostream>
 #include <ranges>
 #include <unordered_set>
 #include <vector>
@@ -344,10 +344,14 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
     vkGetPhysicalDeviceFeatures2(device, &device_features2);
 
     const bool features_supported =
-        vk12_features.storageBuffer8BitAccess >= required_features.required(rendering_features_table::eMeshShading)
-        && vk13_features.maintenance4 >= required_features.required(rendering_features_table::eMeshShading)
-        && vk13_features.dynamicRendering >= required_features.required(rendering_features_table::eDynamicRender)
-        && vk13_features.synchronization2 >= required_features.required(rendering_features_table::eSynchronization2);
+        cpp::cx_implies(required_features.required(rendering_features_table::eMeshShading),
+                        vk12_features.storageBuffer8BitAccess)
+        && cpp::cx_implies(required_features.required(rendering_features_table::eMeshShading),
+                           vk13_features.maintenance4)
+        && cpp::cx_implies(required_features.required(rendering_features_table::eDynamicRender),
+                           vk13_features.dynamicRendering)
+        && cpp::cx_implies(required_features.required(rendering_features_table::eSynchronization2),
+                           vk13_features.synchronization2);
 
     return not_found_extensions.empty() && features_supported;
 }
@@ -781,12 +785,23 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
             .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         };
 
-        VK_RETURN_ON_FAIL(create_image(image_create_info, vk_context.allocator, &sc_image.depth_image));
+        const auto depth_img = create_image(image_create_info, vk_context.allocator);
+        if (!depth_img)
+        {
+            return depth_img.message;
+        }
+
+        sc_image.depth_image = *depth_img;
 
         constexpr auto kDAspect = VK_IMAGE_ASPECT_DEPTH_BIT;
-        VK_RETURN_ON_FAIL(create_image_view(
-            vk_context.device, sc_image.depth_image.image, depth_format, kDAspect, &sc_image.depth_image_view));
+        const auto depth_img_view =
+            create_image_view(vk_context.device, sc_image.depth_image.image, depth_format, kDAspect);
+        if (!depth_img_view)
+        {
+            return depth_img.message;
+        }
 
+        sc_image.depth_image_view = *depth_img_view;
         sc_data.images.emplace_back(sc_image);
     }
 

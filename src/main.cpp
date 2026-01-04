@@ -13,6 +13,7 @@
 #include <imgui.h>
 #include <imgui/gpu_profile_data.hpp>
 #include <imgui/imgui_layer.hpp>
+#include <imgui/imgui_utils.hpp>
 #include <render/platform/vk/vk_image.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
@@ -25,7 +26,9 @@
 
 #include <vector>
 
-#define PROFILE 0
+#define NO_EDITOR 0
+
+// FIXME: proper clean-up for vk handles
 
 struct pc_data
 {
@@ -33,6 +36,46 @@ struct pc_data
     vec4 sun_pos;
     vec4 camera_pos;
 };
+
+f64 bytes_to_mb(u64 bytes)
+{
+    return static_cast<f64>(bytes) / (1024.0 * 1024);
+}
+
+void draw_shared_buffer_stats(const char* label, const render::vk_shared_buffer& buffer)
+{
+    ImGui::TextWrapped("%s buffer: %lf MB used (%lf MB total, %lf%%)",
+                       label,
+                       bytes_to_mb(buffer.offset),
+                       bytes_to_mb(buffer.size),
+                       static_cast<f64>(buffer.offset) * 100.0 / buffer.size);
+}
+
+void draw_tris_per_meshlet_score(f64 tpm_average)
+{
+    const f64 upper_bound = static_cast<f64>(static_model::kMaxTrianglesPerMeshlet);
+
+    if (tpm_average > upper_bound * 0.9)
+    {
+        ImGuiEx::ScopedColor _(ImGuiCol_Text, IM_COL32(80, 200, 120, 255));
+        ImGui::Text("TPM Score: excellent (%lf%% from max)", tpm_average * 100.0F / upper_bound);
+    }
+    else if (tpm_average > upper_bound * 0.75)
+    {
+        ImGuiEx::ScopedColor _(ImGuiCol_Text, IM_COL32(50, 200, 120, 255));
+        ImGui::Text("TPM Score: good (%lf%% from max)", tpm_average * 100.0F / upper_bound);
+    }
+    else if (tpm_average > upper_bound * 0.5)
+    {
+        ImGuiEx::ScopedColor _(ImGuiCol_Text, IM_COL32(255, 255, 0, 255));
+        ImGui::Text("TPM Score: suboptimal (%lf%% from max)", tpm_average * 100.0F / upper_bound);
+    }
+    else
+    {
+        ImGuiEx::ScopedColor _(ImGuiCol_Text, IM_COL32(255, 50, 50, 255));
+        ImGui::Text("TPM Score: bad (%lf%% from max)", tpm_average * 100.0F / upper_bound);
+    }
+}
 
 int main(int argc, char* argv[])
 {
@@ -84,7 +127,6 @@ int main(int argc, char* argv[])
         *render::vk_shader::load(renderer, "../shaders/mesh.vert.spv"),
 #endif
         *render::vk_shader::load(renderer, "../shaders/meshlets.frag.spv"),
-        // *render::vk_shader::load(renderer, "../shaders/meshlets.debug.frag.spv"),
     };
 
     const auto render_pipeline = *render::vk_pipeline::create_graphics(renderer, shaders, COUNT_OF(shaders), &range, 1);
@@ -93,10 +135,8 @@ int main(int argc, char* argv[])
 
     // test scene stuff
     scene client_scene;
-    auto kitten   = client_scene.create_entity();
-    auto backpack = client_scene.create_entity();
-    auto camera   = client_scene.create_entity();
-    auto sun      = client_scene.create_entity();
+    auto camera = client_scene.create_entity();
+    auto sun    = client_scene.create_entity();
 
     sun.add_component<id_component>(DEBUG_ONLY(id_component("sun")));
     sun.add_component<transform_component>();
@@ -104,7 +144,14 @@ int main(int argc, char* argv[])
         directional_light_component {.color = vec3(1.0F, 1.0F, 1.0F), .direction = vec3(0.5)});
 
     camera.add_component<id_component>(DEBUG_ONLY(id_component("camera")));
-    camera.add_component<transform_component>(transform_component {.position = vec3(0, 0, 5)});
+    camera.add_component<transform_component>(transform_component {
+#if defined(NDEBUG)
+        .rotation = glm::quat(vec3(-180.000, 45.0, -180.0)),
+        .position = vec3(0, 0.2, 0.8),
+#else
+        .position = vec3(0, 0, 5)
+#endif
+    });
     camera.add_component<camera_component>(camera_component {
         .far_plane      = 1000.0F,
         .near_plane     = 0.01F,
@@ -120,26 +167,30 @@ int main(int argc, char* argv[])
 #if SM_USE_MESHLETS
         .meshlets = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
 #endif
-    };
+        .transfer = *render::create_buffer_transfer(renderer.get_context().device,
+                                                    renderer.get_context().allocator,
+                                                    renderer.get_context().queues[render::queue_kind::eTransfer],
+                                                    128 * 1024 * 1024)};
 
     // FIXME: multiple object support
 #if 0  // It was broken quite a while actually, ever since I moved vertices into SSBO
+    auto kitten = client_scene.create_entity();
     kitten.add_component<id_component>(DEBUG_ONLY(id_component("kitten model")));
     kitten.add_component<transform_component>();
     kitten.add_component<static_model_component>(
-        *static_model::load_model(fs::read_file("../data/kitten.obj"), renderer, geometry_pool));
+        *static_model::load_model(*fs::read_file("../data/kitten.obj"), renderer, geometry_pool));
 #endif
 
+#if 1
+    auto backpack = client_scene.create_entity();
     backpack.add_component<id_component>(DEBUG_ONLY(id_component("backpack model")));
     backpack.add_component<transform_component>();
     backpack.add_component<static_model_component>(
-        *static_model::load_model(*fs::read_file("../data/kitten.obj"), renderer, geometry_pool));
-        // *static_model::load_model(*fs::read_file("../data/backpack/backpack.obj"), renderer, geometry_pool));
+        *static_model::load_model(*fs::read_file("../data/backpack/backpack.obj"), renderer, geometry_pool));
+#endif
 
-    constexpr u32 kQueryPoolCount = 64;
-    VkQueryPool timestamp_query_pool {VK_NULL_HANDLE};
-    VK_ASSERT_ON_FAIL(
-        render::create_vk_query_pool(renderer.get_context().device, kQueryPoolCount, &timestamp_query_pool));
+    constexpr u32 kQueryPoolCount    = 64;
+    VkQueryPool timestamp_query_pool = *render::create_vk_query_pool(renderer.get_context().device, kQueryPoolCount);
 
     gpu_profile_data profile_data;
 
@@ -236,6 +287,7 @@ int main(int argc, char* argv[])
 #endif
 
                 u32 scene_triangles        = 0;
+                u32 scene_meshlets         = 0;
                 constexpr u32 kRepeatDraws = 100;
 
                 client_scene.get_view<static_model_component>().each(
@@ -244,6 +296,7 @@ int main(int argc, char* argv[])
                         ZoneScopedN("main.component.model.draw");
                         TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "draw call"));
 
+                        scene_meshlets += component.model.meshlets_count();
                         scene_triangles += component.model.indices_count() / 3;
                         for (u32 i = 0; i < kRepeatDraws; ++i)
                         {
@@ -251,7 +304,7 @@ int main(int argc, char* argv[])
                         }
                     });
 
-#if !PROFILE
+#if !NO_EDITOR
                 {
                     ZoneScopedN("main.draw.editor");
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "editor"));
@@ -259,6 +312,16 @@ int main(int argc, char* argv[])
                     editor.begin_frame();
                     ImGui::SeparatorText("gpu timings");
                     codegen::draw(profile_data);
+                    draw_tris_per_meshlet_score(profile_data.tris_per_meshlet);
+
+                    ImGui::SeparatorText("gpu stats");
+                    draw_shared_buffer_stats("Vertices", geometry_pool.vertex);
+
+#if SM_USE_MESHLETS
+                    draw_shared_buffer_stats("Meshlets", geometry_pool.meshlets);
+#else
+                    draw_shared_buffer_stats("Indices", geometry_pool.index);
+#endif
 
                     client_scene.get_view<entt::entity>().each(
                         [&](const entt::entity entity)
@@ -329,7 +392,8 @@ int main(int argc, char* argv[])
 
                 profile_data.update(static_cast<f64>(query_results[0]) * props.limits.timestampPeriod * 1e-6,
                                     static_cast<f64>(query_results[1]) * props.limits.timestampPeriod * 1e-6,
-                                    kRepeatDraws * scene_triangles);
+                                    kRepeatDraws * scene_triangles,
+                                    kRepeatDraws * scene_meshlets);
 
                 auto str = cpp::stack_string::make_formatted(
                     "GPU time: %lf; Tris/s (B): %lf", profile_data.gpu_render_time, profile_data.tris_per_second);

@@ -21,7 +21,8 @@ vk_renderer::vk_renderer(const render::instance_desc& desc, const window& window
 
     for (auto& frame : m_in_flight_frames)
     {
-        frame.command_buffer = *this->create_command_buffer();
+        frame.command_buffer =
+            *render::create_command_buffer(m_context.device, m_context.queues[render::queue_kind::eGfx].family);
 
         VK_ASSERT_ON_FAIL(vkCreateFence(m_context.device, &fence_create_info, nullptr, &frame.fence));
         VK_ASSERT_ON_FAIL(
@@ -29,7 +30,7 @@ vk_renderer::vk_renderer(const render::instance_desc& desc, const window& window
         TRACY_ONLY(frame.tracy_ctx = TracyVkContextCalibrated(m_context.physical_device,
                                                               m_context.device,
                                                               m_context.queues[render::queue_kind::eGfx].queue,
-                                                              frame.command_buffer.vk_buffer,
+                                                              frame.command_buffer.cmd_buffer,
                                                               vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
                                                               vkGetCalibratedTimestampsEXT))
     }
@@ -60,29 +61,6 @@ void vk_renderer::resize_swapchain(ivec2 new_size)
 
     m_swapchain_size = new_size;
     m_swapchain      = new_swapchain;
-}
-
-result<vk_renderer::command_buffer> vk_renderer::create_command_buffer() const
-{
-    ZoneScoped;
-    command_buffer buffer;
-
-    const VkCommandPoolCreateInfo cmd_pool_create_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-                                                          .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-                                                          .queueFamilyIndex =
-                                                              m_context.queues[render::queue_kind::eGfx].family};
-    VK_RETURN_ON_FAIL(vkCreateCommandPool(m_context.device, &cmd_pool_create_info, nullptr, &buffer.vk_pool));
-
-    const VkCommandBufferAllocateInfo cmd_buffer_allocate_info = {
-        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .pNext              = nullptr,
-        .commandPool        = buffer.vk_pool,
-        .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-    };
-    VK_RETURN_ON_FAIL(vkAllocateCommandBuffers(m_context.device, &cmd_buffer_allocate_info, &buffer.vk_buffer));
-
-    return buffer;
 }
 
 [[nodiscard]] bool vk_renderer::acquire_frame()
@@ -214,7 +192,7 @@ u32 vk_renderer::get_frames_in_flight() const
 
 [[nodiscard]] VkCommandBuffer vk_renderer::get_frame_command_buffer() const
 {
-    return m_in_flight_frames[m_frame_index].command_buffer.vk_buffer;
+    return m_in_flight_frames[m_frame_index].command_buffer.cmd_buffer;
 }
 
 [[nodiscard]] render::swapchain_image vk_renderer::get_frame_swapchain_image() const

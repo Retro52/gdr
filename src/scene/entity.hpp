@@ -29,7 +29,7 @@ public:
     }
 
     template<typename... Components>
-    entity shallow_clone(const entity& source)
+    [[nodiscard]] entity shallow_clone(const entity& source)
     {
         ZoneScoped;
         entity clone(source.m_registry.create(), source.m_registry);
