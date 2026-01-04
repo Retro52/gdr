@@ -28,17 +28,8 @@ file(GLOB_RECURSE SHADERS
         ${SHADER_DIR}/*.rmiss
 )
 
-foreach (SHADER IN LISTS SHADERS)
-    get_filename_component(FILENAME ${SHADER} NAME)
-    get_filename_component(SHADER_DIRECTORY ${SHADER} DIRECTORY)
-    add_custom_command(OUTPUT ${SHADER_DIRECTORY}/${FILENAME}.spv
-            COMMAND ${Vulkan_GLSLC_EXECUTABLE} ${SHADER} -o ${SHADER_DIRECTORY}/${FILENAME}.spv --target-env=vulkan1.3
-            DEPENDS ${SHADER}
-            COMMENT "Compiling ${FILENAME}")
-    list(APPEND SPV_SHADERS ${SHADER_DIRECTORY}/${FILENAME}.spv)
-endForeach ()
-
-add_custom_target(shaders ALL DEPENDS ${SPV_SHADERS})
+include(cmake/shaders.cmake)
+generate_build_commands("${SHADERS}")
 
 file(GLOB_RECURSE SOURCES
         "${CMAKE_SOURCE_DIR}/src/*.cpp"

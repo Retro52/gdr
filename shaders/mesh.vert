@@ -1,6 +1,6 @@
 #version 450
 
-#include "types.h"
+#include "types.glsl"
 
 layout (binding = 0) readonly buffer Vertices
 {
