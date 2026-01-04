@@ -1,7 +1,6 @@
 #version 450
 
-#define VIZ_MESHLETS 0
-#define VIZ_MESHLETS_TRIS 1
+#include "include/shaders/constants.h"
 
 in VS_IN {
     layout (location = 0) in vec2 uv;
@@ -9,7 +8,7 @@ in VS_IN {
     layout (location = 2) in vec3 tangent;
     layout (location = 3) in vec3 bitangent;
     layout (location = 4) in vec4 world_pos;
-#if VIZ_MESHLETS
+#if VISUALIZE_MESHLETS
     layout (location = 5) flat in uint meshlet_id;
     layout (location = 6) flat in uint triangle_id;
 #endif
@@ -47,7 +46,7 @@ vec3 uint_color(uint num)
 
 vec3 meshlet_color(uint id, uint tris)
 {
-#if VIZ_MESHLETS_TRIS
+#if VISUALIZE_MESHLET_TRIANGLES
     float kTrisColFactor = 0.15F;
 #else
     float kTrisColFactor = 0.0F;
@@ -57,7 +56,7 @@ vec3 meshlet_color(uint id, uint tris)
 
 void main()
 {
-#if VIZ_MESHLETS
+#if VISUALIZE_MESHLETS
     o_frag_color = vec4(meshlet_color(vs_in.meshlet_id, vs_in.triangle_id), 1.0F);
 #else
     const float diffuse_contribution = 1.0F;

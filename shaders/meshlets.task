@@ -1,8 +1,60 @@
 #version 460
 
 #extension GL_EXT_mesh_shader: require
+#extension GL_GOOGLE_include_directive: require
+
+#include "types.glsl"
+
+layout (local_size_x = kTaskWorkGroups, local_size_y = 1, local_size_z = 1) in;
+
+layout (binding = 1) readonly buffer Meshlets
+{
+    Meshlet meshlets[];
+};
+
+layout (push_constant) uniform constants
+{
+    mat4 vp;
+    vec4 sun_pos;
+    vec4 view_pos;
+    vec4 view_dir;
+} pc;
+
+shared uint meshlets_count;
+taskPayloadSharedEXT MeshletTask meshlet_task;
+
+bool should_cull(vec4 cone, vec3 camera_dir)
+{
+    return dot(cone.xyz, camera_dir) > cone.w;
+}
 
 void main()
 {
+    uint meshlet_warp = gl_WorkGroupID.x;
+    uint meshlet_id = meshlet_warp * kTaskWorkGroups + gl_LocalInvocationID.x;
 
+    #if USE_CONE_CULLING
+    meshlets_count = 0;
+    barrier();
+
+    vec4 cull_cone = vec4(
+    meshlets[meshlet_id].cone[0],
+    meshlets[meshlet_id].cone[1],
+    meshlets[meshlet_id].cone[2],
+    meshlets[meshlet_id].cone[3]
+    );
+
+    bool culled = should_cull(cull_cone, pc.view_dir.xyz);
+    if (!culled)
+    {
+        uint idx = atomicAdd(meshlets_count, 1);
+        meshlet_task.meshlet_ids[idx] = meshlet_id;
+    }
+
+    barrier();
+    EmitMeshTasksEXT(meshlets_count, 1, 1);
+    #else
+    meshlet_task.meshlet_ids[gl_LocalInvocationID.x] = meshlet_id;
+    EmitMeshTasksEXT(kTaskWorkGroups, 1, 1);
+    #endif
 }

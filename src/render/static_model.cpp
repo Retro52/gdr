@@ -14,39 +14,6 @@ using namespace render;
 
 namespace
 {
-    // FIXME: this logic is very naive, and shall be replaced
-    vec4 build_meshlet_cull_cone(const static_model::static_model_meshlet& meshlet,
-                                 const static_model::static_model_vertex* vertices)
-    {
-        vec3 avg_direction = vec3(0.0F);
-        vec3 tris_normals[static_model::kMaxTrianglesPerMeshlet];
-        for (u32 i = 0; i < meshlet.triangles_count; ++i)
-        {
-            auto& va = vertices[meshlet.vertices[meshlet.indices[i * 3 + 0]]];
-            auto& vb = vertices[meshlet.vertices[meshlet.indices[i * 3 + 1]]];
-            auto& vc = vertices[meshlet.vertices[meshlet.indices[i * 3 + 2]]];
-
-            const vec3 normal = glm::cross(vb.position - va.position, vc.position - va.position);
-            if (glm::length(normal) < std::numeric_limits<f32>::epsilon())
-            {
-                tris_normals[i] = vec3(0.0F);
-                continue;
-            }
-
-            tris_normals[i] = glm::normalize(normal);
-            avg_direction += tris_normals[i];
-        }
-
-        f32 min_dot   = 1.0F;
-        avg_direction = glm::normalize(avg_direction);
-        for (u32 i = 0; i < meshlet.triangles_count; ++i)
-        {
-            min_dot = glm::min(min_dot, glm::dot(avg_direction, tris_normals[i]));
-        }
-
-        return {avg_direction, min_dot};
-    }
-
     template<typename T>
     void upload_data(VmaAllocator allocator, const vk_buffer_transfer& transfer, vk_shared_buffer& dst_buffer,
                      const T* data, const u64 count)
@@ -174,8 +141,13 @@ namespace
 
         mesh_data.vertices = vertices;
         meshopt_meshlets.resize(meshlets_count);
+#if SM_USE_TS
+        // FIXME: this degrades performance by quite a bit
+        const u32 ts_wg = shader_constants::kTaskWorkGroups;
+        mesh_data.meshlets.resize(((meshlets_count + ts_wg - 1) / ts_wg) * ts_wg);
+#else
         mesh_data.meshlets.resize(meshlets_count);
-
+#endif
         u32 accum = 0;
         for (u32 i = 0; i < meshlets_count; i++)
         {
@@ -187,6 +159,13 @@ namespace
                                     meshopt_meshlet.triangle_count,
                                     meshopt_meshlet.vertex_count);
 
+            meshopt_Bounds bounds = meshopt_computeMeshletBounds(&meshlet_vertices[meshopt_meshlet.vertex_offset],
+                                                                 &meshlet_triangles[meshopt_meshlet.triangle_offset],
+                                                                 meshopt_meshlet.triangle_count,
+                                                                 &vertices[0].position.x,
+                                                                 vertices.size(),
+                                                                 sizeof(static_model::static_model_vertex));
+
             auto& meshlet           = mesh_data.meshlets[i];
             meshlet.triangles_count = meshopt_meshlet.triangle_count;
             meshlet.vertices_count  = meshopt_meshlet.vertex_count;
@@ -197,7 +176,21 @@ namespace
                         meshopt_meshlet.triangle_count * 3,
                         meshlet.indices);
 
-            meshlet.cull_cone = build_meshlet_cull_cone(meshlet, mesh_data.vertices.data());
+#if 0
+            meshlet.cull_cone[0] = bounds.cone_axis_s8[0];
+            meshlet.cull_cone[1] = bounds.cone_axis_s8[1];
+            meshlet.cull_cone[2] = bounds.cone_axis_s8[2];
+            meshlet.cull_cone[3] = bounds.cone_cutoff_s8;
+#else
+            meshlet.cull_cone[0] = bounds.cone_axis[0];
+            meshlet.cull_cone[1] = bounds.cone_axis[1];
+            meshlet.cull_cone[2] = bounds.cone_axis[2];
+            meshlet.cull_cone[3] = bounds.cone_cutoff;
+#endif
+            meshlet.bounding_sphere[0] = bounds.cone_apex[0];
+            meshlet.bounding_sphere[1] = bounds.cone_apex[1];
+            meshlet.bounding_sphere[2] = bounds.cone_apex[2];
+            meshlet.bounding_sphere[3] = bounds.radius;
         }
 
         return mesh_data;
@@ -359,7 +352,11 @@ void static_model::draw(VkCommandBuffer buffer) const
     ZoneScoped;
 
 #if SM_USE_MESHLETS
+#if SM_USE_TS
+    vkCmdDrawMeshTasksEXT(buffer, m_stats.meshlets_count / shader_constants::kTaskWorkGroups, 1, 1);
+#else
     vkCmdDrawMeshTasksEXT(buffer, m_stats.meshlets_count, 1, 1);
+#endif
 #else
     vkCmdDrawIndexed(buffer, m_stats.index_count, 1, 0, 0, 0);
 #endif

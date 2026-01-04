@@ -1,10 +1,12 @@
 #version 460
+
 #extension GL_EXT_mesh_shader: require
+#extension GL_GOOGLE_include_directive: require
 
 #include "types.glsl"
 
 // FIXME: for whatever reason passing 94 (our constant) is illegal for max_primitives, investigate?
-layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+layout (local_size_x = kMeshWorkGroups, local_size_y = 1, local_size_z = 1) in;
 layout (triangles, max_vertices = 64, max_primitives = 96) out;
 
 layout (binding = 0) readonly buffer Vertices
@@ -35,42 +37,29 @@ out VS_OUT {
     layout (location = 6) flat uint triangle_id;
 } vs_out[];
 
-bool check_meshlet_cull(vec4 cone, vec3 camera_dir)
-{
-    return dot(cone.xyz, camera_dir) > cone.w && cone.w > 0.0F;
-}
+taskPayloadSharedEXT MeshletTask meshlet_task;
 
 void main()
 {
-    uint meshlet_id = gl_WorkGroupID.x;
-
-    if (check_meshlet_cull(
-        vec4(meshlets[meshlet_id].cull_cone[0],
-        meshlets[meshlet_id].cull_cone[1],
-        meshlets[meshlet_id].cull_cone[2],
-        meshlets[meshlet_id].cull_cone[3]),
-        pc.view_dir.xyz)
-    )
-    {
-        SetMeshOutputsEXT(0, 0);
-        return;
-    }
-
-    uint tid = gl_LocalInvocationIndex;
-    uint workgroup_size = gl_WorkGroupSize.x;
-
-    uint vertex_count = uint(meshlets[meshlet_id].vertices_count);
-    uint triangle_count = uint(meshlets[meshlet_id].triangles_count);
+#if USE_TASK_SHADER
+    uint t_idx = gl_LocalInvocationID.x;
+    uint m_idx = meshlet_task.meshlet_ids[gl_WorkGroupID.x];
+#else
+    uint m_idx = gl_WorkGroupID.x;
+    uint t_idx = gl_LocalInvocationIndex;
+#endif
+    uint vertex_count = uint(meshlets[m_idx].vertices_count);
+    uint triangle_count = uint(meshlets[m_idx].triangles_count);
 
     SetMeshOutputsEXT(vertex_count, triangle_count);
 
     // Each thread processes multiple vertices, striding by workgroup size
-    for (uint i = tid; i < vertex_count; i += workgroup_size)
+    for (uint i = t_idx; i < vertex_count; i += kMeshWorkGroups)
     {
-        Vertex v = vertices[meshlets[meshlet_id].vertices[i]];
+        Vertex v = vertices[meshlets[m_idx].vertices[i]];
 
-        vs_out[i].triangle_id = tid;
-        vs_out[i].meshlet_id = meshlet_id;
+        vs_out[i].triangle_id = t_idx;
+        vs_out[i].meshlet_id = m_idx;
 
         vs_out[i].uv = vec2(v.ux, v.uy);
         vs_out[i].normal = vec3(v.nx, v.ny, v.nz);
@@ -82,12 +71,12 @@ void main()
     }
 
     // Same for triangles
-    for (uint i = tid; i < triangle_count; i += workgroup_size)
+    for (uint i = t_idx; i < triangle_count; i += kMeshWorkGroups)
     {
         gl_PrimitiveTriangleIndicesEXT[i] = uvec3(
-        meshlets[meshlet_id].indices[i * 3 + 0],
-        meshlets[meshlet_id].indices[i * 3 + 1],
-        meshlets[meshlet_id].indices[i * 3 + 2]
+        meshlets[m_idx].indices[i * 3 + 0],
+        meshlets[m_idx].indices[i * 3 + 1],
+        meshlets[m_idx].indices[i * 3 + 2]
         );
     }
 }

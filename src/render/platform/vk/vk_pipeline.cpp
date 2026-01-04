@@ -415,7 +415,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     const VkGraphicsPipelineCreateInfo pipeline_create_info {
         .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext               = &pipeline_rendering_create_info,
-        .stageCount          = 2,
+        .stageCount          = shaders_count,
         .pStages             = shader_stage_create_infos.data(),
         .pVertexInputState   = &vertex_input_state_create_info,
         .pInputAssemblyState = &assembly_state_create_info,

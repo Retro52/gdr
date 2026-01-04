@@ -129,6 +129,9 @@ int main(int argc, char* argv[])
 
     render::vk_shader shaders[] = {
 #if SM_USE_MESHLETS
+#if SM_USE_TS
+        *render::vk_shader::load(renderer, "../shaders/meshlets.task.spv"),
+#endif
         *render::vk_shader::load(renderer, "../shaders/meshlets.mesh.spv"),
 #else
         *render::vk_shader::load(renderer, "../shaders/mesh.vert.spv"),
@@ -151,14 +154,7 @@ int main(int argc, char* argv[])
         directional_light_component {.color = vec3(1.0F, 1.0F, 1.0F), .direction = vec3(0.5)});
 
     camera.add_component<id_component>(DEBUG_ONLY(id_component("camera")));
-    camera.add_component<transform_component>(transform_component {
-#if defined(NDEBUG)
-        .rotation = glm::quat(vec3(-180.000, 45.0, -180.0)),
-        .position = vec3(0, 0.2, 0.8),
-#else
-        .position = vec3(0, 0, 5)
-#endif
-    });
+    camera.add_component<transform_component>(transform_component {.position = vec3(0, 0, 5)});
     camera.add_component<camera_component>(camera_component {
         .far_plane      = 1000.0F,
         .near_plane     = 0.01F,
@@ -179,7 +175,7 @@ int main(int argc, char* argv[])
                                                     renderer.get_context().queues[render::queue_kind::eTransfer],
                                                     128 * 1024 * 1024)};
 
-#define KITTY 1
+#define KITTY 0
 
     // FIXME: multiple object support
 #if KITTY  // It was broken quite a while actually, ever since I moved vertices into SSBO

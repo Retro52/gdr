@@ -10,26 +10,7 @@ set(BUILD_SHARED_LIBS OFF)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 add_subdirectory(vendors)
-
-find_package(Vulkan REQUIRED COMPONENTS glslc)
-
-set(SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
-file(GLOB_RECURSE SHADERS
-        ${SHADER_DIR}/*.vert
-        ${SHADER_DIR}/*.frag
-        ${SHADER_DIR}/*.comp
-        ${SHADER_DIR}/*.geom
-        ${SHADER_DIR}/*.tesc
-        ${SHADER_DIR}/*.tese
-        ${SHADER_DIR}/*.mesh
-        ${SHADER_DIR}/*.task
-        ${SHADER_DIR}/*.rgen
-        ${SHADER_DIR}/*.rchit
-        ${SHADER_DIR}/*.rmiss
-)
-
-include(cmake/shaders.cmake)
-generate_build_commands("${SHADERS}")
+add_subdirectory(shaders)
 
 file(GLOB_RECURSE SOURCES
         "${CMAKE_SOURCE_DIR}/src/*.cpp"
@@ -52,11 +33,12 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${SHADERS} ${CODEGEN_GENERATED_HEADERS
 add_dependencies(${PROJECT_NAME} shaders)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
+        shaders
+
         glm::glm
         EnTT::EnTT
         volk::volk
         assimp::assimp
-        Vulkan::Vulkan
         Tracy::TracyClient
         GPUOpen::VulkanMemoryAllocator
 

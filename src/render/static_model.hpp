@@ -1,10 +1,12 @@
 #pragma once
 
-#define SM_USE_MESHLETS 1
-
 #include <render/platform/vk/vk_buffer.hpp>
 #include <render/platform/vk/vk_geometry_pool.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
+#include <shaders/constants.h>
+
+#define SM_USE_TS       USE_TASK_SHADER
+#define SM_USE_MESHLETS 1
 
 class static_model
 {
@@ -20,9 +22,9 @@ public:
     };
 
 #if SM_USE_MESHLETS
-    constexpr static u32 kMaxVerticesPerMeshlet  = 64;
-    constexpr static u32 kMaxTrianglesPerMeshlet = 94;
-    constexpr static u32 kMaxIndicesPerMeshlet   = kMaxTrianglesPerMeshlet * 3;
+    constexpr static u32 kMaxVerticesPerMeshlet  = shader_constants::kMaxVerticesPerMeshlet;
+    constexpr static u32 kMaxTrianglesPerMeshlet = shader_constants::kMaxTrianglesPerMeshlet;
+    constexpr static u32 kMaxIndicesPerMeshlet   = shader_constants::kMaxIndicesPerMeshlet;
 
     struct static_model_meshlet
     {
@@ -30,7 +32,8 @@ public:
         u8 indices[kMaxIndicesPerMeshlet];
         u8 vertices_count;
         u8 triangles_count;
-        vec4 cull_cone;  // xyz - axis, w - angle
+        f32 cull_cone[4];        // xyz - direction; w - alpha encoded in -127 to +127 range
+        f32 bounding_sphere[4];  // xyz - center, w - radius
     };
 #endif
 
