@@ -6,8 +6,6 @@
 #include <render/platform/vk/vk_geometry_pool.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
 
-#include <stack>
-
 class static_model
 {
 public:
@@ -23,7 +21,7 @@ public:
 
 #if SM_USE_MESHLETS
     constexpr static u32 kMaxVerticesPerMeshlet  = 64;
-    constexpr static u32 kMaxTrianglesPerMeshlet = 42;
+    constexpr static u32 kMaxTrianglesPerMeshlet = 94;
     constexpr static u32 kMaxIndicesPerMeshlet   = kMaxTrianglesPerMeshlet * 3;
 
     struct static_model_meshlet

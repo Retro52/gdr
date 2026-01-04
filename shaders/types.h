@@ -9,7 +9,7 @@ struct Vertex
 };
 
 const uint kMaxVerticesPerMeshlet  = 64;
-const uint kMaxTrianglesPerMeshlet = 42;
+const uint kMaxTrianglesPerMeshlet = 94;
 const uint kMaxIndicesPerMeshlet = kMaxTrianglesPerMeshlet * 3;
 
 struct Meshlet

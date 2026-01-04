@@ -64,6 +64,33 @@ namespace
         }
 
 #if SM_USE_MESHLETS
+        u64 vertex_count = 0;
+        std::vector<u32> remap(indices.size());
+
+        {
+            ZoneScopedN("static_model.load_mesh.meshopt_generateVertexRemap");
+
+            vertex_count = meshopt_generateVertexRemap(remap.data(),
+                                                       indices.data(),
+                                                       indices.size(),
+                                                       raw_vertices.data(),
+                                                       raw_vertices.size(),
+                                                       sizeof(static_model::static_model_vertex));
+        }
+
+        std::vector<static_model::static_model_vertex> vertices(vertex_count);
+
+        {
+            ZoneScopedN("static_model.load_mesh.meshopt_remap[Vertex/Index]Buffer");
+
+            meshopt_remapVertexBuffer(vertices.data(),
+                                      raw_vertices.data(),
+                                      raw_vertices.size(),
+                                      sizeof(static_model::static_model_vertex),
+                                      remap.data());
+            meshopt_remapIndexBuffer(indices.data(), indices.data(), indices.size(), remap.data());
+        }
+
         const u64 meshlets_upper_bound = meshopt_buildMeshletsBound(
             indices.size(), static_model::kMaxVerticesPerMeshlet, static_model::kMaxTrianglesPerMeshlet);
 
@@ -77,20 +104,23 @@ namespace
                                                          meshlet_triangles.data(),
                                                          indices.data(),
                                                          indices.size(),
-                                                         &raw_vertices.data()->position.x,
-                                                         raw_vertices.size(),
+                                                         &vertices.data()->position.x,
+                                                         vertices.size(),
                                                          sizeof(static_model::static_model_vertex),
                                                          static_model::kMaxVerticesPerMeshlet,
                                                          static_model::kMaxTrianglesPerMeshlet,
                                                          0.0F);
 
-        mesh_data.vertices = raw_vertices;
+        mesh_data.vertices = vertices;
         meshopt_meshlets.resize(meshlets_count);
         mesh_data.meshlets.resize(meshlets_count);
 
+        u32 accum = 0;
         for (u32 i = 0; i < meshlets_count; i++)
         {
             auto& meshopt_meshlet = meshopt_meshlets[i];
+            accum += meshopt_meshlet.triangle_count;
+
             meshopt_optimizeMeshlet(&meshlet_vertices[meshopt_meshlet.vertex_offset],
                                     &meshlet_triangles[meshopt_meshlet.triangle_offset],
                                     meshopt_meshlet.triangle_count,
@@ -239,7 +269,9 @@ result<static_model> static_model::load_model(const bytes& data, render::vk_rend
 
     offsets offsets {
         .vertex_offset = geometry_pool.vertex.offset,
-        .index_offset  = geometry_pool.index.offset,
+#if !SM_USE_MESHLETS
+        .index_offset = geometry_pool.index.offset,
+#endif
     };
 
 #if SM_USE_MESHLETS
@@ -250,6 +282,10 @@ result<static_model> static_model::load_model(const bytes& data, render::vk_rend
         {
             offsets.vertex_count += mesh.vertices.size();
             offsets.meshlets_count += mesh.meshlets.size();
+            for (auto& meshlet : mesh.meshlets)
+            {
+                offsets.index_count += meshlet.triangles_count * 3;
+            }
 
             upload_to_scene(mesh, renderer, geometry_pool);
 

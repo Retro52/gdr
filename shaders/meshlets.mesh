@@ -3,8 +3,9 @@
 
 #include "types.h"
 
-layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
-layout (triangles, max_vertices = kMaxVerticesPerMeshlet, max_primitives = kMaxIndicesPerMeshlet) out;
+layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+// FIXME: for whatever reason passing 94 (our constant) is illegal for max_primitives, investigate?
+layout (triangles, max_vertices = 64, max_primitives = 96) out;
 
 layout (binding = 0) readonly buffer Vertices
 {
