@@ -30,7 +30,7 @@ public:
         u8 indices[kMaxIndicesPerMeshlet];
         u8 vertices_count;
         u8 triangles_count;
-        // f32 cull_cone[4];  // xyz - axis, w - angle
+        vec4 cull_cone;  // xyz - axis, w - angle
     };
 #endif
 

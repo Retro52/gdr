@@ -3,8 +3,8 @@
 
 #include "types.glsl"
 
-layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 // FIXME: for whatever reason passing 94 (our constant) is illegal for max_primitives, investigate?
+layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 layout (triangles, max_vertices = 64, max_primitives = 96) out;
 
 layout (binding = 0) readonly buffer Vertices
@@ -22,6 +22,7 @@ layout (push_constant) uniform constants
     mat4 vp;
     vec4 sun_pos;
     vec4 view_pos;
+    vec4 view_dir;
 } pc;
 
 out VS_OUT {
@@ -34,9 +35,27 @@ out VS_OUT {
     layout (location = 6) flat uint triangle_id;
 } vs_out[];
 
+bool check_meshlet_cull(vec4 cone, vec3 camera_dir)
+{
+    return dot(cone.xyz, camera_dir) > cone.w && cone.w > 0.0F;
+}
+
 void main()
 {
     uint meshlet_id = gl_WorkGroupID.x;
+
+    if (check_meshlet_cull(
+        vec4(meshlets[meshlet_id].cull_cone[0],
+        meshlets[meshlet_id].cull_cone[1],
+        meshlets[meshlet_id].cull_cone[2],
+        meshlets[meshlet_id].cull_cone[3]),
+        pc.view_dir.xyz)
+    )
+    {
+        SetMeshOutputsEXT(0, 0);
+        return;
+    }
+
     uint tid = gl_LocalInvocationIndex;
     uint workgroup_size = gl_WorkGroupSize.x;
 

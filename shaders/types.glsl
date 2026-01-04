@@ -18,4 +18,5 @@ struct Meshlet
     uint8_t indices[kMaxIndicesPerMeshlet];
     uint8_t vertices_count;
     uint8_t triangles_count;
+    float cull_cone[4]; // cull cone; xyz is a direction, a - cone angle
 };

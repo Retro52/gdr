@@ -35,6 +35,7 @@ struct pc_data
     glm::mat4 pv;
     vec4 sun_pos;
     vec4 camera_pos;
+    vec4 camera_view;
 };
 
 f64 bytes_to_mb(u64 bytes)
@@ -53,6 +54,7 @@ void draw_shared_buffer_stats(const char* label, const render::vk_shared_buffer&
 
 void draw_tris_per_meshlet_score(f64 tpm_average)
 {
+#if SM_USE_MESHLETS
     const f64 upper_bound = static_cast<f64>(static_model::kMaxTrianglesPerMeshlet);
 
     if (tpm_average > upper_bound * 0.9)
@@ -75,6 +77,7 @@ void draw_tris_per_meshlet_score(f64 tpm_average)
         ImGuiEx::ScopedColor _(ImGuiCol_Text, IM_COL32(255, 50, 50, 255));
         ImGui::Text("TPM Score: bad (%lf%% from max)", tpm_average * 100.0F / upper_bound);
     }
+#endif
 }
 
 int main(int argc, char* argv[])
@@ -86,19 +89,23 @@ int main(int argc, char* argv[])
 
     auto features_table = render::rendering_features_table()
                               .enable(render::rendering_features_table::eValidation)
+#if SM_USE_MESHLETS
                               .enable(render::rendering_features_table::eMeshShading)
+#endif
                               .enable(render::rendering_features_table::eDynamicRender)
                               .enable(render::rendering_features_table::eSynchronization2);
 
     render::vk_renderer renderer(
         render::instance_desc {
             .device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-                                  VK_EXT_MESH_SHADER_EXTENSION_NAME, VK_KHR_MAINTENANCE_4_EXTENSION_NAME,
-                                  VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME, VK_KHR_8BIT_STORAGE_EXTENSION_NAME,
-                                  TRACY_ONLY(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME)},
-            .app_name          = "Vulkan renderer",
-            .app_version       = 1,
-            .device_features   = features_table,
+#if SM_USE_MESHLETS
+                                  VK_EXT_MESH_SHADER_EXTENSION_NAME,
+#endif
+                                  VK_KHR_MAINTENANCE_4_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+                                  VK_KHR_8BIT_STORAGE_EXTENSION_NAME, TRACY_ONLY(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME)},
+            .app_name        = "Vulkan renderer",
+            .app_version     = 1,
+            .device_features = features_table,
     },
         client_window);
 
@@ -172,8 +179,10 @@ int main(int argc, char* argv[])
                                                     renderer.get_context().queues[render::queue_kind::eTransfer],
                                                     128 * 1024 * 1024)};
 
+#define KITTY 1
+
     // FIXME: multiple object support
-#if 0  // It was broken quite a while actually, ever since I moved vertices into SSBO
+#if KITTY  // It was broken quite a while actually, ever since I moved vertices into SSBO
     auto kitten = client_scene.create_entity();
     kitten.add_component<id_component>(DEBUG_ONLY(id_component("kitten model")));
     kitten.add_component<transform_component>();
@@ -181,7 +190,7 @@ int main(int argc, char* argv[])
         *static_model::load_model(*fs::read_file("../data/kitten.obj"), renderer, geometry_pool));
 #endif
 
-#if 1
+#if !KITTY
     auto backpack = client_scene.create_entity();
     backpack.add_component<id_component>(DEBUG_ONLY(id_component("backpack model")));
     backpack.add_component<transform_component>();
@@ -193,6 +202,8 @@ int main(int argc, char* argv[])
     VkQueryPool timestamp_query_pool = *render::create_vk_query_pool(renderer.get_context().device, kQueryPoolCount);
 
     gpu_profile_data profile_data;
+    vec4 cull_camera_dir;
+    bool freeze_camera_cull_dir = false;
 
     auto render_loop = [&](auto&)
     {
@@ -262,13 +273,19 @@ int main(int argc, char* argv[])
                 auto& camera_transform = camera.get_component<transform_component>();
                 auto& camera_data      = camera.get_component<camera_component>();
 
+                if (!freeze_camera_cull_dir)
+                {
+                    cull_camera_dir = vec4(camera_data.get_direction(camera_transform.rotation), 0.0F);
+                }
+
                 render_pipeline.bind(buffer);
                 render_pipeline.push_constant(
                     buffer,
                     pc_data {.pv = camera_data.get_projection_matrix()
                                  * camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation),
-                             .sun_pos    = vec4(sun.get_component<directional_light_component>().direction, 0.0F),
-                             .camera_pos = vec4(camera_transform.position, 1.0F)});
+                             .sun_pos     = vec4(sun.get_component<directional_light_component>().direction, 0.0F),
+                             .camera_pos  = vec4(camera_transform.position, 1.0F),
+                             .camera_view = cull_camera_dir});
 
 #if SM_USE_MESHLETS
                 const render::vk_descriptor_info updates[] = {geometry_pool.vertex.buffer.buffer,
@@ -316,12 +333,16 @@ int main(int argc, char* argv[])
 
                     ImGui::SeparatorText("gpu stats");
                     draw_shared_buffer_stats("Vertices", geometry_pool.vertex);
-
 #if SM_USE_MESHLETS
                     draw_shared_buffer_stats("Meshlets", geometry_pool.meshlets);
 #else
                     draw_shared_buffer_stats("Indices", geometry_pool.index);
 #endif
+
+                    ImGui::SeparatorText("render controls");
+                    ImGui::Checkbox("Freeze culling data", &freeze_camera_cull_dir);
+                    ImGui::Text(
+                        "Cull direction: [%f, %f, %f]", cull_camera_dir.x, cull_camera_dir.y, cull_camera_dir.z);
 
                     client_scene.get_view<entt::entity>().each(
                         [&](const entt::entity entity)

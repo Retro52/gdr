@@ -1,7 +1,7 @@
 #version 450
 
-#define VIZ_MESHLETS 1
-#define VIZ_MESHLETS_TRIS 0
+#define VIZ_MESHLETS 0
+#define VIZ_MESHLETS_TRIS 1
 
 in VS_IN {
     layout (location = 0) in vec2 uv;
@@ -20,6 +20,7 @@ layout (push_constant) uniform constants
     mat4 vp;
     vec4 sun_pos;
     vec4 view_pos;
+    vec4 view_dir;
 } pc;
 
 layout (location = 0) out vec4 o_frag_color;

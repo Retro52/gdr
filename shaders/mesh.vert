@@ -12,6 +12,7 @@ layout (push_constant) uniform constants
     mat4 vp;
     vec4 sun_pos;
     vec4 view_pos;
+    vec4 view_dir;
 } pc;
 
 out VS_OUT {

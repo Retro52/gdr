@@ -1,3 +1,5 @@
+#include "static_model.hpp"
+
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
@@ -12,6 +14,39 @@ using namespace render;
 
 namespace
 {
+    // FIXME: this logic is very naive, and shall be replaced
+    vec4 build_meshlet_cull_cone(const static_model::static_model_meshlet& meshlet,
+                                 const static_model::static_model_vertex* vertices)
+    {
+        vec3 avg_direction = vec3(0.0F);
+        vec3 tris_normals[static_model::kMaxTrianglesPerMeshlet];
+        for (u32 i = 0; i < meshlet.triangles_count; ++i)
+        {
+            auto& va = vertices[meshlet.vertices[meshlet.indices[i * 3 + 0]]];
+            auto& vb = vertices[meshlet.vertices[meshlet.indices[i * 3 + 1]]];
+            auto& vc = vertices[meshlet.vertices[meshlet.indices[i * 3 + 2]]];
+
+            const vec3 normal = glm::cross(vb.position - va.position, vc.position - va.position);
+            if (glm::length(normal) < std::numeric_limits<f32>::epsilon())
+            {
+                tris_normals[i] = vec3(0.0F);
+                continue;
+            }
+
+            tris_normals[i] = glm::normalize(normal);
+            avg_direction += tris_normals[i];
+        }
+
+        f32 min_dot   = 1.0F;
+        avg_direction = glm::normalize(avg_direction);
+        for (u32 i = 0; i < meshlet.triangles_count; ++i)
+        {
+            min_dot = glm::min(min_dot, glm::dot(avg_direction, tris_normals[i]));
+        }
+
+        return {avg_direction, min_dot};
+    }
+
     template<typename T>
     void upload_data(VmaAllocator allocator, const vk_buffer_transfer& transfer, vk_shared_buffer& dst_buffer,
                      const T* data, const u64 count)
@@ -73,7 +108,7 @@ namespace
             }
         }
 
-        // now wak through each of the mesh's faces (a face is a mesh its triangle) and retrieve the corresponding
+        // now walk through each of the mesh's faces (a face is a mesh its triangle) and retrieve the corresponding
         // vertex indices.
         // aiProcess_Triangulate guarantees every face will only contain triangles, except line/point faces,
         // but we don't care about those
@@ -135,7 +170,7 @@ namespace
                                                          sizeof(static_model::static_model_vertex),
                                                          static_model::kMaxVerticesPerMeshlet,
                                                          static_model::kMaxTrianglesPerMeshlet,
-                                                         0.0F);
+                                                         0.5F);
 
         mesh_data.vertices = vertices;
         meshopt_meshlets.resize(meshlets_count);
@@ -161,6 +196,8 @@ namespace
             std::copy_n(meshlet_triangles.data() + meshopt_meshlet.triangle_offset,
                         meshopt_meshlet.triangle_count * 3,
                         meshlet.indices);
+
+            meshlet.cull_cone = build_meshlet_cull_cone(meshlet, mesh_data.vertices.data());
         }
 
         return mesh_data;
