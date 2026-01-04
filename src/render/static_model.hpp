@@ -23,12 +23,13 @@ public:
 
 #if SM_USE_MESHLETS
     constexpr static u32 kMaxVerticesPerMeshlet  = 64;
-    constexpr static u32 kMaxTrianglesPerMeshlet = 126;
+    constexpr static u32 kMaxTrianglesPerMeshlet = 42;
+    constexpr static u32 kMaxIndicesPerMeshlet   = kMaxTrianglesPerMeshlet * 3;
 
     struct static_model_meshlet
     {
         u32 vertices[kMaxVerticesPerMeshlet];
-        u8 indices[kMaxTrianglesPerMeshlet * 3];
+        u8 indices[kMaxIndicesPerMeshlet];
         u8 vertices_count;
         u8 triangles_count;
         // f32 cull_cone[4];  // xyz - axis, w - angle

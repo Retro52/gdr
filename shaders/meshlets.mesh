@@ -4,7 +4,7 @@
 #include "types.h"
 
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
-layout (triangles, max_vertices = kMaxVerticesPerMeshlet, max_primitives = kMaxTrianglesPerMeshlet) out;
+layout (triangles, max_vertices = kMaxVerticesPerMeshlet, max_primitives = kMaxIndicesPerMeshlet) out;
 
 layout (binding = 0) readonly buffer Vertices
 {
@@ -29,6 +29,8 @@ out VS_OUT {
     layout (location = 2) vec3 tangent;
     layout (location = 3) vec3 bitangent;
     layout (location = 4) vec4 world_pos;
+    layout (location = 5) flat uint meshlet_id;
+    layout (location = 6) flat uint triangle_id;
 } vs_out[];
 
 void main()
@@ -46,6 +48,9 @@ void main()
     for (uint i = tid; i < vertex_count; i += workgroup_size)
     {
         Vertex v = vertices[meshlets[meshlet_id].vertices[i]];
+
+        vs_out[i].triangle_id = tid;
+        vs_out[i].meshlet_id = meshlet_id;
 
         vs_out[i].uv = vec2(v.ux, v.uy);
         vs_out[i].normal = vec3(v.nx, v.ny, v.nz);

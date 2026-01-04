@@ -84,6 +84,7 @@ int main(int argc, char* argv[])
         *render::vk_shader::load(renderer, "../shaders/mesh.vert.spv"),
 #endif
         *render::vk_shader::load(renderer, "../shaders/meshlets.frag.spv"),
+        // *render::vk_shader::load(renderer, "../shaders/meshlets.debug.frag.spv"),
     };
 
     const auto render_pipeline = *render::vk_pipeline::create_graphics(renderer, shaders, COUNT_OF(shaders), &range, 1);
@@ -132,7 +133,8 @@ int main(int argc, char* argv[])
     backpack.add_component<id_component>(DEBUG_ONLY(id_component("backpack model")));
     backpack.add_component<transform_component>();
     backpack.add_component<static_model_component>(
-        *static_model::load_model(*fs::read_file("../data/backpack/backpack.obj"), renderer, geometry_pool));
+        *static_model::load_model(*fs::read_file("../data/kitten.obj"), renderer, geometry_pool));
+        // *static_model::load_model(*fs::read_file("../data/backpack/backpack.obj"), renderer, geometry_pool));
 
     constexpr u32 kQueryPoolCount = 64;
     VkQueryPool timestamp_query_pool {VK_NULL_HANDLE};
