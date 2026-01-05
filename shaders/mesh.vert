@@ -23,6 +23,10 @@ out VS_OUT {
     layout (location = 2) out vec3 tangent;
     layout (location = 3) out vec3 bitangent;
     layout (location = 4) out vec4 world_pos;
+#if VISUALIZE_MESHLETS
+    layout (location = 5) out flat uint meshlet_id;
+    layout (location = 6) out flat uint triangle_id;
+#endif
 } vs_out;
 
 void main()
@@ -34,6 +38,11 @@ void main()
     vs_out.tangent = vec3(v.tx, v.ty, v.tz);
     vs_out.world_pos = vec4(v.px, v.py, v.pz, 1.0F);
     vs_out.bitangent = cross(vs_out.tangent, vs_out.normal);
+
+#if VISUALIZE_MESHLETS
+    vs_out.meshlet_id = 0x225;
+    vs_out.triangle_id = gl_VertexIndex;
+#endif
 
     gl_Position = pc.vp * vs_out.world_pos;
 }

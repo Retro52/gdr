@@ -65,8 +65,8 @@ public:
 
     template<typename T>
     [[nodiscard]] T* get() noexcept
-        requires(std::is_integral_v<T> || std::is_void_v<T>)
     {
+        assert(size() % sizeof(T) == 0);
         return reinterpret_cast<T*>(m_memory.get());
     }
 

@@ -183,7 +183,7 @@ int main(int argc, char* argv[])
     kitten.add_component<id_component>(DEBUG_ONLY(id_component("kitten model")));
     kitten.add_component<transform_component>();
     kitten.add_component<static_model_component>(
-        *static_model::load_model(*fs::read_file("../data/kitten.obj"), renderer, geometry_pool));
+        *static_model::load_model("../data/kitten.obj", renderer, geometry_pool));
 #endif
 
 #if !KITTY
@@ -191,7 +191,7 @@ int main(int argc, char* argv[])
     backpack.add_component<id_component>(DEBUG_ONLY(id_component("backpack model")));
     backpack.add_component<transform_component>();
     backpack.add_component<static_model_component>(
-        *static_model::load_model(*fs::read_file("../data/backpack/backpack.obj"), renderer, geometry_pool));
+        *static_model::load_model("../data/backpack/backpack.obj", renderer, geometry_pool));
 #endif
 
     constexpr u32 kQueryPoolCount    = 64;

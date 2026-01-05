@@ -44,7 +44,7 @@ namespace cpp
             s2++;
         }
 
-        return static_cast<const std::uint8_t>(*s1) - static_cast<const std::uint8_t>(*s2);
+        return static_cast<const u8>(*s1) - static_cast<const u8>(*s2);
     }
 
     constexpr bool cx_streq(const char* s1, const char* s2)
@@ -52,15 +52,29 @@ namespace cpp
         return cx_strcmp(s1, s2) == 0;
     }
 
-    constexpr void* cx_memset(void* dest, const int value, const u64 bytes)
+    constexpr void* cx_memcpy(void* dest, const void* src, const u64 bytes)
     {
-        auto* ptr = static_cast<std::uint8_t*>(dest);
+        auto* dst_ptr    = static_cast<u8*>(dest);
+        auto* source_ptr = static_cast<const u8*>(src);
+
         for (u64 i = 0; i < bytes; ++i)
         {
-            ptr[i] = static_cast<std::uint8_t>(value);
+            dst_ptr[i] = source_ptr[i];
         }
 
         return dest;
+    }
+
+    template<typename T>
+    constexpr void cx_memset(void* dest, T&& value, const u64 bytes)
+    {
+        auto* ptr = static_cast<T*>(dest);
+        auto* end = static_cast<T*>(dest) + bytes / sizeof(T);
+
+        while (ptr != end)
+        {
+            *ptr = value;
+        }
     }
 
     template<typename T>

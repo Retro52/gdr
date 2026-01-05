@@ -28,4 +28,22 @@ namespace fs
 
         return data;
     }
+
+    inline void write_file(const fs::path& path, const bytes& data)
+    {
+        ZoneScoped;
+
+        if (!std::filesystem::exists(path.parent().c_str()))
+        {
+            std::filesystem::create_directories(path.parent().c_str());
+        }
+
+        std::ofstream file(path.c_str(), std::ios::binary);
+        if (!file)
+        {
+            return;
+        }
+
+        file.write(data.get<char>(), data.size());
+    }
 }

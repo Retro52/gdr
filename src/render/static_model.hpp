@@ -1,8 +1,10 @@
 #pragma once
 
+#include <fs/path.hpp>
 #include <render/platform/vk/vk_buffer.hpp>
 #include <render/platform/vk/vk_geometry_pool.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
+#include <render/sm_cache.hpp>
 #include <shaders/constants.h>
 
 #define SM_USE_TS       USE_TASK_SHADER
@@ -11,8 +13,6 @@
 class static_model
 {
 public:
-    using static_model_index = u32;
-
     struct static_model_vertex
     {
         vec3 position;
@@ -37,16 +37,7 @@ public:
     };
 #endif
 
-    struct mesh_data
-    {
-#if SM_USE_MESHLETS
-        std::vector<static_model_vertex> vertices;
-        std::vector<static_model_meshlet> meshlets;
-#else
-        std::vector<u32> indices;
-        std::vector<static_model_vertex> vertices;
-#endif
-    };
+    using mesh_data = render::mesh_data<static_model::static_model_vertex>;
 
     struct mesh_buffers
     {
@@ -56,7 +47,7 @@ public:
     };
 
 public:
-    static result<static_model> load_model(const bytes& data, render::vk_renderer& renderer,
+    static result<static_model> load_model(const fs::path& path, render::vk_renderer& renderer,
                                            render::vk_scene_geometry_pool& geometry_pool);
 
     void draw(VkCommandBuffer buffer) const;

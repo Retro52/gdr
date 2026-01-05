@@ -33,8 +33,10 @@ out VS_OUT {
     layout (location = 2) vec3 tangent;
     layout (location = 3) vec3 bitangent;
     layout (location = 4) vec4 world_pos;
+#if VISUALIZE_MESHLETS
     layout (location = 5) flat uint meshlet_id;
     layout (location = 6) flat uint triangle_id;
+#endif
 } vs_out[];
 
 taskPayloadSharedEXT MeshletTask meshlet_task;
@@ -58,8 +60,10 @@ void main()
     {
         Vertex v = vertices[meshlets[m_idx].vertices[i]];
 
+#if VISUALIZE_MESHLETS
         vs_out[i].triangle_id = t_idx;
         vs_out[i].meshlet_id = m_idx;
+#endif
 
         vs_out[i].uv = vec2(v.ux, v.uy);
         vs_out[i].normal = vec3(v.nx, v.ny, v.nz);
