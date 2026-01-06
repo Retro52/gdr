@@ -50,19 +50,21 @@ namespace
     }
 
 #if SM_USE_MESHLETS
-    std::vector<static_model::static_model_meshlet> build_meshlets(const static_model::mesh_data& mesh) noexcept
+    void build_meshlets(const static_model::mesh_data& mesh, std::vector<static_model::static_model_meshlet>& meshlets,
+                        std::vector<u8>& meshlet_indices, std::vector<u32>& meshlet_vertices, u32 base_meshlet) noexcept
     {
         ZoneScoped;
         const u64 meshlets_upper_bound = meshopt_buildMeshletsBound(
             mesh.indices.size(), static_model::kMaxVerticesPerMeshlet, static_model::kMaxTrianglesPerMeshlet);
 
-        std::vector<u32> meshlet_vertices(mesh.indices.size());
-        std::vector<u8> meshlet_triangles(mesh.indices.size());
+        meshlet_indices.resize(mesh.indices.size());
+        meshlet_vertices.resize(mesh.indices.size());
+
         std::vector<meshopt_Meshlet> meshopt_meshlets(meshlets_upper_bound);
 
         const u64 meshlets_count = meshopt_buildMeshlets(meshopt_meshlets.data(),
                                                          meshlet_vertices.data(),
-                                                         meshlet_triangles.data(),
+                                                         meshlet_indices.data(),
                                                          mesh.indices.data(),
                                                          mesh.indices.size(),
                                                          &mesh.vertices.data()->position.x,
@@ -75,39 +77,36 @@ namespace
 #if SM_USE_TS
         // FIXME: this degrades performance by quite a bit
         const u32 ts_wg = shader_constants::kTaskWorkGroups;
-        std::vector<static_model::static_model_meshlet> meshlets(((meshlets_count + ts_wg - 1) / ts_wg) * ts_wg);
+        meshlets.resize(((meshlets_count + ts_wg - 1) / ts_wg) * ts_wg);
 #else
-        std::vector<static_model::static_model_meshlet> meshlets(meshlets_count);
+        meshlets.resize(meshlets_count);
 #endif
 
         {
             ZoneScopedN("meshopt_optimizeMeshlet and data copy");
+
             for (u32 i = 0; i < meshlets_count; i++)
             {
                 auto& meshopt_meshlet = meshopt_meshlets[i];
 
                 meshopt_optimizeMeshlet(&meshlet_vertices[meshopt_meshlet.vertex_offset],
-                                        &meshlet_triangles[meshopt_meshlet.triangle_offset],
+                                        &meshlet_indices[meshopt_meshlet.triangle_offset],
                                         meshopt_meshlet.triangle_count,
                                         meshopt_meshlet.vertex_count);
 
-                meshopt_Bounds bounds =
-                    meshopt_computeMeshletBounds(&meshlet_vertices[meshopt_meshlet.vertex_offset],
-                                                 &meshlet_triangles[meshopt_meshlet.triangle_offset],
-                                                 meshopt_meshlet.triangle_count,
-                                                 &mesh.vertices[0].position.x,
-                                                 mesh.vertices.size(),
-                                                 sizeof(static_model::static_model_vertex));
+                meshopt_Bounds bounds = meshopt_computeMeshletBounds(&meshlet_vertices[meshopt_meshlet.vertex_offset],
+                                                                     &meshlet_indices[meshopt_meshlet.triangle_offset],
+                                                                     meshopt_meshlet.triangle_count,
+                                                                     &mesh.vertices[0].position.x,
+                                                                     mesh.vertices.size(),
+                                                                     sizeof(static_model::static_model_vertex));
 
                 auto& meshlet           = meshlets[i];
+                meshlet.index_offset    = meshopt_meshlet.triangle_offset;
+                meshlet.vertex_offset   = meshopt_meshlet.vertex_offset;
+
                 meshlet.triangles_count = meshopt_meshlet.triangle_count;
                 meshlet.vertices_count  = meshopt_meshlet.vertex_count;
-                std::copy_n(meshlet_vertices.data() + meshopt_meshlet.vertex_offset,
-                            meshopt_meshlet.vertex_count,
-                            meshlet.vertices);
-                std::copy_n(meshlet_triangles.data() + meshopt_meshlet.triangle_offset,
-                            meshopt_meshlet.triangle_count * 3,
-                            meshlet.indices);
 
 #if 0
                 meshlet.cull_cone[0] = bounds.cone_axis_s8[0];
@@ -126,14 +125,13 @@ namespace
                 meshlet.bounding_sphere[3] = bounds.radius;
             }
         }
-
-        return meshlets;
     }
 #endif
 
     void upload_to_scene(const static_model::mesh_data& mesh,
 #if SM_USE_MESHLETS
                          const std::vector<static_model::static_model_meshlet>& meshlets,
+                         const std::vector<u8>& meshlet_indices, const std::vector<u32>& meshlet_vertices,
 #endif
                          const vk_renderer& renderer, vk_scene_geometry_pool& geometry_pool)
     {
@@ -144,6 +142,18 @@ namespace
         upload_data(
             allocator, geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
         upload_data(allocator, geometry_pool.transfer, geometry_pool.meshlets, meshlets.data(), meshlets.size());
+
+        upload_data(allocator,
+                    geometry_pool.transfer,
+                    geometry_pool.meshlets_indices,
+                    meshlet_indices.data(),
+                    meshlet_indices.size());
+
+        upload_data(allocator,
+                    geometry_pool.transfer,
+                    geometry_pool.meshlets_vertices,
+                    meshlet_vertices.data(),
+                    meshlet_vertices.size());
 #else
         const auto allocator = renderer.get_context().allocator;
         upload_data(allocator, geometry_pool.transfer, geometry_pool.index, mesh.indices.data(), mesh.indices.size());
@@ -167,7 +177,11 @@ result<static_model> static_model::load_model(const fs::path& path, render::vk_r
 
         for (auto& mesh : model_meshes)
         {
-            auto meshlets = build_meshlets(mesh);
+            std::vector<u8> meshlet_indices;
+            std::vector<u32> meshlet_vertices;
+            std::vector<static_model_meshlet> meshlets;
+
+            build_meshlets(mesh, meshlets, meshlet_indices, meshlet_vertices, model_stats.meshlets_count);
 
             model_stats.vertex_count += mesh.vertices.size();
             model_stats.meshlets_count += meshlets.size();
@@ -176,7 +190,7 @@ result<static_model> static_model::load_model(const fs::path& path, render::vk_r
                 model_stats.index_count += meshlet.triangles_count * 3;
             }
 
-            upload_to_scene(mesh, meshlets, renderer, geometry_pool);
+            upload_to_scene(mesh, meshlets, meshlet_indices, meshlet_vertices, renderer, geometry_pool);
             break;
         }
 #else

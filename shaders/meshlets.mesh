@@ -19,6 +19,18 @@ layout (binding = 1) readonly buffer Meshlets
     Meshlet meshlets[];
 };
 
+// FIXME: using 2 buffers seems slower than huge meshlets
+// I think it would make sense to merge them into the single one
+layout (binding = 2) readonly buffer MeshletIndices
+{
+    uint8_t meshlets_indices[];
+};
+
+layout (binding = 3) readonly buffer MeshletVertices
+{
+    uint meshlets_vertices[];
+};
+
 layout (push_constant) uniform constants
 {
     mat4 vp;
@@ -58,7 +70,12 @@ void main()
     // Each thread processes multiple vertices, striding by workgroup size
     for (uint i = t_idx; i < vertex_count; i += kMeshWorkGroups)
     {
+#if 0
         Vertex v = vertices[meshlets[m_idx].vertices[i]];
+#else
+        uint vid = meshlets[m_idx].vertex_offset + i;
+        Vertex v = vertices[meshlets_vertices[vid]];
+#endif
 
 #if VISUALIZE_MESHLETS
         vs_out[i].triangle_id = t_idx;
@@ -77,10 +94,19 @@ void main()
     // Same for triangles
     for (uint i = t_idx; i < triangle_count; i += kMeshWorkGroups)
     {
+    #if 0
         gl_PrimitiveTriangleIndicesEXT[i] = uvec3(
-        meshlets[m_idx].indices[i * 3 + 0],
-        meshlets[m_idx].indices[i * 3 + 1],
-        meshlets[m_idx].indices[i * 3 + 2]
+            meshlets[m_idx].indices[i * 3 + 0],
+            meshlets[m_idx].indices[i * 3 + 1],
+            meshlets[m_idx].indices[i * 3 + 2]
         );
+    #else
+        uint iid = meshlets[m_idx].index_offset + i * 3;
+        gl_PrimitiveTriangleIndicesEXT[i] = uvec3(
+            meshlets_indices[iid + 0],
+            meshlets_indices[iid + 1],
+            meshlets_indices[iid + 2]
+        );
+    #endif
     }
 }

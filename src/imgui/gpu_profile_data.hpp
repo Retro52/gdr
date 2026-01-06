@@ -20,10 +20,19 @@ struct gpu_profile_data
     /// @readonly @name(Tris/Meshlet (B))
     f64 tris_per_meshlet {0.0F};
 
+    /// @readonly
+    u64 tris_in_scene_total {0};
+
+    /// @readonly
+    u64 meshlets_in_scene_total {0};
+
     void update(f64 start, f64 end, u64 tris_count, u64 meshlets_count)
     {
-        frame_start     = start;
-        frame_end       = end;
+        frame_start = start;
+        frame_end   = end;
+
+        tris_in_scene_total     = tris_count;
+        meshlets_in_scene_total = meshlets_count;
 
         // smooth the averages over time
         gpu_render_time = gpu_render_time == 0.0F ? (end - start) : (gpu_render_time * 0.99 + (end - start) * 0.01);

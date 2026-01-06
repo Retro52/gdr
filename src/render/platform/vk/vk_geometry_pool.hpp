@@ -31,6 +31,9 @@ namespace render
         vk_shared_buffer vertex;
         vk_shared_buffer meshlets;
 
+        vk_shared_buffer meshlets_indices;
+        vk_shared_buffer meshlets_vertices;
+
         vk_buffer_transfer transfer;
     };
 }

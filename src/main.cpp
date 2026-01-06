@@ -164,16 +164,18 @@ int main(int argc, char* argv[])
 
     render::vk_scene_geometry_pool geometry_pool {
 #if !SM_USE_MESHLETS
-        .index = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+        .index = render::vk_shared_buffer(renderer, 32 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
 #endif
         .vertex = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
 #if SM_USE_MESHLETS
-        .meshlets = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .meshlets          = render::vk_shared_buffer(renderer, 32 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .meshlets_indices  = render::vk_shared_buffer(renderer, 4 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .meshlets_vertices = render::vk_shared_buffer(renderer, 16 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
 #endif
         .transfer = *render::create_buffer_transfer(renderer.get_context().device,
                                                     renderer.get_context().allocator,
                                                     renderer.get_context().queues[render::queue_kind::eTransfer],
-                                                    128 * 1024 * 1024)};
+                                                    64 * 1024 * 1024)};
 
 #define KITTY 0
 
@@ -284,8 +286,12 @@ int main(int argc, char* argv[])
                              .camera_view = cull_camera_dir});
 
 #if SM_USE_MESHLETS
-                const render::vk_descriptor_info updates[] = {geometry_pool.vertex.buffer.buffer,
-                                                              geometry_pool.meshlets.buffer.buffer};
+                const render::vk_descriptor_info updates[] = {
+                    geometry_pool.vertex.buffer.buffer,
+                    geometry_pool.meshlets.buffer.buffer,
+                    geometry_pool.meshlets_indices.buffer.buffer,
+                    geometry_pool.meshlets_vertices.buffer.buffer,
+                };
                 render_pipeline.push_descriptor_set(buffer, updates);
 #else
                 const render::vk_descriptor_info updates[] = {geometry_pool.vertex.buffer.buffer};
@@ -331,6 +337,8 @@ int main(int argc, char* argv[])
                     draw_shared_buffer_stats("Vertices", geometry_pool.vertex);
 #if SM_USE_MESHLETS
                     draw_shared_buffer_stats("Meshlets", geometry_pool.meshlets);
+                    draw_shared_buffer_stats("Meshlet indices", geometry_pool.meshlets_indices);
+                    draw_shared_buffer_stats("Meshlet vertices", geometry_pool.meshlets_vertices);
 #else
                     draw_shared_buffer_stats("Indices", geometry_pool.index);
 #endif
