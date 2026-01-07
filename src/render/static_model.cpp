@@ -10,6 +10,7 @@ using namespace render;
 
 namespace
 {
+    // TODO: batch data uploads together
     template<typename T>
     void upload_data(VmaAllocator allocator, const vk_buffer_transfer& transfer, vk_shared_buffer& dst_buffer,
                      const T* data, const u64 count)
@@ -51,20 +52,23 @@ namespace
 
 #if SM_USE_MESHLETS
     void build_meshlets(const static_model::mesh_data& mesh, std::vector<static_model::static_model_meshlet>& meshlets,
-                        std::vector<u8>& meshlet_indices, std::vector<u32>& meshlet_vertices, u32 base_meshlet) noexcept
+                        std::vector<u8>& meshlets_payload, u32 base_payload_offset) noexcept
     {
         ZoneScoped;
         const u64 meshlets_upper_bound = meshopt_buildMeshletsBound(
             mesh.indices.size(), static_model::kMaxVerticesPerMeshlet, static_model::kMaxTrianglesPerMeshlet);
 
-        meshlet_indices.resize(mesh.indices.size());
-        meshlet_vertices.resize(mesh.indices.size());
+        const u64 vertices_offset = mesh.indices.size();
+        std::vector<u8> meshlets_data(mesh.indices.size() * 5);
+
+        u8* meshlet_indices_ptr   = meshlets_data.data();
+        u32* meshlet_vertices_ptr = reinterpret_cast<u32*>(meshlets_data.data() + vertices_offset);
 
         std::vector<meshopt_Meshlet> meshopt_meshlets(meshlets_upper_bound);
 
         const u64 meshlets_count = meshopt_buildMeshlets(meshopt_meshlets.data(),
-                                                         meshlet_vertices.data(),
-                                                         meshlet_indices.data(),
+                                                         meshlet_vertices_ptr,
+                                                         meshlet_indices_ptr,
                                                          mesh.indices.data(),
                                                          mesh.indices.size(),
                                                          &mesh.vertices.data()->position.x,
@@ -85,29 +89,44 @@ namespace
         {
             ZoneScopedN("meshopt_optimizeMeshlet and data copy");
 
+            u64 total_bytes_written = base_payload_offset;
+            meshlets_payload.resize(meshlets_count * static_model::kMaxIndicesPerMeshlet
+                                    + meshlets_count * sizeof(u32) * static_model::kMaxVerticesPerMeshlet);
+
             for (u32 i = 0; i < meshlets_count; i++)
             {
                 auto& meshopt_meshlet = meshopt_meshlets[i];
 
-                meshopt_optimizeMeshlet(&meshlet_vertices[meshopt_meshlet.vertex_offset],
-                                        &meshlet_indices[meshopt_meshlet.triangle_offset],
+                meshopt_optimizeMeshlet(&meshlet_vertices_ptr[meshopt_meshlet.vertex_offset],
+                                        &meshlet_indices_ptr[meshopt_meshlet.triangle_offset],
                                         meshopt_meshlet.triangle_count,
                                         meshopt_meshlet.vertex_count);
 
-                meshopt_Bounds bounds = meshopt_computeMeshletBounds(&meshlet_vertices[meshopt_meshlet.vertex_offset],
-                                                                     &meshlet_indices[meshopt_meshlet.triangle_offset],
-                                                                     meshopt_meshlet.triangle_count,
-                                                                     &mesh.vertices[0].position.x,
-                                                                     mesh.vertices.size(),
-                                                                     sizeof(static_model::static_model_vertex));
+                meshopt_Bounds bounds =
+                    meshopt_computeMeshletBounds(&meshlet_vertices_ptr[meshopt_meshlet.vertex_offset],
+                                                 &meshlet_indices_ptr[meshopt_meshlet.triangle_offset],
+                                                 meshopt_meshlet.triangle_count,
+                                                 &mesh.vertices[0].position.x,
+                                                 mesh.vertices.size(),
+                                                 sizeof(static_model::static_model_vertex));
 
                 auto& meshlet           = meshlets[i];
-                meshlet.index_offset    = meshopt_meshlet.triangle_offset;
-                meshlet.vertex_offset   = meshopt_meshlet.vertex_offset;
-
+                meshlet.payload_offset  = total_bytes_written;
                 meshlet.triangles_count = meshopt_meshlet.triangle_count;
                 meshlet.vertices_count  = meshopt_meshlet.vertex_count;
 
+                cpp::cx_memcpy(meshlets_payload.data() + total_bytes_written,
+                               &meshlet_vertices_ptr[meshopt_meshlet.vertex_offset],
+                               meshlet.vertices_count * sizeof(u32));
+                total_bytes_written += sizeof(u32) * meshlet.vertices_count;
+
+                cpp::cx_memcpy(meshlets_payload.data() + total_bytes_written,
+                               &meshlet_indices_ptr[meshopt_meshlet.triangle_offset],
+                               meshlet.triangles_count * 3);
+                total_bytes_written += meshlet.triangles_count * 3;
+
+                // align data to 4 bytes to avoid payload overlaps between meshlets
+                total_bytes_written = (total_bytes_written + 3) & ~3u;
 #if 0
                 meshlet.cull_cone[0] = bounds.cone_axis_s8[0];
                 meshlet.cull_cone[1] = bounds.cone_axis_s8[1];
@@ -124,6 +143,9 @@ namespace
                 meshlet.bounding_sphere[2] = bounds.cone_apex[2];
                 meshlet.bounding_sphere[3] = bounds.radius;
             }
+
+            // fit the array to compact the amount of data we upload to the GPU
+            meshlets_payload.resize(total_bytes_written);
         }
     }
 #endif
@@ -131,7 +153,7 @@ namespace
     void upload_to_scene(const static_model::mesh_data& mesh,
 #if SM_USE_MESHLETS
                          const std::vector<static_model::static_model_meshlet>& meshlets,
-                         const std::vector<u8>& meshlet_indices, const std::vector<u32>& meshlet_vertices,
+                         const std::vector<u8>& meshlets_payload,
 #endif
                          const vk_renderer& renderer, vk_scene_geometry_pool& geometry_pool)
     {
@@ -145,15 +167,9 @@ namespace
 
         upload_data(allocator,
                     geometry_pool.transfer,
-                    geometry_pool.meshlets_indices,
-                    meshlet_indices.data(),
-                    meshlet_indices.size());
-
-        upload_data(allocator,
-                    geometry_pool.transfer,
-                    geometry_pool.meshlets_vertices,
-                    meshlet_vertices.data(),
-                    meshlet_vertices.size());
+                    geometry_pool.meshlets_payload,
+                    meshlets_payload.data(),
+                    meshlets_payload.size());
 #else
         const auto allocator = renderer.get_context().allocator;
         upload_data(allocator, geometry_pool.transfer, geometry_pool.index, mesh.indices.data(), mesh.indices.size());
@@ -177,11 +193,10 @@ result<static_model> static_model::load_model(const fs::path& path, render::vk_r
 
         for (auto& mesh : model_meshes)
         {
-            std::vector<u8> meshlet_indices;
-            std::vector<u32> meshlet_vertices;
+            std::vector<u8> meshlets_payload;
             std::vector<static_model_meshlet> meshlets;
 
-            build_meshlets(mesh, meshlets, meshlet_indices, meshlet_vertices, model_stats.meshlets_count);
+            build_meshlets(mesh, meshlets, meshlets_payload, geometry_pool.meshlets_payload.offset);
 
             model_stats.vertex_count += mesh.vertices.size();
             model_stats.meshlets_count += meshlets.size();
@@ -190,7 +205,7 @@ result<static_model> static_model::load_model(const fs::path& path, render::vk_r
                 model_stats.index_count += meshlet.triangles_count * 3;
             }
 
-            upload_to_scene(mesh, meshlets, meshlet_indices, meshlet_vertices, renderer, geometry_pool);
+            upload_to_scene(mesh, meshlets, meshlets_payload, renderer, geometry_pool);
             break;
         }
 #else

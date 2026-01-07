@@ -10,8 +10,8 @@ namespace render
 {
     struct vk_shared_buffer
     {
-        u64 size;
-        u64 offset;
+        u64 size {0};
+        u64 offset {0};
         vk_buffer buffer;
 
         vk_shared_buffer() = default;
@@ -30,9 +30,7 @@ namespace render
         vk_shared_buffer index;
         vk_shared_buffer vertex;
         vk_shared_buffer meshlets;
-
-        vk_shared_buffer meshlets_indices;
-        vk_shared_buffer meshlets_vertices;
+        vk_shared_buffer meshlets_payload;
 
         vk_buffer_transfer transfer;
     };

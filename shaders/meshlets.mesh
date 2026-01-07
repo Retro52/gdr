@@ -19,14 +19,12 @@ layout (binding = 1) readonly buffer Meshlets
     Meshlet meshlets[];
 };
 
-// FIXME: using 2 buffers seems slower than huge meshlets
-// I think it would make sense to merge them into the single one
 layout (binding = 2) readonly buffer MeshletIndices
 {
     uint8_t meshlets_indices[];
 };
 
-layout (binding = 3) readonly buffer MeshletVertices
+layout (binding = 2) readonly buffer MeshletVertices
 {
     uint meshlets_vertices[];
 };
@@ -56,26 +54,25 @@ taskPayloadSharedEXT MeshletTask meshlet_task;
 void main()
 {
 #if USE_TASK_SHADER
-    uint t_idx = gl_LocalInvocationID.x;
-    uint m_idx = meshlet_task.meshlet_ids[gl_WorkGroupID.x];
+    const uint t_idx = gl_LocalInvocationID.x;
+    const uint m_idx = meshlet_task.meshlet_ids[gl_WorkGroupID.x];
 #else
-    uint m_idx = gl_WorkGroupID.x;
-    uint t_idx = gl_LocalInvocationIndex;
+    const uint m_idx = gl_WorkGroupID.x;
+    const uint t_idx = gl_LocalInvocationIndex;
 #endif
-    uint vertex_count = uint(meshlets[m_idx].vertices_count);
-    uint triangle_count = uint(meshlets[m_idx].triangles_count);
+    const uint vertex_count = uint(meshlets[m_idx].vertices_count);
+    const uint triangle_count = uint(meshlets[m_idx].triangles_count);
+
+    const uint base_vertex = meshlets[m_idx].data_offset / 4;
+    const uint base_index  = meshlets[m_idx].data_offset + vertex_count * 4;
 
     SetMeshOutputsEXT(vertex_count, triangle_count);
 
     // Each thread processes multiple vertices, striding by workgroup size
     for (uint i = t_idx; i < vertex_count; i += kMeshWorkGroups)
     {
-#if 0
-        Vertex v = vertices[meshlets[m_idx].vertices[i]];
-#else
-        uint vid = meshlets[m_idx].vertex_offset + i;
+        const uint vid = base_vertex + i;
         Vertex v = vertices[meshlets_vertices[vid]];
-#endif
 
 #if VISUALIZE_MESHLETS
         vs_out[i].triangle_id = t_idx;
@@ -94,19 +91,11 @@ void main()
     // Same for triangles
     for (uint i = t_idx; i < triangle_count; i += kMeshWorkGroups)
     {
-    #if 0
-        gl_PrimitiveTriangleIndicesEXT[i] = uvec3(
-            meshlets[m_idx].indices[i * 3 + 0],
-            meshlets[m_idx].indices[i * 3 + 1],
-            meshlets[m_idx].indices[i * 3 + 2]
-        );
-    #else
-        uint iid = meshlets[m_idx].index_offset + i * 3;
+        const uint iid = base_index + i * 3;
         gl_PrimitiveTriangleIndicesEXT[i] = uvec3(
             meshlets_indices[iid + 0],
             meshlets_indices[iid + 1],
             meshlets_indices[iid + 2]
         );
-    #endif
     }
 }

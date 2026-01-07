@@ -168,9 +168,8 @@ int main(int argc, char* argv[])
 #endif
         .vertex = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
 #if SM_USE_MESHLETS
-        .meshlets          = render::vk_shared_buffer(renderer, 32 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-        .meshlets_indices  = render::vk_shared_buffer(renderer, 4 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-        .meshlets_vertices = render::vk_shared_buffer(renderer, 16 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .meshlets         = render::vk_shared_buffer(renderer, 8 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .meshlets_payload = render::vk_shared_buffer(renderer, 16 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
 #endif
         .transfer = *render::create_buffer_transfer(renderer.get_context().device,
                                                     renderer.get_context().allocator,
@@ -289,8 +288,7 @@ int main(int argc, char* argv[])
                 const render::vk_descriptor_info updates[] = {
                     geometry_pool.vertex.buffer.buffer,
                     geometry_pool.meshlets.buffer.buffer,
-                    geometry_pool.meshlets_indices.buffer.buffer,
-                    geometry_pool.meshlets_vertices.buffer.buffer,
+                    geometry_pool.meshlets_payload.buffer.buffer,
                 };
                 render_pipeline.push_descriptor_set(buffer, updates);
 #else
@@ -337,8 +335,7 @@ int main(int argc, char* argv[])
                     draw_shared_buffer_stats("Vertices", geometry_pool.vertex);
 #if SM_USE_MESHLETS
                     draw_shared_buffer_stats("Meshlets", geometry_pool.meshlets);
-                    draw_shared_buffer_stats("Meshlet indices", geometry_pool.meshlets_indices);
-                    draw_shared_buffer_stats("Meshlet vertices", geometry_pool.meshlets_vertices);
+                    draw_shared_buffer_stats("Meshlets payload", geometry_pool.meshlets_payload);
 #else
                     draw_shared_buffer_stats("Indices", geometry_pool.index);
 #endif

@@ -1,4 +1,5 @@
 #version 450
+#extension GL_GOOGLE_include_directive: require
 
 #include "include/shaders/constants.h"
 
@@ -28,6 +29,7 @@ layout (location = 0) out vec4 o_frag_color;
 // https://stackoverflow.com/questions/23319289/is-there-a-good-glsl-hash-function
 uint lowbias32(uint x)
 {
+    x = x == 0 ? 0x100203 : x;
     x ^= x >> 16;
     x *= 0x7feb352dU;
     x ^= x >> 15;

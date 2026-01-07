@@ -32,8 +32,7 @@ public:
         u32 vertices[kMaxVerticesPerMeshlet];
         u8 indices[kMaxIndicesPerMeshlet];
 #endif
-        u32 index_offset;        // basically a meshlet ID in a shared array
-        u32 vertex_offset;       // basically a meshlet ID in a shared array
+        u32 payload_offset;      // offset to the meshlet payload in a shared array
         f32 cull_cone[4];        // xyz - direction; w - alpha encoded in -127 to +127 range
         f32 bounding_sphere[4];  // xyz - center, w - radius
 
