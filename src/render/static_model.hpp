@@ -17,8 +17,10 @@ public:
     {
         vec3 position;
         vec3 normal;
+#if 0
         vec2 uv;
         vec3 tangent;
+#endif
     };
 
 #if SM_USE_MESHLETS
@@ -28,10 +30,6 @@ public:
 
     struct static_model_meshlet
     {
-#if 0
-        u32 vertices[kMaxVerticesPerMeshlet];
-        u8 indices[kMaxIndicesPerMeshlet];
-#endif
         u32 payload_offset;      // offset to the meshlet payload in a shared array
         f32 cull_cone[4];        // xyz - direction; w - alpha encoded in -127 to +127 range
         f32 bounding_sphere[4];  // xyz - center, w - radius

@@ -180,12 +180,6 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
         DEBUG_ONLY(std::string readable_name);  // parsed from debug info
     };
 
-    struct spv_uniform
-    {
-        spv_id* variable;
-        u32 location;
-    };
-
     struct spv_push_desc
     {
         spv_id* variable;
@@ -193,8 +187,16 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
         u32 set;
     };
 
-    std::unordered_map<u32, spv_uniform> uniforms;
+    spv_id* push_constant = nullptr;
     std::unordered_map<u32, spv_push_desc> push_descriptors;
+
+    auto save_if_is_pc = [&](u32 storage_class, spv_id* self)
+    {
+        if (static_cast<SpvStorageClass>(storage_class) == SpvStorageClassPushConstant)
+        {
+            push_constant = self;
+        }
+    };
 
     shader_meta result {};
     assert(!spv.empty() && spv.size() % 4 == 0 && "SPV shall not be empty, and contain a stream of u32 packed data");
@@ -262,12 +264,14 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
             spv_ids[inst[1]].type          = &spv_ids[inst[3]];
             spv_ids[inst[1]].op_code       = static_cast<SpvOp>(op_code);
             spv_ids[inst[1]].storage_class = static_cast<SpvStorageClass>(inst[2]);
+            save_if_is_pc(inst[2], &spv_ids[inst[1]]);
             break;
         case SpvOpVariable :
             spv_ids[inst[2]].name          = inst[2];
             spv_ids[inst[2]].type          = &spv_ids[inst[1]];
             spv_ids[inst[2]].op_code       = static_cast<SpvOp>(op_code);
             spv_ids[inst[2]].storage_class = static_cast<SpvStorageClass>(inst[3]);
+            save_if_is_pc(inst[3], &spv_ids[inst[2]]);
             break;
         case SpvOpConstant :
             spv_ids[inst[2]].name     = inst[2];

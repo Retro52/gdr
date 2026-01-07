@@ -10,15 +10,15 @@ namespace shader_constants
     const uint kMaxTrianglesPerMeshlet = 94;
     const uint kMaxIndicesPerMeshlet   = kMaxTrianglesPerMeshlet * 3;
 
-    const uint kTaskWorkGroups = 64;
-    const uint kMeshWorkGroups = 64;
+    const uint kTaskWorkGroups = 32;
+    const uint kMeshWorkGroups = 32;
 
 #ifdef __cplusplus
 }
 #endif
 
-#define USE_CONE_CULLING 0
-#define USE_TASK_SHADER  USE_CONE_CULLING || 0
+#define USE_CONE_CULLING 1
+#define USE_TASK_SHADER  USE_CONE_CULLING || 1
 
 #define VISUALIZE_MESHLETS          0
 #define VISUALIZE_MESHLET_TRIANGLES 0

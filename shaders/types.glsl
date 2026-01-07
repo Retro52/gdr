@@ -6,8 +6,10 @@ struct Vertex
 {
     float px, py, pz;
     float nx, ny, nz;
+#if 0
     float ux, uy;
     float tx, ty, tz;
+#endif
 };
 
 struct Meshlet

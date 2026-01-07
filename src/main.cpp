@@ -154,7 +154,7 @@ int main(int argc, char* argv[])
         directional_light_component {.color = vec3(1.0F, 1.0F, 1.0F), .direction = vec3(0.5)});
 
     camera.add_component<id_component>(DEBUG_ONLY(id_component("camera")));
-    camera.add_component<transform_component>(transform_component {.position = vec3(0, 0, 5)});
+    camera.add_component<transform_component>(transform_component {.position = vec3(0, 15, 20)});
     camera.add_component<camera_component>(camera_component {
         .far_plane      = 1000.0F,
         .near_plane     = 0.01F,
@@ -188,11 +188,11 @@ int main(int argc, char* argv[])
 #endif
 
 #if !KITTY
-    auto backpack = client_scene.create_entity();
-    backpack.add_component<id_component>(DEBUG_ONLY(id_component("backpack model")));
-    backpack.add_component<transform_component>();
-    backpack.add_component<static_model_component>(
-        *static_model::load_model("../data/backpack/backpack.obj", renderer, geometry_pool));
+    auto random_guy = client_scene.create_entity();
+    random_guy.add_component<id_component>(DEBUG_ONLY(id_component("random guy model")));
+    random_guy.add_component<transform_component>();
+    random_guy.add_component<static_model_component>(
+        *static_model::load_model("../data/guy.obj", renderer, geometry_pool));
 #endif
 
     constexpr u32 kQueryPoolCount    = 64;

@@ -33,11 +33,14 @@ void main()
 {
     Vertex v = vertices[gl_VertexIndex];
 
-    vs_out.uv = vec2(v.ux, v.uy);
     vs_out.normal = vec3(v.nx, v.ny, v.nz);
-    vs_out.tangent = vec3(v.tx, v.ty, v.tz);
     vs_out.world_pos = vec4(v.px, v.py, v.pz, 1.0F);
+
+#if 0
+    vs_out.uv = vec2(v.ux, v.uy);
+    vs_out.tangent = vec3(v.tx, v.ty, v.tz);
     vs_out.bitangent = cross(vs_out.tangent, vs_out.normal);
+#endif
 
 #if VISUALIZE_MESHLETS
     vs_out.meshlet_id = 0x225;
