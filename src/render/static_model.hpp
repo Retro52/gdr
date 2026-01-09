@@ -13,7 +13,7 @@
 class static_model
 {
 public:
-    struct static_model_vertex
+    struct vertex
     {
         vec3 position;
         vec3 normal;
@@ -28,18 +28,19 @@ public:
     constexpr static u32 kMaxTrianglesPerMeshlet = shader_constants::kMaxTrianglesPerMeshlet;
     constexpr static u32 kMaxIndicesPerMeshlet   = shader_constants::kMaxIndicesPerMeshlet;
 
-    struct static_model_meshlet
+    struct meshlet
     {
-        u32 payload_offset;      // offset to the meshlet payload in a shared array
-        f32 cull_cone[4];        // xyz - direction; w - alpha encoded in -127 to +127 range
-        f32 bounding_sphere[4];  // xyz - center, w - radius
-
+        u32 payload_offset;  // offset to the meshlet payload in a shared array
+        f32 cone_axis[3];
+        f32 cone_cutoff;
+        f32 sphere_center[3];
+        f32 sphere_radius;
         u8 vertices_count;
         u8 triangles_count;
     };
 #endif
 
-    using mesh_data = render::mesh_data<static_model::static_model_vertex>;
+    using mesh_data = render::mesh_data<static_model::vertex>;
 
     struct mesh_buffers
     {

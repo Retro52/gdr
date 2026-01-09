@@ -4,6 +4,7 @@
 #extension GL_GOOGLE_include_directive: require
 
 #include "types.glsl"
+#include "common.glsl"
 
 layout (local_size_x = kTaskWorkGroups, local_size_y = 1, local_size_z = 1) in;
 
@@ -12,20 +13,25 @@ layout (binding = 1) readonly buffer Meshlets
     Meshlet meshlets[];
 };
 
+// FIXME: most of this data is temporary
 layout (push_constant) uniform constants
 {
     mat4 vp;
-    vec4 sun_pos;
-    vec4 view_pos;
-    vec4 view_dir;
+    mat4 view;
+    vec4 pos_and_scale; // xyz - position, w - uniform scale
+    vec4 rotation_quat; // quaternion representing object position
+    uint use_culling; // TODO: use bit flags for debug only?
 } pc;
 
 shared uint meshlets_count;
 taskPayloadSharedEXT MeshletTask meshlet_task;
 
-bool should_cull(vec4 cone, vec3 camera_dir)
+bool should_cull(vec3 cone_axis, vec3 center, float radius, float cutoff)
 {
-    return dot(cone.xyz, camera_dir) > cone.w;
+    vec3 view_axis = (pc.view * vec4(quat_rotate_vec3(cone_axis, pc.rotation_quat), 0.0F)).xyz;
+    vec3 view_center = (pc.view * vec4(transform_vec3(center, pc.pos_and_scale, pc.rotation_quat), 1.0F)).xyz;
+
+    return dot(view_center, view_axis) >= cutoff * length(view_center) + (radius * pc.pos_and_scale.w);
 }
 
 void main()
@@ -37,14 +43,21 @@ void main()
     meshlets_count = 0;
     barrier();
 
-    vec4 cull_cone = vec4(
-    meshlets[meshlet_id].cone[0],
-    meshlets[meshlet_id].cone[1],
-    meshlets[meshlet_id].cone[2],
-    meshlets[meshlet_id].cone[3]
+    vec3 cull_cone_axis = vec3(
+    meshlets[meshlet_id].cone_axis[0],
+    meshlets[meshlet_id].cone_axis[1],
+    meshlets[meshlet_id].cone_axis[2]
     );
+    float cull_cutoff = meshlets[meshlet_id].cone_cutoff;
 
-    bool culled = should_cull(cull_cone, pc.view_dir.xyz);
+    vec3 sphere_center = vec3(
+    meshlets[meshlet_id].sphere_center[0],
+    meshlets[meshlet_id].sphere_center[1],
+    meshlets[meshlet_id].sphere_center[2]
+    );
+    float sphere_radius = meshlets[meshlet_id].sphere_radius;
+
+    bool culled = ((pc.use_culling == 1) && should_cull(cull_cone_axis, sphere_center, sphere_radius, cull_cutoff));
     if (!culled)
     {
         uint idx = atomicAdd(meshlets_count, 1);

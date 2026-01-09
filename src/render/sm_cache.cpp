@@ -30,7 +30,7 @@ namespace
     }
 }
 
-using sm_vertex    = static_model::static_model_vertex;
+using sm_vertex    = static_model::vertex;
 using sm_mesh_data = render::mesh_data<sm_vertex>;
 
 template<typename T>
@@ -110,7 +110,7 @@ sm_mesh_data load_mesh<sm_vertex>(const aiMesh* mesh) noexcept
                                     indices.size(),
                                     vertices.data(),
                                     vertices.size(),
-                                    sizeof(static_model::static_model_vertex));
+                                    sizeof(static_model::vertex));
     }
 #endif
 

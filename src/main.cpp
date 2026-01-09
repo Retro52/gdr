@@ -30,12 +30,18 @@
 
 // FIXME: proper clean-up for vk handles
 
+struct mesh_compact_transform
+{
+    vec4 pos_and_scale;
+    vec4 rotation_quat;
+};
+
 struct pc_data
 {
     glm::mat4 pv;
-    vec4 sun_pos;
-    vec4 camera_pos;
-    vec4 camera_view;
+    glm::mat4 view;
+    mesh_compact_transform t;
+    u32 use_culling {1};
 };
 
 f64 bytes_to_mb(u64 bytes)
@@ -154,7 +160,7 @@ int main(int argc, char* argv[])
         directional_light_component {.color = vec3(1.0F, 1.0F, 1.0F), .direction = vec3(0.5)});
 
     camera.add_component<id_component>(DEBUG_ONLY(id_component("camera")));
-    camera.add_component<transform_component>(transform_component {.position = vec3(0, 15, 20)});
+    camera.add_component<transform_component>(transform_component {.position = vec3(5, 5, 15)});
     camera.add_component<camera_component>(camera_component {
         .far_plane      = 1000.0F,
         .near_plane     = 0.01F,
@@ -176,7 +182,7 @@ int main(int argc, char* argv[])
                                                     renderer.get_context().queues[render::queue_kind::eTransfer],
                                                     64 * 1024 * 1024)};
 
-#define KITTY 0
+#define KITTY 1
 
     // FIXME: multiple object support
 #if KITTY  // It was broken quite a while actually, ever since I moved vertices into SSBO
@@ -199,8 +205,24 @@ int main(int argc, char* argv[])
     VkQueryPool timestamp_query_pool = *render::create_vk_query_pool(renderer.get_context().device, kQueryPoolCount);
 
     gpu_profile_data profile_data;
-    vec4 cull_camera_dir;
+
+    glm::mat4 camera_proj_view;
+    glm::mat4 camera_cull_view;
+    bool enable_cone_culling = true;
     bool freeze_camera_cull_dir = false;
+
+    constexpr u32 kRepeatDraws    = 1000;
+    const u32 kVolumeItemsPerSide = std::lround(std::cbrt(kRepeatDraws));
+
+    std::array<mesh_compact_transform, kRepeatDraws> transforms {};
+
+    for (u32 i = 0; i < kRepeatDraws; ++i)
+    {
+        transforms[i].pos_and_scale = {i % kVolumeItemsPerSide,
+                                       (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
+                                       i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
+                                       1.0F};
+    }
 
     auto render_loop = [&](auto&)
     {
@@ -270,19 +292,16 @@ int main(int argc, char* argv[])
                 auto& camera_transform = camera.get_component<transform_component>();
                 auto& camera_data      = camera.get_component<camera_component>();
 
+                camera_proj_view = camera_data.get_projection_matrix()
+                                 * camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
+
                 if (!freeze_camera_cull_dir)
                 {
-                    cull_camera_dir = vec4(camera_data.get_direction(camera_transform.rotation), 0.0F);
+                    camera_cull_view =
+                        camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
                 }
 
                 render_pipeline.bind(buffer);
-                render_pipeline.push_constant(
-                    buffer,
-                    pc_data {.pv = camera_data.get_projection_matrix()
-                                 * camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation),
-                             .sun_pos     = vec4(sun.get_component<directional_light_component>().direction, 0.0F),
-                             .camera_pos  = vec4(camera_transform.position, 1.0F),
-                             .camera_view = cull_camera_dir});
 
 #if SM_USE_MESHLETS
                 const render::vk_descriptor_info updates[] = {
@@ -303,9 +322,8 @@ int main(int argc, char* argv[])
                 vkCmdBindIndexBuffer(buffer, geometry_pool.index.buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 #endif
 
-                u32 scene_triangles        = 0;
-                u32 scene_meshlets         = 0;
-                constexpr u32 kRepeatDraws = 100;
+                u32 scene_triangles = 0;
+                u32 scene_meshlets  = 0;
 
                 client_scene.get_view<static_model_component>().each(
                     [&](static_model_component& component)
@@ -317,6 +335,9 @@ int main(int argc, char* argv[])
                         scene_triangles += component.model.indices_count() / 3;
                         for (u32 i = 0; i < kRepeatDraws; ++i)
                         {
+                            render_pipeline.push_constant(
+                                buffer, pc_data {.pv = camera_proj_view, .view = camera_cull_view, .t = transforms[i], .use_culling = enable_cone_culling});
+
                             component.model.draw(buffer);
                         }
                     });
@@ -341,9 +362,8 @@ int main(int argc, char* argv[])
 #endif
 
                     ImGui::SeparatorText("render controls");
+                    ImGui::Checkbox("Enable culling", &enable_cone_culling);
                     ImGui::Checkbox("Freeze culling data", &freeze_camera_cull_dir);
-                    ImGui::Text(
-                        "Cull direction: [%f, %f, %f]", cull_camera_dir.x, cull_camera_dir.y, cull_camera_dir.z);
 
                     client_scene.get_view<entt::entity>().each(
                         [&](const entt::entity entity)

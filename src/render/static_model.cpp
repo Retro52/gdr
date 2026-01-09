@@ -51,7 +51,7 @@ namespace
     }
 
 #if SM_USE_MESHLETS
-    void build_meshlets(const static_model::mesh_data& mesh, std::vector<static_model::static_model_meshlet>& meshlets,
+    void build_meshlets(const static_model::mesh_data& mesh, std::vector<static_model::meshlet>& meshlets,
                         std::vector<u8>& meshlets_payload, u32 base_payload_offset) noexcept
     {
         ZoneScoped;
@@ -73,7 +73,7 @@ namespace
                                                          mesh.indices.size(),
                                                          &mesh.vertices.data()->position.x,
                                                          mesh.vertices.size(),
-                                                         sizeof(static_model::static_model_vertex),
+                                                         sizeof(static_model::vertex),
                                                          static_model::kMaxVerticesPerMeshlet,
                                                          static_model::kMaxTrianglesPerMeshlet,
                                                          0.5F);
@@ -108,7 +108,7 @@ namespace
                                                  meshopt_meshlet.triangle_count,
                                                  &mesh.vertices[0].position.x,
                                                  mesh.vertices.size(),
-                                                 sizeof(static_model::static_model_vertex));
+                                                 sizeof(static_model::vertex));
 
                 auto& meshlet           = meshlets[i];
                 meshlet.payload_offset  = total_bytes_written;
@@ -127,21 +127,16 @@ namespace
 
                 // align data to 4 bytes to avoid payload overlaps between meshlets
                 total_bytes_written = (total_bytes_written + 3) & ~3u;
-#if 0
-                meshlet.cull_cone[0] = bounds.cone_axis_s8[0];
-                meshlet.cull_cone[1] = bounds.cone_axis_s8[1];
-                meshlet.cull_cone[2] = bounds.cone_axis_s8[2];
-                meshlet.cull_cone[3] = bounds.cone_cutoff_s8;
-#else
-                meshlet.cull_cone[0] = bounds.cone_axis[0];
-                meshlet.cull_cone[1] = bounds.cone_axis[1];
-                meshlet.cull_cone[2] = bounds.cone_axis[2];
-                meshlet.cull_cone[3] = bounds.cone_cutoff;
-#endif
-                meshlet.bounding_sphere[0] = bounds.cone_apex[0];
-                meshlet.bounding_sphere[1] = bounds.cone_apex[1];
-                meshlet.bounding_sphere[2] = bounds.cone_apex[2];
-                meshlet.bounding_sphere[3] = bounds.radius;
+
+                meshlet.cone_cutoff  = bounds.cone_cutoff;
+                meshlet.cone_axis[0] = bounds.cone_axis[0];
+                meshlet.cone_axis[1] = bounds.cone_axis[1];
+                meshlet.cone_axis[2] = bounds.cone_axis[2];
+
+                meshlet.sphere_radius    = bounds.radius;
+                meshlet.sphere_center[0] = bounds.center[0];
+                meshlet.sphere_center[1] = bounds.center[1];
+                meshlet.sphere_center[2] = bounds.center[2];
             }
 
             // fit the array to compact the amount of data we upload to the GPU
@@ -152,8 +147,7 @@ namespace
 
     void upload_to_scene(const static_model::mesh_data& mesh,
 #if SM_USE_MESHLETS
-                         const std::vector<static_model::static_model_meshlet>& meshlets,
-                         const std::vector<u8>& meshlets_payload,
+                         const std::vector<static_model::meshlet>& meshlets, const std::vector<u8>& meshlets_payload,
 #endif
                          const vk_renderer& renderer, vk_scene_geometry_pool& geometry_pool)
     {
@@ -186,7 +180,7 @@ result<static_model> static_model::load_model(const fs::path& path, render::vk_r
 
     stats model_stats {};
     std::vector<mesh_data> model_meshes;
-    if (render::load_model<static_model_vertex>(path, model_meshes))
+    if (render::load_model<vertex>(path, model_meshes))
     {
 #if SM_USE_MESHLETS
         ZoneScopedN("upload meshlets data");
@@ -194,7 +188,7 @@ result<static_model> static_model::load_model(const fs::path& path, render::vk_r
         for (auto& mesh : model_meshes)
         {
             std::vector<u8> meshlets_payload;
-            std::vector<static_model_meshlet> meshlets;
+            std::vector<meshlet> meshlets;
 
             build_meshlets(mesh, meshlets, meshlets_payload, geometry_pool.meshlets_payload.offset);
 

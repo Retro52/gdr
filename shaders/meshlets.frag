@@ -15,14 +15,6 @@ in VS_IN {
 #endif
 } vs_in;
 
-layout (push_constant) uniform constants
-{
-    mat4 vp;
-    vec4 sun_pos;
-    vec4 view_pos;
-    vec4 view_dir;
-} pc;
-
 layout (location = 0) out vec4 o_frag_color;
 
 
@@ -61,9 +53,6 @@ void main()
 #if VISUALIZE_MESHLETS
     o_frag_color = vec4(meshlet_color(vs_in.meshlet_id, vs_in.triangle_id), 1.0F);
 #else
-    const float diffuse_contribution = 1.0F;
-
-    vec3 diffuse = vec3(max(dot(pc.sun_pos.xyz - vs_in.world_pos.xyz, vs_in.normal), 0.0) * diffuse_contribution);
-    o_frag_color = vec4(vec3(1.0F - diffuse_contribution) + diffuse, 1.0F);
+    o_frag_color = vec4(vs_in.normal, 1.0F);
 #endif
 }

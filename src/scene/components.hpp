@@ -13,9 +13,9 @@
 /// @imgui
 struct transform_component
 {
-    glm::quat rotation;
     vec3 position;
-    vec3 scale {1, 1, 1};
+    float uniform_scale;
+    glm::quat rotation;
 };
 
 /// @imgui

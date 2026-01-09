@@ -6,27 +6,30 @@ struct Vertex
 {
     float px, py, pz;
     float nx, ny, nz;
-#if 0
+    #if 0
     float ux, uy;
     float tx, ty, tz;
-#endif
+    #endif
 };
 
 struct Meshlet
 {
-#if 0
-    uint vertices[kMaxVerticesPerMeshlet];
-    uint8_t indices[kMaxIndicesPerMeshlet];
-#endif
     uint data_offset;   // offset (in bytes) into a shader vertices/indices array
-    float cone[4];      // xyz - direction; w - alpha encoded in -127 to +127 range
-    float bsphere[4];   // xyz - center, w - radius
+    float cone_axis[3];
+    float cone_cutoff;
+    float sphere_center[3];
+    float sphere_radius;
     uint8_t vertices_count;
     uint8_t triangles_count;
-    uint8_t padding[2];
 };
 
 struct MeshletTask
 {
     uint meshlet_ids[kMaxVerticesPerMeshlet];
+};
+
+struct MeshTransform
+{
+    vec4 pos_and_scale; // xyz - position, w - uniform scale
+    vec4 rotation_quat; // quaternion representing object position
 };
