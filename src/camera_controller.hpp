@@ -2,7 +2,7 @@
 
 #include <types.hpp>
 
-#include <events_queue.hpp>
+#include <events.hpp>
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 
@@ -17,114 +17,27 @@ struct camera_controller
     /// @hide
     f32 pitch = 0.0f;
 
-    // FIXME:
-    // * 1. Make IsKeyPressed/IsKeyDown as part of an API
-    // * 2. Rework events_queue API to support multiple callbacks (via c-stype, w/o std::function?)
-    /// @hide
-    bool key_w = false;
-    /// @hide
-    bool key_a = false;
-    /// @hide
-    bool key_s = false;
-    /// @hide
-    bool key_d = false;
-    /// @hide
-    bool key_e = false;
-    /// @hide
-    bool key_q = false;
-    /// @hide
-    bool mouse_pressed = false;
-
-    void bind(events_queue& queue, entity& camera)
+    camera_controller(events_queue& queue, entity& camera)
+        : m_camera(camera)
+        , m_queue(queue)
     {
-        queue.set_watcher(event_type::mouse_pressed,
-                          [&](const events_queue::event_payload& payload)
-                          {
-                              if (payload.mouse.button == mouse_button::right)
-                              {
-                                  this->mouse_pressed = true;
-                              }
-                          });
+        m_queue.add_watcher(
+            event_type::mouse_move,
+            +[](const event_payload& payload, void* user_data)
+            {
+                camera_controller& self = *static_cast<camera_controller*>(user_data);
+                if (self.m_queue.get_mouse_button_state(mouse_button::left) != button_state::down)
+                {
+                    return;
+                }
 
-        queue.set_watcher(event_type::mouse_released,
-                          [&](const events_queue::event_payload& payload)
-                          {
-                              if (payload.mouse.button == mouse_button::right)
-                              {
-                                  this->mouse_pressed = false;
-                              }
-                          });
+                self.yaw -= payload.mouse.delta.x * self.look_sensitivity;
+                self.pitch -= payload.mouse.delta.y * self.look_sensitivity;
 
-        queue.set_watcher(event_type::mouse_move,
-                          [&](const events_queue::event_payload& payload)
-                          {
-                              if (!this->mouse_pressed)
-                              {
-                                  return;
-                              }
-
-                              this->yaw -= payload.mouse.delta.x * this->look_sensitivity;
-                              this->pitch -= payload.mouse.delta.y * this->look_sensitivity;
-
-                              auto& camera_transform = camera.get_component<transform_component>();
-                              this->update_rotation(camera_transform);
-                          });
-
-        queue.set_watcher(event_type::key_pressed,
-                          [&](const events_queue::event_payload& payload)
-                          {
-                              switch (payload.keyboard.key)
-                              {
-                              case keycode::w :
-                                  this->key_w = true;
-                                  break;
-                              case keycode::a :
-                                  this->key_a = true;
-                                  break;
-                              case keycode::s :
-                                  this->key_s = true;
-                                  break;
-                              case keycode::d :
-                                  this->key_d = true;
-                                  break;
-                              case keycode::e :
-                                  this->key_e = true;
-                                  break;
-                              case keycode::q :
-                                  this->key_q = true;
-                                  break;
-                              default :
-                                  break;
-                              }
-                          });
-
-        queue.set_watcher(event_type::key_released,
-                          [&](const events_queue::event_payload& payload)
-                          {
-                              switch (payload.keyboard.key)
-                              {
-                              case keycode::w :
-                                  this->key_w = false;
-                                  break;
-                              case keycode::a :
-                                  this->key_a = false;
-                                  break;
-                              case keycode::s :
-                                  this->key_s = false;
-                                  break;
-                              case keycode::d :
-                                  this->key_d = false;
-                                  break;
-                              case keycode::e :
-                                  this->key_e = false;
-                                  break;
-                              case keycode::q :
-                                  this->key_q = false;
-                                  break;
-                              default :
-                                  break;
-                              }
-                          });
+                auto& camera_transform = self.m_camera.get_component<transform_component>();
+                self.update_rotation(camera_transform);
+            },
+            this);
     }
 
     void update_rotation(transform_component& transform)
@@ -139,36 +52,15 @@ struct camera_controller
 
     void update_position(transform_component& transform, const camera_component& cam, f32 dt)
     {
-        glm::vec3 up      = cam.get_up(transform.rotation);
-        glm::vec3 forward = cam.get_direction(transform.rotation);
-        glm::vec3 right   = glm::normalize(glm::cross(forward, up));
+        const glm::vec3 up      = cam.get_up(transform.rotation);
+        const glm::vec3 forward = cam.get_direction(transform.rotation);
+        const glm::vec3 right   = glm::normalize(glm::cross(forward, up));
 
-        glm::vec3 velocity(0.0f);
+        auto velocity = glm::vec3(0.0f);
 
-        if (key_w)
-        {
-            velocity += forward;
-        }
-        if (key_s)
-        {
-            velocity -= forward;
-        }
-        if (key_d)
-        {
-            velocity += right;
-        }
-        if (key_a)
-        {
-            velocity -= right;
-        }
-        if (key_e)
-        {
-            velocity += up;
-        }
-        if (key_q)
-        {
-            velocity -= up;
-        }
+        velocity += up * (m_queue.key_down(keycode::e) ? 1.0F : (m_queue.key_down(keycode::q) ? -1.0F : 0.0F));
+        velocity += right * (m_queue.key_down(keycode::d) ? 1.0F : (m_queue.key_down(keycode::a) ? -1.0F : 0.0F));
+        velocity += forward * (m_queue.key_down(keycode::w) ? 1.0F : (m_queue.key_down(keycode::s) ? -1.0F : 0.0F));
 
         if (glm::length(velocity) > 0.0f)
         {
@@ -176,4 +68,10 @@ struct camera_controller
             transform.position += velocity;
         }
     }
+
+private:
+    /// @hide
+    entity& m_camera;
+    /// @hide
+    events_queue& m_queue;
 };

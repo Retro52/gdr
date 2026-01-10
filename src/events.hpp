@@ -6,6 +6,7 @@
 
 #include <window.hpp>
 
+#include <array>
 #include <unordered_map>
 
 enum class event_type
@@ -26,6 +27,8 @@ enum class event_type
 
     request_draw,
     request_close,
+
+    count
 };
 
 enum class mouse_button
@@ -123,54 +126,62 @@ enum class keycode
     sc_space     = SDL_SCANCODE_SPACE,
 };
 
+struct dummy_event
+{
+    // just a placeholder
+};
+
+struct window_event
+{
+    ivec2 size;     // if window size was changed represents new window size
+    ivec2 size_px;  // if window size in pixels was changed represents new window size in pixels
+};
+
+struct mouse_event
+{
+    vec2 pos;             // mouse pos
+    vec2 delta;           // if mouse was moved represent the travel distance
+    mouse_button button;  // if mouse button was pressed represents mouse button pressed
+};
+
+struct scroll_event
+{
+    vec2 pos;    // where mouse was when scrolling occurred
+    vec2 delta;  // how much was scrolled in either direction
+};
+
+struct keyboard_event
+{
+    keycode key;
+    button_state state;
+};
+
+struct event_payload
+{
+    event_type type {event_type::dummy};
+
+    union
+    {
+        dummy_event dummy {};
+        mouse_event mouse;
+        window_event window;
+        scroll_event scroll;
+        keyboard_event keyboard;
+    };
+};
+
 class events_queue
 {
 public:
-    struct dummy_event
+    using watcher_t = void (*)(const event_payload& payload, void* user_data);
+
+    struct watcher_data
     {
-        // just a placeholder
+        watcher_t func  = nullptr;
+        void* user_data = nullptr;
     };
 
-    struct window_event
-    {
-        ivec2 size;     // if window size was changed represents new window size
-        ivec2 size_px;  // if window size in pixels was changed represents new window size in pixels
-    };
-
-    struct mouse_event
-    {
-        vec2 pos;             // mouse pos
-        vec2 delta;           // if mouse was moved represent the travel distance
-        mouse_button button;  // if mouse button was pressed represents mouse button pressed
-    };
-
-    struct scroll_event
-    {
-        vec2 pos;    // where mouse was when scrolling occurred
-        vec2 delta;  // how much was scrolled in either direction
-    };
-
-    struct keyboard_event
-    {
-        keycode key;
-        button_state state;
-    };
-
-    struct event_payload
-    {
-        event_type type {event_type::dummy};
-
-        union
-        {
-            dummy_event dummy {};
-            mouse_event mouse;
-            window_event window;
-            scroll_event scroll;
-            keyboard_event keyboard;
-        };
-    };
-
-    using watcher_t = std::function<void(const event_payload& payload)>;
+    using watchers_array_t = std::list<watcher_data>;
 
 public:
     explicit events_queue(const window& window);
@@ -179,19 +190,28 @@ public:
 
     void poll();
 
-    template<typename Func>
-    void set_watcher(event_type event, Func&& func)
-    {
-        m_watchers[event] = func;
-    }
+    void remove_watcher(event_type event, const watcher_t& func);
+
+    void add_watcher(event_type event, const watcher_t& func, void* user_data);
+
+    [[nodiscard]] bool key_up(keycode key) const;
+
+    [[nodiscard]] bool key_down(keycode key) const;
+
+    [[nodiscard]] button_state get_key_state(keycode key) const;
+
+    [[nodiscard]] button_state get_mouse_button_state(mouse_button button) const;
+
+    void send_event(SDL_Event& event);
+
+    void queue_event(SDL_Event& event) const;
 
 private:
-    void push_event(SDL_Event& event);
-
     void send_event(const event_payload& payload);
 
 private:
-    std::unordered_map<event_type, watcher_t> m_watchers;
+    std::array<watchers_array_t, static_cast<u32>(event_type::count)> m_watchers;
 
     u32 m_window_id {0};
+    u32 m_mouse_clicks_magic {0};
 };

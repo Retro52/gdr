@@ -8,7 +8,6 @@
 #include <Tracy/Tracy.hpp>
 
 #include <fstream>
-#include <vector>
 
 namespace fs
 {
@@ -44,6 +43,6 @@ namespace fs
             return;
         }
 
-        file.write(data.get<char>(), data.size());
+        file.write(data.get<char>(), static_cast<std::streamsize>(data.size()));
     }
 }

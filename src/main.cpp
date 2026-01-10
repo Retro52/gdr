@@ -6,10 +6,10 @@
 #include <types.hpp>
 
 #include <camera_controller.hpp>
+#include <codegen/camera_controller.hpp>
 #include <codegen/imgui/gpu_profile_data.hpp>
 #include <codegen/scene/components.hpp>
-#include <codegen/camera_controller.hpp>
-#include <events_queue.hpp>
+#include <events.hpp>
 #include <fs/fs.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
@@ -96,7 +96,9 @@ int main(int argc, char* argv[])
     events_queue client_events(client_window);
 
     auto features_table = render::rendering_features_table()
+#if !defined(NDEBUG)
                               .enable(render::rendering_features_table::eValidation)
+#endif
 #if SM_USE_MESHLETS
                               .enable(render::rendering_features_table::eMeshShading)
 #endif
@@ -118,16 +120,22 @@ int main(int argc, char* argv[])
         client_window);
 
     bool exit = false;
-    client_events.set_watcher(event_type::request_close,
-                              [&](auto&)
-                              {
-                                  exit = true;
-                              });
-    client_events.set_watcher(event_type::window_size_changed,
-                              [&](auto&)
-                              {
-                                  renderer.resize_swapchain(client_window.get_size_in_px());
-                              });
+    client_events.add_watcher(
+        event_type::request_close,
+        [](auto&, void* user_data)
+        {
+            *static_cast<bool*>(user_data) = true;
+        },
+        &exit);
+
+    client_events.add_watcher(
+        event_type::window_size_changed,
+        +[](const event_payload& payload, void* user_data)
+        {
+            auto& renderer = *static_cast<render::vk_renderer*>(user_data);
+            renderer.resize_swapchain(payload.window.size_px);
+        },
+        &renderer);
 
     const VkPushConstantRange range {
         .stageFlags = VK_SHADER_STAGE_ALL,
@@ -232,10 +240,9 @@ int main(int argc, char* argv[])
     };
 
     f32 last_frame_time = get_time();
-    camera_controller controller;
-    controller.bind(client_events, camera);
+    camera_controller controller(client_events, camera);
 
-    auto render_loop = [&](auto&)
+    auto render_loop = [&]()
     {
         const f32 current_time = get_time();
         const f32 dt           = current_time - last_frame_time;
@@ -469,7 +476,14 @@ int main(int argc, char* argv[])
             });
     };
 
-    client_events.set_watcher(event_type::request_draw, render_loop);
+    std::function wrapper(render_loop);
+    client_events.add_watcher(
+        event_type::request_draw,
+        [](auto&, void* user_data)
+        {
+            std::invoke(*static_cast<std::function<void()>*>(user_data));
+        },
+        &wrapper);
 
     while (!exit)
     {
