@@ -5,8 +5,10 @@
 
 #include <types.hpp>
 
+#include <camera_controller.hpp>
 #include <codegen/imgui/gpu_profile_data.hpp>
 #include <codegen/scene/components.hpp>
+#include <codegen/camera_controller.hpp>
 #include <events_queue.hpp>
 #include <fs/fs.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -208,10 +210,10 @@ int main(int argc, char* argv[])
 
     glm::mat4 camera_proj_view;
     glm::mat4 camera_cull_view;
-    bool enable_cone_culling = true;
+    bool enable_cone_culling    = true;
     bool freeze_camera_cull_dir = false;
 
-    constexpr u32 kRepeatDraws    = 1000;
+    constexpr u32 kRepeatDraws    = 3'375;
     const u32 kVolumeItemsPerSide = std::lround(std::cbrt(kRepeatDraws));
 
     std::array<mesh_compact_transform, kRepeatDraws> transforms {};
@@ -224,8 +226,25 @@ int main(int argc, char* argv[])
                                        1.0F};
     }
 
+    auto get_time = []()
+    {
+        return static_cast<f32>(SDL_GetTicks()) / 1000.0f;
+    };
+
+    f32 last_frame_time = get_time();
+    camera_controller controller;
+    controller.bind(client_events, camera);
+
     auto render_loop = [&](auto&)
     {
+        const f32 current_time = get_time();
+        const f32 dt           = current_time - last_frame_time;
+        last_frame_time        = current_time;
+
+        auto& camera_transform = camera.get_component<transform_component>();
+        auto& camera_data      = camera.get_component<camera_component>();
+        controller.update_position(camera_transform, camera_data, dt);
+
         if (!renderer.acquire_frame())
         {
             return;
@@ -289,9 +308,6 @@ int main(int argc, char* argv[])
 
                 vkCmdBeginRendering(buffer, &rendering_info);
 
-                auto& camera_transform = camera.get_component<transform_component>();
-                auto& camera_data      = camera.get_component<camera_component>();
-
                 camera_proj_view = camera_data.get_projection_matrix()
                                  * camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
 
@@ -335,8 +351,11 @@ int main(int argc, char* argv[])
                         scene_triangles += component.model.indices_count() / 3;
                         for (u32 i = 0; i < kRepeatDraws; ++i)
                         {
-                            render_pipeline.push_constant(
-                                buffer, pc_data {.pv = camera_proj_view, .view = camera_cull_view, .t = transforms[i], .use_culling = enable_cone_culling});
+                            render_pipeline.push_constant(buffer,
+                                                          pc_data {.pv          = camera_proj_view,
+                                                                   .view        = camera_cull_view,
+                                                                   .t           = transforms[i],
+                                                                   .use_culling = enable_cone_culling});
 
                             component.model.draw(buffer);
                         }
@@ -348,6 +367,10 @@ int main(int argc, char* argv[])
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "editor"));
 
                     editor.begin_frame();
+
+                    ImGui::SeparatorText("camera controller");
+                    codegen::draw(controller);
+
                     ImGui::SeparatorText("gpu timings");
                     codegen::draw(profile_data);
                     draw_tris_per_meshlet_score(profile_data.tris_per_meshlet);

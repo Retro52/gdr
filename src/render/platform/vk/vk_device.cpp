@@ -1,10 +1,12 @@
 #include <cpp/alg_constexpr.hpp>
+#include <cpp/containers/stack_string.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
 #include <Tracy/Tracy.hpp>
 
 #include <algorithm>
 #include <cstdio>
+#include <iostream>
 #include <ranges>
 #include <unordered_set>
 #include <vector>
@@ -159,7 +161,14 @@ VkResult video_driver_create_surface(const window& window, VkInstance instance, 
 VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT, VkDebugUtilsMessageTypeFlagsEXT,
                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void*)
 {
-    fprintf(stderr, "[VK VALIDATION] %s\n", pCallbackData->pMessage ? pCallbackData->pMessage : "(null)");
+    auto msg = cpp::stack_string::make_formatted("[VK VALIDATION] %s\n",
+                                                 pCallbackData->pMessage ? pCallbackData->pMessage : "(null)");
+    std::cerr << msg.c_str();
+    if (pCallbackData->flags & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+    {
+        std::cerr << std::flush;
+        assert(false && "vk validation error");
+    }
     return VK_FALSE;
 }
 

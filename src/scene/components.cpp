@@ -28,5 +28,5 @@ glm::mat4 camera_component::get_projection_matrix() const noexcept
 
 glm::mat4 camera_component::get_view_matrix(const vec3& position, const glm::quat& rotation) const noexcept
 {
-    return glm::inverse(glm::translate(glm::mat4_cast(rotation), position));
+    return glm::inverse(glm::translate(glm::mat4(1.0F), position) * glm::mat4_cast(rotation));
 }

@@ -9,6 +9,16 @@
 
 void populate_mouse_event_payload(events_queue::event_payload& payload, SDL_Event& event)
 {
+    switch (event.type)
+    {
+    case SDL_EVENT_MOUSE_BUTTON_UP :
+    case SDL_EVENT_MOUSE_BUTTON_DOWN :
+        payload.mouse.button = static_cast<mouse_button>(event.button.button);
+        break;
+    default :
+        break;
+    }
+
     payload.mouse.delta = {event.motion.xrel, event.motion.yrel};
     payload.mouse.pos   = {event.motion.x, event.motion.y};
 }
@@ -62,13 +72,13 @@ void events_queue::push_event(SDL_Event& event)
         EQ_CHECK_WINDOW_ID(event.key.windowID);
         payload.type           = event_type::key_pressed;
         payload.keyboard.state = button_state::down;
-        payload.keyboard.key   = static_cast<keycode>(event.key.key);
+        payload.keyboard.key   = static_cast<keycode>(event.key.scancode);
         break;
     case SDL_EVENT_KEY_UP :
         EQ_CHECK_WINDOW_ID(event.key.windowID);
         payload.type           = event_type::key_released;
         payload.keyboard.state = button_state::up;
-        payload.keyboard.key   = static_cast<keycode>(event.key.key);
+        payload.keyboard.key   = static_cast<keycode>(event.key.scancode);
         break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN :
         EQ_CHECK_WINDOW_ID(event.motion.windowID);

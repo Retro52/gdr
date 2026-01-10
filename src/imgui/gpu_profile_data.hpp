@@ -35,11 +35,14 @@ struct gpu_profile_data
         meshlets_in_scene_total = meshlets_count;
 
         // smooth the averages over time
-        gpu_render_time = gpu_render_time == 0.0F ? (end - start) : (gpu_render_time * 0.99 + (end - start) * 0.01);
+        constexpr f32 kSmoothingFactor = 0.9F;
+
+        gpu_render_time = gpu_render_time == 0.0F
+                            ? (end - start)
+                            : (gpu_render_time * kSmoothingFactor + (end - start) * (1.0F - kSmoothingFactor));
 
         // to convert it to billions we'd use 1e-9, but we also convert ms to s, so 1e-3 cancel out
         tris_per_second = static_cast<f64>(tris_count) * 1e-6 / (gpu_render_time);
-
-        tris_per_meshlet = static_cast<f64>(tris_count) / meshlets_count;
+        tris_per_meshlet = static_cast<f64>(tris_count) / static_cast<f64>(meshlets_count);
     }
 };
