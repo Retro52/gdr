@@ -35,7 +35,7 @@
 struct alignas(16) mesh_draw_command
 {
     vec4 pos_and_scale;
-    vec4 rotation_quat;
+    glm::quat rotation_quat;
 
     union
     {
@@ -161,7 +161,9 @@ int main(int argc, char* argv[])
 
     const auto render_pipeline = *render::vk_pipeline::create_graphics(renderer, shaders, COUNT_OF(shaders), &range, 1);
 
+#if !NO_EDITOR
     imgui_layer editor(client_window, renderer);
+#endif
 
     // test scene stuff
     scene client_scene;
@@ -235,17 +237,18 @@ int main(int argc, char* argv[])
 
     auto get_time = []()
     {
-        return static_cast<f32>(SDL_GetTicks()) / 1000.0f;
+        return static_cast<f64>(SDL_GetPerformanceCounter()) / static_cast<f64>(SDL_GetPerformanceFrequency());
     };
 
-    f32 last_frame_time = get_time();
+    f64 last_frame_time = get_time();
     camera_controller controller(client_events, camera);
 
     auto render_loop = [&]()
     {
-        const f32 current_time = get_time();
-        const f32 dt           = current_time - last_frame_time;
-        last_frame_time        = current_time;
+        const f64 current_time = get_time();
+        const f64 dt           = current_time - last_frame_time;
+
+        last_frame_time = current_time;
 
         auto& camera_transform = camera.get_component<transform_component>();
         auto& camera_data      = camera.get_component<camera_component>();
@@ -368,6 +371,14 @@ int main(int argc, char* argv[])
                                                               (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
                                                               i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
                                                               1.0F};
+#if !KITTY
+                                draw_cmds[i].pos_and_scale *= vec4(20.0F, 20.0F, 20.0F, 1.0F);
+#else
+                                draw_cmds[i].pos_and_scale *= vec4(1.5F, 1.5F, 1.5F, 1.0F);
+#endif
+                                draw_cmds[i].rotation_quat = glm::quatLookAt(
+                                    glm::normalize(vec3(draw_cmds[i].pos_and_scale) - camera_transform.position),
+                                    vec3(0, 1, 0));
 #if SM_USE_MESHLETS
                                 draw_cmds[i].mesh.groupCountX =
                                     component.model.meshlets_count() / shader_constants::kTaskWorkGroups;
@@ -485,10 +496,10 @@ int main(int argc, char* argv[])
 
                 vkEndCommandBuffer(buffer);
                 renderer.present_frame(buffer);
-                vkDeviceWaitIdle(renderer.get_context().device);
 
 #if !defined(NDEBUG) || 1
                 uint64_t query_results[2];
+                vkDeviceWaitIdle(renderer.get_context().device);
                 VK_ASSERT_ON_FAIL(vkGetQueryPoolResults(renderer.get_context().device,
                                                         timestamp_query_pool,
                                                         0,
@@ -506,8 +517,10 @@ int main(int argc, char* argv[])
                                     kRepeatDraws * scene_triangles,
                                     kRepeatDraws * scene_meshlets);
 
-                auto str = cpp::stack_string::make_formatted(
-                    "GPU time: %lf; Tris/s (B): %lf", profile_data.gpu_render_time, profile_data.tris_per_second);
+                auto str = cpp::stack_string::make_formatted("CPU: %.3lfms; GPU: %.3lfms; Tris/s (B): %lf",
+                                                             dt * 1000.0F,
+                                                             profile_data.gpu_render_time,
+                                                             profile_data.tris_per_second);
                 SDL_SetWindowTitle(client_window.get_native_handle().window, str.c_str());
 #endif
 

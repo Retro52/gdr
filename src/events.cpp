@@ -2,6 +2,7 @@
 
 #include <backends/imgui_impl_sdl3.h>
 #include <events.hpp>
+#include <imgui_internal.h>
 #include <Tracy/Tracy.hpp>
 
 #include <iostream>
@@ -65,6 +66,16 @@ namespace
         }
 
         return true;
+    }
+
+    bool imgui_captures_mouse()
+    {
+        return ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureMouse;
+    }
+
+    bool imgui_captures_keyboard()
+    {
+        return ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureKeyboard;
     }
 }
 
@@ -131,7 +142,7 @@ bool events_queue::key_down(keycode key) const
 button_state events_queue::get_key_state(keycode key) const
 {
     ZoneScoped;
-    if (SDL_GetWindowID(SDL_GetMouseFocus()) != m_window_id || ImGui::GetIO().WantCaptureKeyboard)
+    if (SDL_GetWindowID(SDL_GetMouseFocus()) != m_window_id || imgui_captures_keyboard())
     {
         return button_state::unknown;
     }
@@ -143,7 +154,7 @@ button_state events_queue::get_key_state(keycode key) const
 button_state events_queue::get_mouse_button_state(mouse_button button) const
 {
     ZoneScoped;
-    if (SDL_GetWindowID(SDL_GetMouseFocus()) != m_window_id || ImGui::GetIO().WantCaptureMouse)
+    if (SDL_GetWindowID(SDL_GetMouseFocus()) != m_window_id || imgui_captures_mouse())
     {
         return button_state::unknown;
     }
@@ -168,40 +179,40 @@ void events_queue::send_event(SDL_Event& event)
     switch (event.type)
     {
     case SDL_EVENT_KEY_DOWN :
-        BREAK_IF(ImGui::GetIO().WantCaptureKeyboard);
+        BREAK_IF(imgui_captures_keyboard());
         EQ_CHECK_WINDOW_ID(event.key.windowID);
         payload.type           = event_type::key_pressed;
         payload.keyboard.state = button_state::down;
         payload.keyboard.key   = static_cast<keycode>(event.key.scancode);
         break;
     case SDL_EVENT_KEY_UP :
-        BREAK_IF(ImGui::GetIO().WantCaptureKeyboard);
+        BREAK_IF(imgui_captures_keyboard());
         EQ_CHECK_WINDOW_ID(event.key.windowID);
         payload.type           = event_type::key_released;
         payload.keyboard.state = button_state::up;
         payload.keyboard.key   = static_cast<keycode>(event.key.scancode);
         break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN :
-        BREAK_IF(ImGui::GetIO().WantCaptureMouse);
+        BREAK_IF(imgui_captures_mouse());
         EQ_CHECK_WINDOW_ID(event.motion.windowID);
         payload.type = event_type::mouse_pressed;
         populate_mouse_event_payload(payload, event);
         write_mouse_clicks(payload.mouse.button, event.button.clicks, m_mouse_clicks_magic);
         break;
     case SDL_EVENT_MOUSE_BUTTON_UP :
-        BREAK_IF(ImGui::GetIO().WantCaptureMouse);
+        BREAK_IF(imgui_captures_mouse());
         EQ_CHECK_WINDOW_ID(event.motion.windowID);
         payload.type = event_type::mouse_released;
         populate_mouse_event_payload(payload, event);
         break;
     case SDL_EVENT_MOUSE_MOTION :
-        BREAK_IF(ImGui::GetIO().WantCaptureMouse);
+        BREAK_IF(imgui_captures_mouse());
         EQ_CHECK_WINDOW_ID(event.motion.windowID);
         payload.type = event_type::mouse_move;
         populate_mouse_event_payload(payload, event);
         break;
     case SDL_EVENT_MOUSE_WHEEL :
-        BREAK_IF(ImGui::GetIO().WantCaptureMouse);
+        BREAK_IF(imgui_captures_mouse());
         EQ_CHECK_WINDOW_ID(event.wheel.windowID);
         payload.type         = event_type::mouse_scroll;
         payload.scroll.delta = {event.wheel.x, event.wheel.y};
@@ -256,6 +267,33 @@ void events_queue::queue_event(SDL_Event& event) const
         break;
     }
     SDL_PushEvent(&event);
+}
+
+void events_queue::hide_cursor() const
+{
+    SDL_HideCursor();
+    if (auto* ctx = ImGui::GetCurrentContext())
+    {
+        ctx->IO.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+    }
+}
+
+void events_queue::show_cursor() const
+{
+    SDL_HideCursor();
+    if (auto* ctx = ImGui::GetCurrentContext())
+    {
+        ctx->IO.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+    }
+}
+
+void events_queue::center_cursor() const
+{
+    ivec2 window_size;
+    auto* window = SDL_GetWindowFromID(m_window_id);
+    SDL_GetWindowSize(window, &window_size.x, &window_size.y);
+
+    SDL_WarpMouseInWindow(window, static_cast<f32>(window_size.x) / 2.0F, static_cast<f32>(window_size.y) / 2.0F);
 }
 
 void events_queue::send_event(const event_payload& payload)

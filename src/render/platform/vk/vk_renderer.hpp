@@ -57,7 +57,7 @@ namespace render
 
     private:
         constexpr static bool kUseVsync      = false;
-        constexpr static u32 kFramesInFlight = 3;
+        constexpr static u32 kFramesInFlight = 2;
 
     private:
         render::context m_context;

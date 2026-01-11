@@ -10,7 +10,7 @@
 struct camera_controller
 {
     f32 move_speed       = 5.0f;
-    f32 look_sensitivity = 0.003f;
+    f32 look_sensitivity = 0.002f;
 
     /// @hide
     f32 yaw = 0.0f;
@@ -31,6 +31,8 @@ struct camera_controller
                     return;
                 }
 
+                self.m_queue.center_cursor();
+
                 self.yaw -= payload.mouse.delta.x * self.look_sensitivity;
                 self.pitch -= payload.mouse.delta.y * self.look_sensitivity;
 
@@ -38,6 +40,28 @@ struct camera_controller
                 self.update_rotation(camera_transform);
             },
             this);
+
+        m_queue.add_watcher(
+            event_type::mouse_pressed,
+            [](const event_payload& payload, void* user_data)
+            {
+                if (payload.mouse.button == mouse_button::left)
+                {
+                    static_cast<events_queue*>(user_data)->hide_cursor();
+                }
+            },
+            &m_queue);
+
+        m_queue.add_watcher(
+            event_type::mouse_released,
+            [](const event_payload& payload, void* user_data)
+            {
+                if (payload.mouse.button == mouse_button::left)
+                {
+                    static_cast<events_queue*>(user_data)->show_cursor();
+                }
+            },
+            &m_queue);
     }
 
     void update_rotation(transform_component& transform)

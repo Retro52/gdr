@@ -206,6 +206,12 @@ public:
 
     void queue_event(SDL_Event& event) const;
 
+    void hide_cursor() const;
+
+    void show_cursor() const;
+
+    void center_cursor() const;
+
 private:
     void send_event(const event_payload& payload);
 
