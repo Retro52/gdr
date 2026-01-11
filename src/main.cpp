@@ -172,7 +172,6 @@ int main(int argc, char* argv[])
     camera.add_component<id_component>(DEBUG_ONLY(id_component("camera")));
     camera.add_component<transform_component>(transform_component {.position = vec3(5, 5, 15)});
     camera.add_component<camera_component>(camera_component {
-        .far_plane      = 1000.0F,
         .near_plane     = 0.01F,
         .aspect_ratio   = 16.0F / 9.0F,
         .horizontal_fov = glm::radians(90.0F),
@@ -288,7 +287,7 @@ int main(int argc, char* argv[])
                     .loadOp             = VK_ATTACHMENT_LOAD_OP_CLEAR,
                     .storeOp            = VK_ATTACHMENT_STORE_OP_STORE,
                     .clearValue         = {
-                                           .depthStencil = {1.0F, 0},
+                                           .depthStencil = {0.0F, 0},
                                            }
                 };
 

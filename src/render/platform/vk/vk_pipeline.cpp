@@ -405,9 +405,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
         .pNext                 = nullptr,
         .depthTestEnable       = VK_TRUE,
         .depthWriteEnable      = VK_TRUE,
-        .depthCompareOp        = VK_COMPARE_OP_LESS,
-        .depthBoundsTestEnable = VK_FALSE,
-        .stencilTestEnable     = VK_FALSE,
+        .depthCompareOp        = VK_COMPARE_OP_GREATER,
         .minDepthBounds        = 0.0f,
         .maxDepthBounds        = 1.0f,
     };

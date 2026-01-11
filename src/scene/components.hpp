@@ -50,7 +50,6 @@ private:
 /// @imgui
 struct camera_component
 {
-    f32 far_plane;
     f32 near_plane;
 
     /// @widget (aspect_ratio_editor)
