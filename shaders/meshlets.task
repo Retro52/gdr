@@ -13,13 +13,16 @@ layout (binding = 1) readonly buffer Meshlets
     Meshlet meshlets[];
 };
 
+layout (binding = 3) readonly buffer DrawCommands
+{
+    DrawCommand draw_cmds[];
+};
+
 // FIXME: most of this data is temporary
 layout (push_constant) uniform constants
 {
     mat4 vp;
     mat4 view;
-    vec4 pos_and_scale; // xyz - position, w - uniform scale
-    vec4 rotation_quat; // quaternion representing object position
     uint use_culling; // TODO: use bit flags for debug only?
 } pc;
 
@@ -28,16 +31,18 @@ taskPayloadSharedEXT MeshletTask meshlet_task;
 
 bool should_cull(vec3 cone_axis, vec3 center, float radius, float cutoff)
 {
-    vec3 view_axis = (pc.view * vec4(quat_rotate_vec3(cone_axis, pc.rotation_quat), 0.0F)).xyz;
-    vec3 view_center = (pc.view * vec4(transform_vec3(center, pc.pos_and_scale, pc.rotation_quat), 1.0F)).xyz;
+    vec3 view_axis = (pc.view * vec4(quat_rotate_vec3(cone_axis, draw_cmds[gl_DrawID].rotation_quat), 0.0F)).xyz;
+    vec3 view_center = (pc.view * vec4(transform_vec3(center, draw_cmds[gl_DrawID].pos_and_scale, draw_cmds[gl_DrawID].rotation_quat), 1.0F)).xyz;
 
-    return dot(view_center, view_axis) >= cutoff * length(view_center) + (radius * pc.pos_and_scale.w);
+    return dot(view_center, view_axis) >= cutoff * length(view_center) + (radius * draw_cmds[gl_DrawID].pos_and_scale.w);
 }
 
 void main()
 {
     uint meshlet_warp = gl_WorkGroupID.x;
     uint meshlet_id = meshlet_warp * kTaskWorkGroups + gl_LocalInvocationID.x;
+
+    meshlet_task.draw_id = gl_DrawID;
 
     #if USE_CONE_CULLING
     meshlets_count = 0;

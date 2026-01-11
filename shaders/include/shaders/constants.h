@@ -18,7 +18,6 @@ namespace shader_constants
 #endif
 
 #define USE_CONE_CULLING 1
-#define USE_TASK_SHADER  USE_CONE_CULLING || 1
 
 #define VISUALIZE_MESHLETS          1
 #define VISUALIZE_MESHLET_TRIANGLES 0

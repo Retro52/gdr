@@ -32,17 +32,22 @@
 
 // FIXME: proper clean-up for vk handles
 
-struct mesh_compact_transform
+struct alignas(16) mesh_draw_command
 {
     vec4 pos_and_scale;
     vec4 rotation_quat;
+
+    union
+    {
+        VkDrawIndexedIndirectCommand indexed;
+        VkDrawMeshTasksIndirectCommandEXT mesh;
+    };
 };
 
 struct pc_data
 {
     glm::mat4 pv;
     glm::mat4 view;
-    mesh_compact_transform t;
     u32 use_culling {1};
 };
 
@@ -102,6 +107,7 @@ int main(int argc, char* argv[])
 #if SM_USE_MESHLETS
                               .enable(render::rendering_features_table::eMeshShading)
 #endif
+                              .enable(render::rendering_features_table::eDrawIndirect)
                               .enable(render::rendering_features_table::eDynamicRender)
                               .enable(render::rendering_features_table::eSynchronization2);
 
@@ -145,9 +151,7 @@ int main(int argc, char* argv[])
 
     render::vk_shader shaders[] = {
 #if SM_USE_MESHLETS
-#if SM_USE_TS
         *render::vk_shader::load(renderer, "../shaders/meshlets.task.spv"),
-#endif
         *render::vk_shader::load(renderer, "../shaders/meshlets.mesh.spv"),
 #else
         *render::vk_shader::load(renderer, "../shaders/mesh.vert.spv"),
@@ -170,7 +174,7 @@ int main(int argc, char* argv[])
         directional_light_component {.color = vec3(1.0F, 1.0F, 1.0F), .direction = vec3(0.5)});
 
     camera.add_component<id_component>(DEBUG_ONLY(id_component("camera")));
-    camera.add_component<transform_component>(transform_component {.position = vec3(5, 5, 15)});
+    camera.add_component<transform_component>(transform_component {.position = vec3(5, 5, 25)});
     camera.add_component<camera_component>(camera_component {
         .near_plane     = 0.01F,
         .aspect_ratio   = 16.0F / 9.0F,
@@ -223,15 +227,11 @@ int main(int argc, char* argv[])
     constexpr u32 kRepeatDraws    = 3'375;
     const u32 kVolumeItemsPerSide = std::lround(std::cbrt(kRepeatDraws));
 
-    std::array<mesh_compact_transform, kRepeatDraws> transforms {};
-
-    for (u32 i = 0; i < kRepeatDraws; ++i)
-    {
-        transforms[i].pos_and_scale = {i % kVolumeItemsPerSide,
-                                       (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
-                                       i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
-                                       1.0F};
-    }
+    render::vk_buffer draw_indirect_buffer = *render::create_buffer(
+        kRepeatDraws * sizeof(mesh_draw_command),
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        renderer.get_context().allocator,
+        0);
 
     auto get_time = []()
     {
@@ -330,10 +330,12 @@ int main(int argc, char* argv[])
                     geometry_pool.vertex.buffer.buffer,
                     geometry_pool.meshlets.buffer.buffer,
                     geometry_pool.meshlets_payload.buffer.buffer,
+                    draw_indirect_buffer.buffer,
                 };
                 render_pipeline.push_descriptor_set(buffer, updates);
 #else
-                const render::vk_descriptor_info updates[] = {geometry_pool.vertex.buffer.buffer};
+                const render::vk_descriptor_info updates[] = {geometry_pool.vertex.buffer.buffer,
+                                                              draw_indirect_buffer.buffer};
                 render_pipeline.push_descriptor_set(buffer, updates);
 #endif
 
@@ -355,16 +357,54 @@ int main(int argc, char* argv[])
 
                         scene_meshlets += component.model.meshlets_count();
                         scene_triangles += component.model.indices_count() / 3;
-                        for (u32 i = 0; i < kRepeatDraws; ++i)
-                        {
-                            render_pipeline.push_constant(buffer,
-                                                          pc_data {.pv          = camera_proj_view,
-                                                                   .view        = camera_cull_view,
-                                                                   .t           = transforms[i],
-                                                                   .use_culling = enable_cone_culling});
 
-                            component.model.draw(buffer);
+                        {
+                            ZoneScopedN("FIXME.data.upload");
+                            std::array<mesh_draw_command, kRepeatDraws> draw_cmds {};
+
+                            for (u32 i = 0; i < kRepeatDraws; ++i)
+                            {
+                                draw_cmds[i].pos_and_scale = {i % kVolumeItemsPerSide,
+                                                              (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
+                                                              i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
+                                                              1.0F};
+#if SM_USE_MESHLETS
+                                draw_cmds[i].mesh.groupCountX =
+                                    component.model.meshlets_count() / shader_constants::kTaskWorkGroups;
+                                draw_cmds[i].mesh.groupCountY = 1;
+                                draw_cmds[i].mesh.groupCountZ = 1;
+#else
+                                draw_cmds[i].indexed.firstIndex    = 0;
+                                draw_cmds[i].indexed.firstInstance = 0;
+                                draw_cmds[i].indexed.vertexOffset  = 0;
+                                draw_cmds[i].indexed.instanceCount = 1;
+                                draw_cmds[i].indexed.indexCount    = component.model.indices_count();
+#endif
+                            }
+                            render::upload_data(geometry_pool.transfer,
+                                                draw_indirect_buffer,
+                                                reinterpret_cast<u8*>(draw_cmds.data()),
+                                                {.size = sizeof(mesh_draw_command) * draw_cmds.size()});
                         }
+
+                        render_pipeline.push_constant(buffer,
+                                                      pc_data {.pv          = camera_proj_view,
+                                                               .view        = camera_cull_view,
+                                                               .use_culling = enable_cone_culling});
+
+#if SM_USE_MESHLETS
+                        vkCmdDrawMeshTasksIndirectEXT(buffer,
+                                                      draw_indirect_buffer.buffer,
+                                                      offsetof(mesh_draw_command, mesh),
+                                                      kRepeatDraws,
+                                                      sizeof(mesh_draw_command));
+#else
+                        vkCmdDrawIndexedIndirect(buffer,
+                                                 draw_indirect_buffer.buffer,
+                                                 offsetof(mesh_draw_command, indexed),
+                                                 kRepeatDraws,
+                                                 sizeof(mesh_draw_command));
+#endif
                     });
 
 #if !NO_EDITOR

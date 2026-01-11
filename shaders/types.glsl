@@ -25,11 +25,13 @@ struct Meshlet
 
 struct MeshletTask
 {
+    uint draw_id;
     uint meshlet_ids[kMaxVerticesPerMeshlet];
 };
 
-struct MeshTransform
+struct DrawCommand
 {
     vec4 pos_and_scale; // xyz - position, w - uniform scale
     vec4 rotation_quat; // quaternion representing object position
+    uint _[8];          // padding, reserved for the draw command data
 };

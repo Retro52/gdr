@@ -12,42 +12,15 @@ namespace
 {
     // TODO: batch data uploads together
     template<typename T>
-    void upload_data(VmaAllocator allocator, const vk_buffer_transfer& transfer, vk_shared_buffer& dst_buffer,
-                     const T* data, const u64 count)
+    void upload_data(const vk_buffer_transfer& transfer, vk_shared_buffer& dst_buffer, const T* data, const u64 count)
     {
         ZoneScoped;
 
-        void* mapped;
-        vmaMapMemory(allocator, transfer.staging_buffer.allocation, &mapped);
-        std::copy_n(
-            reinterpret_cast<const u8*>(data), count * sizeof(T), (static_cast<u8*>(mapped)) + dst_buffer.offset);
-        vmaUnmapMemory(allocator, transfer.staging_buffer.allocation);
+        render::upload_data(transfer,
+                            dst_buffer.buffer,
+                            reinterpret_cast<const u8*>(data),
+                            VkBufferCopy {.srcOffset = 0, .dstOffset = dst_buffer.offset, .size = count * sizeof(T)});
         dst_buffer.offset += count * sizeof(T);
-
-        VkCommandBufferBeginInfo begin_info {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        };
-
-        vkBeginCommandBuffer(transfer.staging_command_buffer.cmd_buffer, &begin_info);
-
-        const VkBufferCopy copy_region {.size = count * sizeof(T)};
-        vkCmdCopyBuffer(transfer.staging_command_buffer.cmd_buffer,
-                        transfer.staging_buffer.buffer,
-                        dst_buffer.buffer.buffer,
-                        1,
-                        &copy_region);
-
-        vkEndCommandBuffer(transfer.staging_command_buffer.cmd_buffer);
-
-        VkSubmitInfo submit_info {
-            .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .commandBufferCount = 1,
-            .pCommandBuffers    = &transfer.staging_command_buffer.cmd_buffer,
-        };
-
-        vkQueueSubmit(transfer.queue.queue, 1, &submit_info, VK_NULL_HANDLE);
-        vkQueueWaitIdle(transfer.queue.queue);
     }
 
 #if SM_USE_MESHLETS
@@ -78,13 +51,8 @@ namespace
                                                          static_model::kMaxTrianglesPerMeshlet,
                                                          0.5F);
 
-#if SM_USE_TS
-        // FIXME: this degrades performance by quite a bit
-        const u32 ts_wg = shader_constants::kTaskWorkGroups;
-        meshlets.resize(((meshlets_count + ts_wg - 1) / ts_wg) * ts_wg);
-#else
-        meshlets.resize(meshlets_count);
-#endif
+        constexpr u32 kTSAlign = shader_constants::kTaskWorkGroups;
+        meshlets.resize(((meshlets_count + kTSAlign - 1) / kTSAlign) * kTSAlign);
 
         {
             ZoneScopedN("meshopt_optimizeMeshlet and data copy");
@@ -154,21 +122,14 @@ namespace
         ZoneScoped;
 
 #if SM_USE_MESHLETS
-        const auto allocator = renderer.get_context().allocator;
-        upload_data(
-            allocator, geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
-        upload_data(allocator, geometry_pool.transfer, geometry_pool.meshlets, meshlets.data(), meshlets.size());
+        upload_data(geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
+        upload_data(geometry_pool.transfer, geometry_pool.meshlets, meshlets.data(), meshlets.size());
 
-        upload_data(allocator,
-                    geometry_pool.transfer,
-                    geometry_pool.meshlets_payload,
-                    meshlets_payload.data(),
-                    meshlets_payload.size());
-#else
-        const auto allocator = renderer.get_context().allocator;
-        upload_data(allocator, geometry_pool.transfer, geometry_pool.index, mesh.indices.data(), mesh.indices.size());
         upload_data(
-            allocator, geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
+            geometry_pool.transfer, geometry_pool.meshlets_payload, meshlets_payload.data(), meshlets_payload.size());
+#else
+        upload_data(geometry_pool.transfer, geometry_pool.index, mesh.indices.data(), mesh.indices.size());
+        upload_data(geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
 #endif
     }
 }
@@ -217,21 +178,6 @@ result<static_model> static_model::load_model(const fs::path& path, render::vk_r
     }
 
     return "failed to parse model";
-}
-
-void static_model::draw(VkCommandBuffer buffer) const
-{
-    ZoneScoped;
-
-#if SM_USE_MESHLETS
-#if SM_USE_TS
-    vkCmdDrawMeshTasksEXT(buffer, m_stats.meshlets_count / shader_constants::kTaskWorkGroups, 1, 1);
-#else
-    vkCmdDrawMeshTasksEXT(buffer, m_stats.meshlets_count, 1, 1);
-#endif
-#else
-    vkCmdDrawIndexed(buffer, m_stats.index_count, 1, 0, 0, 0);
-#endif
 }
 
 u32 static_model::indices_count() const

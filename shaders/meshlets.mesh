@@ -30,13 +30,16 @@ layout (binding = 2) readonly buffer MeshletVertices
     uint meshlets_vertices[];
 };
 
+layout (binding = 3) readonly buffer DrawCommands
+{
+    DrawCommand draw_cmds[];
+};
+
 // FIXME: most of this data is temporary
 layout (push_constant) uniform constants
 {
     mat4 vp;
     mat4 view;
-    vec4 pos_and_scale; // xyz - position, w - uniform scale
-    vec4 rotation_quat; // quaternion representing object position
 } pc;
 
 out VS_OUT {
@@ -55,13 +58,9 @@ taskPayloadSharedEXT MeshletTask meshlet_task;
 
 void main()
 {
-#if USE_TASK_SHADER
     const uint t_idx = gl_LocalInvocationID.x;
     const uint m_idx = meshlet_task.meshlet_ids[gl_WorkGroupID.x];
-#else
-    const uint m_idx = gl_WorkGroupID.x;
-    const uint t_idx = gl_LocalInvocationIndex;
-#endif
+
     const uint vertex_count = uint(meshlets[m_idx].vertices_count);
     const uint triangle_count = uint(meshlets[m_idx].triangles_count);
 
@@ -80,7 +79,7 @@ void main()
 #endif
 
         vec3 local_pos = vec3(vertices[vid].px, vertices[vid].py, vertices[vid].pz);
-        vs_out[i].world_pos = vec4(transform_vec3(local_pos, pc.pos_and_scale, pc.rotation_quat), 1.0);
+        vs_out[i].world_pos = vec4(transform_vec3(local_pos, draw_cmds[meshlet_task.draw_id].pos_and_scale, draw_cmds[meshlet_task.draw_id].rotation_quat), 1.0);
         vs_out[i].normal = vec3(vertices[vid].nx, vertices[vid].ny, vertices[vid].nz);
 
 #if 0

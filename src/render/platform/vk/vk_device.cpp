@@ -161,9 +161,10 @@ VkResult video_driver_create_surface(const window& window, VkInstance instance, 
 VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT, VkDebugUtilsMessageTypeFlagsEXT,
                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void*)
 {
-    auto msg = cpp::stack_string::make_formatted("[VK VALIDATION] %s\n",
-                                                 pCallbackData->pMessage ? pCallbackData->pMessage : "(null)");
-    std::cerr << msg.c_str();
+    std::cerr << "[VK VALIDATION] ";
+    std::cerr << (pCallbackData->pMessage ? pCallbackData->pMessage : "(null)");
+    std::cerr << std::endl;
+
     if (pCallbackData->flags & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
         std::cerr << std::flush;
@@ -353,8 +354,12 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
     vkGetPhysicalDeviceFeatures2(device, &device_features2);
 
     const bool features_supported =
-        cpp::cx_implies(required_features.required(rendering_features_table::eMeshShading),
-                        vk12_features.storageBuffer8BitAccess)
+        cpp::cx_implies(required_features.required(rendering_features_table::eDrawIndirect),
+                        vk11_features.shaderDrawParameters)
+        && cpp::cx_implies(required_features.required(rendering_features_table::eDrawIndirect),
+                           device_features2.features.multiDrawIndirect)
+        && cpp::cx_implies(required_features.required(rendering_features_table::eMeshShading),
+                           vk12_features.storageBuffer8BitAccess)
         && cpp::cx_implies(required_features.required(rendering_features_table::eMeshShading),
                            vk13_features.maintenance4)
         && cpp::cx_implies(required_features.required(rendering_features_table::eDynamicRender),
@@ -535,8 +540,18 @@ result<context> create_vk_context(const window& window, const instance_desc& des
         .pNext                   = &vk13_features,
         .storageBuffer8BitAccess = desc.device_features.required(rendering_features_table::eMeshShading)};
 
+    VkPhysicalDeviceVulkan11Features vk11_features {
+        .sType                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .pNext                = &vk12_features,
+        .shaderDrawParameters = desc.device_features.required(rendering_features_table::eDrawIndirect)};
+
     VkPhysicalDeviceFeatures2 device_features {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &vk12_features, .features = {}};
+        .sType    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext    = &vk11_features,
+        .features = {
+                     .multiDrawIndirect = desc.device_features.required(rendering_features_table::eDrawIndirect),
+                     }
+    };
 
     VkDeviceCreateInfo device_create_info {
         .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,

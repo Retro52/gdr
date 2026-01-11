@@ -1,14 +1,10 @@
 #pragma once
 
-#include <volk.h>
-
 #include <render/platform/vk/vk_image.hpp>
 #include <render/platform/vk/vma.hpp>
 #include <result.hpp>
 #include <window.hpp>
 
-#include <queue>
-#include <string>
 #include <vector>
 
 namespace render
@@ -23,6 +19,7 @@ namespace render
             eMeshShading      = 1 << 1,
             eDynamicRender    = 1 << 2,
             eSynchronization2 = 1 << 3,
+            eDrawIndirect     = 1 << 4,
         };
 
         [[nodiscard]] bool required(rendering_features_table::flag flag) const noexcept

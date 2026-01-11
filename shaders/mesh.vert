@@ -1,4 +1,4 @@
-#version 450
+#version 460
 
 #extension GL_GOOGLE_include_directive: require
 
@@ -10,14 +10,17 @@ layout (binding = 0) readonly buffer Vertices
     Vertex vertices[];
 };
 
+layout (binding = 1) readonly buffer DrawCommands
+{
+    DrawCommand draw_cmds[];
+};
+
 // FIXME: most of this data is temporary and may exceed the hardware limits
 // TODO: move out to the separate buffer
 layout (push_constant) uniform constants
 {
     mat4 vp;
     mat4 view;
-    vec4 pos_and_scale; // xyz - position, w - uniform scale
-    vec4 rotation_quat; // quaternion representing object position
 } pc;
 
 out VS_OUT {
@@ -37,7 +40,7 @@ void main()
     Vertex v = vertices[gl_VertexIndex];
 
     vec3 local_pos = vec3(v.px, v.py, v.pz);
-    vs_out.world_pos = vec4(transform_vec3(local_pos, pc.pos_and_scale, pc.rotation_quat), 1.0);
+    vs_out.world_pos = vec4(transform_vec3(local_pos, draw_cmds[gl_DrawID].pos_and_scale, draw_cmds[gl_DrawID].rotation_quat), 1.0);
     vs_out.normal = vec3(v.nx, v.ny, v.nz);
 
 #if 0

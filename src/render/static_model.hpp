@@ -7,7 +7,6 @@
 #include <render/sm_cache.hpp>
 #include <shaders/constants.h>
 
-#define SM_USE_TS       USE_TASK_SHADER
 #define SM_USE_MESHLETS 1
 
 class static_model
@@ -52,8 +51,6 @@ public:
 public:
     static result<static_model> load_model(const fs::path& path, render::vk_renderer& renderer,
                                            render::vk_scene_geometry_pool& geometry_pool);
-
-    void draw(VkCommandBuffer buffer) const;
 
     [[nodiscard]] u32 indices_count() const;
 
