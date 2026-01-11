@@ -71,9 +71,12 @@ namespace render
         };
 
     public:
+        vk_pipeline() = default;
+
         static result<vk_pipeline> create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
                                                    u32 shaders_count, const VkPushConstantRange* push_constants,
-                                                   u32 pc_count);
+                                                   u32 pc_count,
+                                                   VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
         void bind(VkCommandBuffer command_buffer) const;
 

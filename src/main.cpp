@@ -16,6 +16,7 @@
 #include <imgui/gpu_profile_data.hpp>
 #include <imgui/imgui_layer.hpp>
 #include <imgui/imgui_utils.hpp>
+#include <render/debug/frustum_renderer.hpp>
 #include <render/platform/vk/vk_image.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
@@ -243,6 +244,8 @@ int main(int argc, char* argv[])
     f64 last_frame_time = get_time();
     camera_controller controller(client_events, camera);
 
+    render::debug::frustum_renderer frustum_renderer(renderer);
+
     auto render_loop = [&]()
     {
         const f64 current_time = get_time();
@@ -417,6 +420,12 @@ int main(int argc, char* argv[])
                                                  sizeof(mesh_draw_command));
 #endif
                     });
+
+                if (freeze_camera_cull_dir)
+                {
+                    frustum_renderer.draw(
+                        buffer, camera_proj_view, camera_cull_view, camera_data.get_projection_matrix(25.0F));
+                }
 
 #if !NO_EDITOR
                 {

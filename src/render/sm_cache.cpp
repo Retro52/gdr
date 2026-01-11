@@ -2,6 +2,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <cpp/alg_constexpr.hpp>
+#include <fs/fs.hpp>
 #include <meshoptimizer.h>
 #include <render/sm_cache.hpp>
 #include <render/sm_serializer.hpp>
@@ -10,16 +11,14 @@
 #include <filesystem>
 #include <stack>
 
-#include "fs/fs.hpp"
-
 namespace
 {
-    constexpr fs::path kCacheDir = ".sm_cache";
+    constexpr fs::path kCacheDir = ".vertex_cache";
 
     fs::path get_cache_path(const fs::path& path)
     {
-        u64 last_edit  = std::filesystem::last_write_time(path.c_str()).time_since_epoch().count();
-        auto full_name = cpp::stack_string::make_formatted(".%s_%lu", path.basename().c_str(), last_edit);
+        const u64 last_edit  = std::filesystem::last_write_time(path.c_str()).time_since_epoch().count();
+        const auto full_name = fs::path_string::make_formatted(".%s_%lu", path.basename().c_str(), last_edit);
 
         return fs::path::current_path() / kCacheDir / full_name;
     }

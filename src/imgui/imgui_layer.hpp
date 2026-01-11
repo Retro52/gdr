@@ -1,7 +1,6 @@
 #pragma once
 
 #include <render/platform/vk/vk_renderer.hpp>
-#include <scene/scene.hpp>
 #include <window.hpp>
 
 class imgui_layer

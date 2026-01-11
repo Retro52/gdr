@@ -62,5 +62,6 @@ struct camera_component
     [[nodiscard]] glm::vec3 get_direction(const glm::quat& rotation) const noexcept;
 
     [[nodiscard]] glm::mat4 get_projection_matrix() const noexcept;
+    [[nodiscard]] glm::mat4 get_projection_matrix(f32 far_plane) const noexcept;
     [[nodiscard]] glm::mat4 get_view_matrix(const vec3& position, const glm::quat& rotation) const noexcept;
 };

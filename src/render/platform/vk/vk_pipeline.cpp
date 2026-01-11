@@ -92,6 +92,12 @@ namespace
             }
         }
 
+        if (entries_count == 0)
+        {
+            *update_template = VK_NULL_HANDLE;
+            return VK_SUCCESS;
+        }
+
         VkDescriptorUpdateTemplateCreateInfo create_info = {
             .sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO,
             .descriptorUpdateEntryCount = entries_count,
@@ -306,7 +312,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
 
 result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
                                                  u32 shaders_count, const VkPushConstantRange* push_constants,
-                                                 u32 pc_count)
+                                                 u32 pc_count, VkPrimitiveTopology topology)
 {
     ZoneScoped;
     std::vector<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
@@ -335,7 +341,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
 
     const VkPipelineInputAssemblyStateCreateInfo assembly_state_create_info {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .topology               = topology,
         .primitiveRestartEnable = VK_FALSE,
     };
 
@@ -401,13 +407,13 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     };
 
     const VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info {
-        .sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .pNext                 = nullptr,
-        .depthTestEnable       = VK_TRUE,
-        .depthWriteEnable      = VK_TRUE,
-        .depthCompareOp        = VK_COMPARE_OP_GREATER,
-        .minDepthBounds        = 0.0f,
-        .maxDepthBounds        = 1.0f,
+        .sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .pNext            = nullptr,
+        .depthTestEnable  = VK_TRUE,
+        .depthWriteEnable = VK_TRUE,
+        .depthCompareOp   = VK_COMPARE_OP_GREATER,
+        .minDepthBounds   = 0.0f,
+        .maxDepthBounds   = 1.0f,
     };
 
     VkPipelineLayout pipeline_layout;
