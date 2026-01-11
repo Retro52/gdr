@@ -8,7 +8,6 @@
 
 struct bytes
 {
-public:
     explicit bytes(const u64 size)
         : m_size(size)
         , m_memory(std::make_unique<u8[]>(size))
@@ -28,11 +27,13 @@ public:
     bytes(const bytes& other)
         : bytes(other.size())
     {
+        ZoneScoped;
         std::copy_n(other.get<u8>(), other.size(), m_memory.get());
     }
 
     bytes& operator=(const bytes& other)
     {
+        ZoneScoped;
         if (this == &other)
         {
             return *this;
@@ -77,16 +78,14 @@ public:
         return reinterpret_cast<T*>(m_memory.get());
     }
 
-    template<typename T>
-    [[nodiscard]] T& operator[](const u64 index) noexcept
+    [[nodiscard]] u8& operator[](const u64 index) noexcept
     {
-        return get<T>()[index];
+        return get<u8>()[index];
     }
 
-    template<typename T>
-    [[nodiscard]] const T& operator[](const u64 index) const noexcept
+    [[nodiscard]] const u8& operator[](const u64 index) const noexcept
     {
-        return get<T>()[index];
+        return get<u8>()[index];
     }
 
     [[nodiscard]] u64 size() const noexcept

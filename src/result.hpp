@@ -36,6 +36,7 @@ struct result
     }
 
     result(T&& v) noexcept(std::is_nothrow_move_constructible_v<T>)
+        requires(!std::is_same_v<std::remove_cvref_t<T>, const char*>)
         : status(status::ok)
     {
         ::new (&value) T(std::move(v));
@@ -47,12 +48,9 @@ struct result
     {
     }
 
-    ~result()
+    ~result() noexcept(std::is_nothrow_destructible_v<T>)
     {
-        if (status == status::ok)
-        {
-            value.~T();
-        }
+        destroy_value();
     }
 
     result(const result& rhs)
@@ -90,23 +88,21 @@ struct result
         if (status == status::ok && rhs.status == status::ok)
         {
             value = rhs.value;
+            return *this;
+        }
+
+        destroy_value();
+        status = rhs.status;
+
+        if (status == status::ok)
+        {
+            ::new (&value) T(rhs.value);
         }
         else
         {
-            if (status == status::ok)
-            {
-                value.~T();
-            }
-            status = rhs.status;
-            if (status == status::ok)
-            {
-                ::new (&value) T(rhs.value);
-            }
-            else
-            {
-                message = rhs.message;
-            }
+            message = rhs.message;
         }
+
         return *this;
     }
 
@@ -120,22 +116,19 @@ struct result
         if (status == status::ok && rhs.status == status::ok)
         {
             value = std::move(rhs.value);
+            return *this;
+        }
+
+        destroy_value();
+        status = rhs.status;
+
+        if (status == status::ok)
+        {
+            ::new (&value) T(std::move(rhs.value));
         }
         else
         {
-            if (status == status::ok)
-            {
-                value.~T();
-            }
-            status = rhs.status;
-            if (status == status::ok)
-            {
-                ::new (&value) T(std::move(rhs.value));
-            }
-            else
-            {
-                message = rhs.message;
-            }
+            message = rhs.message;
         }
         return *this;
     }
@@ -146,6 +139,12 @@ struct result
     }
 
     T& operator*() &
+    {
+        assert(status == status::ok);
+        return value;
+    }
+
+    T operator*() &&
     {
         assert(status == status::ok);
         return value;
@@ -167,5 +166,14 @@ struct result
     {
         assert(status == status::ok);
         return &value;
+    }
+
+private:
+    void destroy_value()
+    {
+        if (status == status::ok)
+        {
+            value.~T();
+        }
     }
 };

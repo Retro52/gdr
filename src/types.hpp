@@ -49,6 +49,3 @@ using ivec4 = glm::ivec4;
 using uvec2 = glm::uvec2;
 using uvec3 = glm::uvec3;
 using uvec4 = glm::uvec4;
-
-// type-erased pointer
-using vptr = std::uintptr_t;

@@ -142,14 +142,14 @@ bool load_from_cache(const fs::path& path, std::vector<T>& meshes)
             u64 vertices_stride = 0;
 
             render::load_mesh_cache_stats(
-                &model_cache->operator[]<u8>(data_pointer), indices_count, vertices_count, vertices_stride);
+                &(*model_cache)[data_pointer], indices_count, vertices_count, vertices_stride);
 
             assert(vertices_stride == sizeof(sm_vertex));
 
             data.indices.resize(indices_count);
             data.vertices.resize(vertices_count);
 
-            render::load_mesh_cache_data(&model_cache->operator[]<u8>(data_pointer),
+            render::load_mesh_cache_data(&(*model_cache)[data_pointer],
                                          data.indices.data(),
                                          data.vertices.data(),
                                          indices_count,
