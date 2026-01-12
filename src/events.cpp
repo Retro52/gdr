@@ -271,6 +271,7 @@ void events_queue::queue_event(SDL_Event& event) const
 
 void events_queue::hide_cursor() const
 {
+    ZoneScoped;
     SDL_HideCursor();
     if (auto* ctx = ImGui::GetCurrentContext())
     {
@@ -280,6 +281,7 @@ void events_queue::hide_cursor() const
 
 void events_queue::show_cursor() const
 {
+    ZoneScoped;
     SDL_HideCursor();
     if (auto* ctx = ImGui::GetCurrentContext())
     {
@@ -289,6 +291,7 @@ void events_queue::show_cursor() const
 
 void events_queue::center_cursor() const
 {
+    ZoneScoped;
     ivec2 window_size;
     auto* window = SDL_GetWindowFromID(m_window_id);
     SDL_GetWindowSize(window, &window_size.x, &window_size.y);
