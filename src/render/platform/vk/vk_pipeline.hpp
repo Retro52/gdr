@@ -44,10 +44,10 @@ namespace render
     public:
         struct shader_meta
         {
-            VkShaderStageFlagBits stage;
-
-            u32 bindings_count {0};
             VkDescriptorType bindings[32] {VK_DESCRIPTOR_TYPE_MAX_ENUM};
+            u32 bindings_count {0};
+            u32 push_constant_struct_size {0};
+            VkShaderStageFlagBits stage {VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM};
         };
 
     public:
@@ -57,25 +57,17 @@ namespace render
         static shader_meta parse_spirv(const bytes& spv);
 
     public:
-        VkShaderModule module;
+        VkShaderModule module {VK_NULL_HANDLE};
         shader_meta meta;
     };
 
     class vk_pipeline
     {
     public:
-        struct push_constants
-        {
-            u32 size;
-            u32 offset;
-        };
-
-    public:
         vk_pipeline() = default;
 
         static result<vk_pipeline> create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
-                                                   u32 shaders_count, const VkPushConstantRange* push_constants,
-                                                   u32 pc_count,
+                                                   u32 shaders_count,
                                                    VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
         void bind(VkCommandBuffer command_buffer) const;
@@ -92,13 +84,16 @@ namespace render
 
     private:
         explicit vk_pipeline(VkDevice device, VkPipeline pipeline, VkPipelineLayout pipeline_layout,
-                             VkDescriptorUpdateTemplate update_template, VkPipelineBindPoint pipeline_bind_point);
+                             VkDescriptorUpdateTemplate update_template, VkPipelineBindPoint pipeline_bind_point,
+                             VkShaderStageFlags push_constant_stages);
 
     private:
         VkDevice m_device;
         VkPipeline m_pipeline {VK_NULL_HANDLE};
         VkPipelineLayout m_pipeline_layout {VK_NULL_HANDLE};
         VkDescriptorUpdateTemplate m_descriptor_update_template {VK_NULL_HANDLE};
+
         VkPipelineBindPoint m_pipeline_bind_point {VK_PIPELINE_BIND_POINT_GRAPHICS};
+        VkShaderStageFlags m_push_constant_stages {VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM};
     };
 }

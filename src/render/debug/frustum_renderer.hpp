@@ -22,15 +22,8 @@ namespace render::debug
                 *render::vk_shader::load(renderer, "../shaders/frustum.frag.spv"),
             };
 
-            // TODO: FINALLY parse this stuff from shader & fix the VK_SHADER_STAGE_ALL requirement
-            const VkPushConstantRange range {
-                .stageFlags = VK_SHADER_STAGE_ALL,
-                .offset     = 0,
-                .size       = sizeof(frustum_pc_data),
-            };
-
             m_pipeline = *render::vk_pipeline::create_graphics(
-                renderer, shaders, COUNT_OF(shaders), &range, 1, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+                renderer, shaders, COUNT_OF(shaders), VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
         }
 
         void draw(VkCommandBuffer cmd, const glm::mat4& camera_vp, const glm::mat4& target_view,

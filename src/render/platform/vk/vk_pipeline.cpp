@@ -110,8 +110,25 @@ namespace
         return vkCreateDescriptorUpdateTemplate(device, &create_info, nullptr, update_template);
     }
 
-    VkResult create_pipeline_layout(VkDevice device, const VkPushConstantRange* push_constants, u32 pc_count,
-                                    const vk_shader* shaders, u32 shaders_count, VkPipelineLayout* layout)
+    VkPushConstantRange parse_push_constant_range(const vk_shader* shaders, u32 shaders_count)
+    {
+        VkPushConstantRange pc_range {};
+
+        for (u32 i = 0; i < shaders_count; ++i)
+        {
+            const auto& shader_meta = shaders[i].meta;
+            if (shader_meta.push_constant_struct_size > 0)
+            {
+                pc_range.stageFlags |= shader_meta.stage;
+                pc_range.size = std::max(pc_range.size, shader_meta.push_constant_struct_size);
+            }
+        }
+
+        return pc_range;
+    }
+
+    VkResult create_pipeline_layout(VkDevice device, const vk_shader* shaders, u32 shaders_count,
+                                    const VkPushConstantRange& push_constant_range, VkPipelineLayout* layout)
     {
         u32 entries_count = 0;
         VkDescriptorSetLayoutBinding entries[COUNT_OF(vk_shader::shader_meta::bindings)] {};
@@ -146,8 +163,8 @@ namespace
             .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .setLayoutCount         = 1,
             .pSetLayouts            = &desc_set_layout,
-            .pushConstantRangeCount = pc_count,
-            .pPushConstantRanges    = push_constants,
+            .pushConstantRangeCount = 1,
+            .pPushConstantRanges    = &push_constant_range,
         };
 
         // FIXME: memory leak
@@ -178,12 +195,19 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
 
     struct spv_id
     {
-        u32 name;                               // numerical name
-        SpvOp op_code;                          // associated op type
-        SpvStorageClass storage_class;          // variable storage class
-        u32 constant;                           // constant value
-        spv_id* type;                           // type reference
-        DEBUG_ONLY(std::string readable_name);  // parsed from debug info
+        u32 name {0};                                        // numerical name
+        u32 size {0};                                        // raw size
+        SpvOp op_code {SpvOpNop};                            // associated op type
+        SpvStorageClass storage_class {SpvStorageClassMax};  // variable storage class
+        u32 constant {0};                                    // constant value
+        spv_id* type {nullptr};                              // type reference
+        DEBUG_ONLY(std::string readable_name);               // parsed from debug info
+    };
+
+    struct spv_struct
+    {
+        spv_id* self {nullptr};         // pointer into a spv_ids array declaring instruction (id)
+        std::vector<spv_id*> children;  // associated members
     };
 
     struct spv_push_desc
@@ -193,15 +217,40 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
         u32 set;
     };
 
-    spv_id* push_constant = nullptr;
+    spv_id* push_constant_variable = nullptr;
+
+    std::unordered_map<u32, spv_struct> structs;
     std::unordered_map<u32, spv_push_desc> push_descriptors;
 
-    auto save_if_is_pc = [&](u32 storage_class, spv_id* self)
+    auto save_if_push_constant = [&](u32 storage_class, spv_id* self)
     {
         if (static_cast<SpvStorageClass>(storage_class) == SpvStorageClassPushConstant)
         {
-            push_constant = self;
+            assert(!push_constant_variable);
+            push_constant_variable = self;
         }
+    };
+
+    auto get_spv_struct_size_bytes = [](const spv_struct* target)
+    {
+        u32 size = 0;
+        for (const auto& member : target->children)
+        {
+            size += member ? member->size : 0;
+        }
+
+        assert(size % 8 == 0);
+        return size / 8;
+    };
+
+    auto get_spv_id_root = [](spv_id* id)
+    {
+        while (id->type)
+        {
+            id = id->type;
+        }
+
+        return id;
     };
 
     shader_meta result {};
@@ -257,7 +306,29 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
         case SpvOpEntryPoint :
             result.stage = get_shader_stage(inst[1]);
             break;
+        case SpvOpTypeBool :
+            spv_ids[inst[1]].name    = inst[1];
+            spv_ids[inst[1]].size    = 8;
+            spv_ids[inst[1]].op_code = static_cast<SpvOp>(op_code);
+            break;
+        case SpvOpTypeInt :
+        case SpvOpTypeFloat :
+            spv_ids[inst[1]].name    = inst[1];
+            spv_ids[inst[1]].size    = static_cast<u32>(inst[2]);
+            spv_ids[inst[1]].op_code = static_cast<SpvOp>(op_code);
+            break;
+        case SpvOpTypeVector :
+        case SpvOpTypeMatrix :
+            spv_ids[inst[1]].name    = inst[1];
+            spv_ids[inst[1]].size    = spv_ids[inst[2]].size * static_cast<u32>(inst[3]);
+            spv_ids[inst[1]].op_code = static_cast<SpvOp>(op_code);
+            break;
         case SpvOpTypeStruct :
+            structs[inst[1]].self = &spv_ids[inst[1]];
+            for (u32 i = 2; i < op_word_count; i++)
+            {
+                structs[inst[1]].children.push_back(&spv_ids[inst[i]]);
+            }
         case SpvOpTypeImage :
         case SpvOpTypeSampler :
         case SpvOpTypeSampledImage :
@@ -270,14 +341,13 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
             spv_ids[inst[1]].type          = &spv_ids[inst[3]];
             spv_ids[inst[1]].op_code       = static_cast<SpvOp>(op_code);
             spv_ids[inst[1]].storage_class = static_cast<SpvStorageClass>(inst[2]);
-            save_if_is_pc(inst[2], &spv_ids[inst[1]]);
             break;
         case SpvOpVariable :
             spv_ids[inst[2]].name          = inst[2];
             spv_ids[inst[2]].type          = &spv_ids[inst[1]];
             spv_ids[inst[2]].op_code       = static_cast<SpvOp>(op_code);
             spv_ids[inst[2]].storage_class = static_cast<SpvStorageClass>(inst[3]);
-            save_if_is_pc(inst[3], &spv_ids[inst[2]]);
+            save_if_push_constant(inst[3], &spv_ids[inst[2]]);
             break;
         case SpvOpConstant :
             spv_ids[inst[2]].name     = inst[2];
@@ -297,22 +367,25 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
         assert(push_desc.binding < COUNT_OF(result.bindings) && "binding id too high?");
 
         // find the root type declaration
-        spv_id* variable = push_desc.variable;
-        while (variable->type)
-        {
-            variable = variable->type;
-        }
+        const spv_id* declaration = get_spv_id_root(push_desc.variable);
 
         result.bindings_count              = std::max(result.bindings_count, push_desc.binding + 1);
-        result.bindings[push_desc.binding] = get_descriptor_type(variable->op_code);
+        result.bindings[push_desc.binding] = get_descriptor_type(declaration->op_code);
+    }
+
+    if (push_constant_variable)
+    {
+        const spv_id* declaration        = get_spv_id_root(push_constant_variable);
+        result.push_constant_struct_size = declaration->op_code == SpvOpTypeStruct
+                                             ? get_spv_struct_size_bytes(&structs[declaration->name])
+                                             : declaration->size;
     }
 
     return result;
 }
 
 result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
-                                                 u32 shaders_count, const VkPushConstantRange* push_constants,
-                                                 u32 pc_count, VkPrimitiveTopology topology)
+                                                 u32 shaders_count, VkPrimitiveTopology topology)
 {
     ZoneScoped;
     std::vector<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
@@ -417,8 +490,9 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     };
 
     VkPipelineLayout pipeline_layout;
+    VkPushConstantRange push_constant_range = parse_push_constant_range(shaders, shaders_count);
     create_pipeline_layout(
-        renderer.get_context().device, push_constants, pc_count, shaders, shaders_count, &pipeline_layout);
+        renderer.get_context().device, shaders, shaders_count, push_constant_range, &pipeline_layout);
 
     const VkGraphicsPipelineCreateInfo pipeline_create_info {
         .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -452,8 +526,12 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
                                              shaders_count,
                                              &update_template));
 
-    return vk_pipeline {
-        renderer.get_context().device, vk_handle, pipeline_layout, update_template, VK_PIPELINE_BIND_POINT_GRAPHICS};
+    return vk_pipeline {renderer.get_context().device,
+                        vk_handle,
+                        pipeline_layout,
+                        update_template,
+                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        push_constant_range.stageFlags};
 }
 
 void vk_pipeline::bind(VkCommandBuffer command_buffer) const
@@ -463,7 +541,7 @@ void vk_pipeline::bind(VkCommandBuffer command_buffer) const
 
 void vk_pipeline::push_constant(VkCommandBuffer command_buffer, u32 size, const void* data) const
 {
-    vkCmdPushConstants(command_buffer, m_pipeline_layout, VK_SHADER_STAGE_ALL, 0, size, data);
+    vkCmdPushConstants(command_buffer, m_pipeline_layout, m_push_constant_stages, 0, size, data);
 }
 
 void vk_pipeline::push_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_info* updates) const
@@ -472,11 +550,13 @@ void vk_pipeline::push_descriptor_set(VkCommandBuffer command_buffer, const vk_d
 }
 
 vk_pipeline::vk_pipeline(VkDevice device, VkPipeline pipeline, VkPipelineLayout pipeline_layout,
-                         VkDescriptorUpdateTemplate update_template, VkPipelineBindPoint pipeline_bind_point)
+                         VkDescriptorUpdateTemplate update_template, VkPipelineBindPoint pipeline_bind_point,
+                         VkShaderStageFlags push_constant_stages)
     : m_device(device)
     , m_pipeline(pipeline)
     , m_pipeline_layout(pipeline_layout)
     , m_descriptor_update_template(update_template)
     , m_pipeline_bind_point(pipeline_bind_point)
+    , m_push_constant_stages(push_constant_stages)
 {
 }

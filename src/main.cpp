@@ -144,12 +144,6 @@ int main(int argc, char* argv[])
         },
         &renderer);
 
-    const VkPushConstantRange range {
-        .stageFlags = VK_SHADER_STAGE_ALL,
-        .offset     = 0,
-        .size       = sizeof(pc_data),
-    };
-
     render::vk_shader shaders[] = {
 #if SM_USE_MESHLETS
         *render::vk_shader::load(renderer, "../shaders/meshlets.task.spv"),
@@ -160,7 +154,7 @@ int main(int argc, char* argv[])
         *render::vk_shader::load(renderer, "../shaders/meshlets.frag.spv"),
     };
 
-    const auto render_pipeline = *render::vk_pipeline::create_graphics(renderer, shaders, COUNT_OF(shaders), &range, 1);
+    const auto render_pipeline = *render::vk_pipeline::create_graphics(renderer, shaders, COUNT_OF(shaders));
 
 #if !NO_EDITOR
     imgui_layer editor(client_window, renderer);
