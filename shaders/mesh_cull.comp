@@ -1,0 +1,45 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive: require
+
+#include "types.glsl"
+#include "common.glsl"
+
+layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+layout (binding = 0) readonly buffer DrawCommands
+{
+    DrawCommand draw_data[];
+};
+
+layout (binding = 1) writeonly buffer DrawMeshIndirects
+{
+    DrawMeshIndirect draw_indirect_cmds[];
+};
+
+layout (push_constant) uniform constants
+{
+    vec4 frustum[6];
+    uint draw_count;
+} pc;
+
+void main()
+{
+    uint mi = gl_WorkGroupID.x;
+    uint ti = gl_LocalInvocationID.x;
+
+    uint idx = mi * gl_WorkGroupSize.x + ti;
+    if (idx < pc.draw_count)
+    {
+        vec3 center = transform_vec3(draw_data[idx].bounding_sphere.xyz, draw_data[idx].pos_and_scale, draw_data[idx].rotation_quat);
+        float radius = draw_data[idx].bounding_sphere.w * draw_data[idx].pos_and_scale.w;
+
+        bool visible = true;
+        for (int i = 0; i < 6; ++i)
+            visible = visible && dot(pc.frustum[i], vec4(center, 1)) > -radius;
+
+        draw_indirect_cmds[idx].group_size[0] = visible ? ((draw_data[idx].meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups) : 0;
+        draw_indirect_cmds[idx].group_size[1] = 1;
+        draw_indirect_cmds[idx].group_size[2] = 1;
+    }
+}

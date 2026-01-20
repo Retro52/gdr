@@ -58,6 +58,6 @@ function(run_codegen)
         list(APPEND CODEGEN_OUTPUTS ${SOURCE_CODEGEN_OUTPUT})
     endforeach ()
 
-    # Export to parent scope so you can use it
     set(CODEGEN_GENERATED_HEADERS ${CODEGEN_OUTPUTS} PARENT_SCOPE)
+    add_custom_target(run_codegen ALL DEPENDS ${CODEGEN_OUTPUTS})
 endfunction()

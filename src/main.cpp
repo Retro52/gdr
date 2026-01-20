@@ -8,6 +8,7 @@
 #include <camera_controller.hpp>
 #include <codegen/camera_controller.hpp>
 #include <codegen/imgui/gpu_profile_data.hpp>
+#include <codegen/render_settings.hpp>
 #include <codegen/scene/components.hpp>
 #include <events.hpp>
 #include <fs/fs.hpp>
@@ -17,6 +18,7 @@
 #include <imgui/imgui_layer.hpp>
 #include <imgui/imgui_utils.hpp>
 #include <render/debug/frustum_renderer.hpp>
+#include <render/platform/vk/vk_barrier.hpp>
 #include <render/platform/vk/vk_image.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
@@ -31,18 +33,12 @@
 
 #define NO_EDITOR 0
 
-// FIXME: proper clean-up for vk handles
-
 struct alignas(16) mesh_draw_command
 {
     vec4 pos_and_scale;
     glm::quat rotation_quat;
-
-    union
-    {
-        VkDrawIndexedIndirectCommand indexed;
-        VkDrawMeshTasksIndirectCommandEXT mesh;
-    };
+    vec4 bounding_sphere;
+    u32 meshlets_count;
 };
 
 struct pc_data
@@ -50,6 +46,31 @@ struct pc_data
     glm::mat4 pv;
     glm::mat4 view;
     u32 use_culling {1};
+};
+
+struct cull_data
+{
+    glm::mat4 view;
+    glm::mat4 projection;
+};
+
+struct comp_buf_pc
+{
+    vec4 frustum[6];
+    u32 draw_count;
+
+    comp_buf_pc& build_frustum(const glm::mat4& proj, const glm::mat4& view, f32 draw_distance)
+    {
+        auto t_pv  = glm::transpose(proj * view);
+        frustum[0] = t_pv[3] + t_pv[0];  // left
+        frustum[1] = t_pv[3] - t_pv[0];  // right
+        frustum[2] = t_pv[3] + t_pv[1];  // bottom
+        frustum[3] = t_pv[3] - t_pv[1];  // top
+        frustum[4] = t_pv[3] - t_pv[2];  // near
+        // frustum[5] = vec4(0, 0, -1, draw_distance);
+
+        return *this;
+    }
 };
 
 f64 bytes_to_mb(u64 bytes)
@@ -69,7 +90,7 @@ void draw_shared_buffer_stats(const char* label, const render::vk_shared_buffer&
 void draw_tris_per_meshlet_score(f64 tpm_average)
 {
 #if SM_USE_MESHLETS
-    const f64 upper_bound = static_cast<f64>(static_model::kMaxTrianglesPerMeshlet);
+    constexpr f64 upper_bound = static_cast<f64>(static_model::kMaxTrianglesPerMeshlet);
 
     if (tpm_average > upper_bound * 0.9)
     {
@@ -92,6 +113,49 @@ void draw_tris_per_meshlet_score(f64 tpm_average)
         ImGui::Text("TPM Score: bad (%lf%% from max)", tpm_average * 100.0F / upper_bound);
     }
 #endif
+}
+
+void upload_draw_data(const u32 draw_count, const render::vk_buffer_transfer& transfer,
+                      const render::vk_buffer& draw_dst, const static_model models[], u32 models_count)
+{
+    ZoneScoped;
+
+    if (models_count == 0)
+    {
+        return;
+    }
+
+    std::vector<mesh_draw_command> draw_cmds(draw_count);
+    const u32 kVolumeItemsPerSide = std::lround(std::cbrt(draw_count));
+
+    for (u32 i = 0; i < draw_count; ++i)
+    {
+        draw_cmds[i].pos_and_scale = {i % kVolumeItemsPerSide,
+                                      (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
+                                      i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
+                                      1.0F};
+        draw_cmds[i].pos_and_scale *= vec4(1.5F, 1.5F, 1.5F, 1.0F);
+
+#if 0
+        draw_cmds[i].rotation_quat = glm::quatLookAt(
+            glm::normalize(vec3(draw_cmds[i].pos_and_scale) - camera_transform.position), vec3(0, 1, 0));
+#endif
+
+#if SM_USE_MESHLETS
+        draw_cmds[i].meshlets_count  = models[models_count - 1].meshlets_count();
+        draw_cmds[i].bounding_sphere = models[models_count - 1].get_bounding_sphere();
+#else
+        draw_cmds[i].indexed.firstIndex    = 0;
+        draw_cmds[i].indexed.firstInstance = 0;
+        draw_cmds[i].indexed.vertexOffset  = 0;
+        draw_cmds[i].indexed.instanceCount = 1;
+        draw_cmds[i].indexed.indexCount    = component.model.indices_count();
+#endif
+    }
+    render::upload_data(transfer,
+                        draw_dst,
+                        reinterpret_cast<u8*>(draw_cmds.data()),
+                        {.size = sizeof(mesh_draw_command) * draw_cmds.size()});
 }
 
 int main(int argc, char* argv[])
@@ -136,6 +200,17 @@ int main(int argc, char* argv[])
         &exit);
 
     client_events.add_watcher(
+        event_type::key_pressed,
+        [](const event_payload& payload, void* user_data)
+        {
+            if (payload.keyboard.key == keycode::sc_escape)
+            {
+                *static_cast<bool*>(user_data) = true;
+            }
+        },
+        &exit);
+
+    client_events.add_watcher(
         event_type::window_size_changed,
         +[](const event_payload& payload, void* user_data)
         {
@@ -155,6 +230,8 @@ int main(int argc, char* argv[])
     };
 
     const auto render_pipeline = *render::vk_pipeline::create_graphics(renderer, shaders, COUNT_OF(shaders));
+    const auto cull_pass       = *render::vk_pipeline::create_compute(
+        renderer, *render::vk_shader::load(renderer, "../shaders/mesh_cull.comp.spv"));
 
 #if !NO_EDITOR
     imgui_layer editor(client_window, renderer);
@@ -214,25 +291,45 @@ int main(int argc, char* argv[])
     constexpr u32 kQueryPoolCount    = 64;
     VkQueryPool timestamp_query_pool = *render::create_vk_query_pool(renderer.get_context().device, kQueryPoolCount);
 
-    gpu_profile_data profile_data;
-
-    glm::mat4 camera_proj_view;
-    glm::mat4 camera_cull_view;
-    bool enable_cone_culling    = true;
-    bool freeze_camera_cull_dir = false;
-
-    constexpr u32 kRepeatDraws    = 3'375;
-    const u32 kVolumeItemsPerSide = std::lround(std::cbrt(kRepeatDraws));
+    render::vk_buffer draw_data =
+        *render::create_buffer(4 * 1024 * 1024,
+                               VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                               renderer.get_context().allocator,
+                               0);
 
     render::vk_buffer draw_indirect_buffer = *render::create_buffer(
-        kRepeatDraws * sizeof(mesh_draw_command),
+        1024 * 1024,
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         renderer.get_context().allocator,
         0);
 
-    auto get_time = []()
+    gpu_profile_data profile_data;
+
+    cull_data cull_matrices {};
+    render_settings client_render_settings;
+
+    glm::mat4 camera_proj_view;
+    bool enable_cone_culling    = true;
+    bool freeze_camera_cull_dir = false;
+
+    std::vector<static_model> models;
+    u32 scene_triangles = 0;
+    u32 scene_meshlets  = 0;
+
+    client_scene.get_view<static_model_component>().each(
+        [&](const static_model_component& component)
+        {
+            models.push_back(component.model);
+            scene_meshlets += component.model.meshlets_count();
+            scene_triangles += component.model.indices_count() / 3;
+        });
+
+    constexpr u32 kRepeatDraws = 3'375;
+    upload_draw_data(kRepeatDraws, geometry_pool.transfer, draw_data, models.data(), models.size());
+
+    auto get_time = []<typename T = f64>()
     {
-        return static_cast<f64>(SDL_GetPerformanceCounter()) / static_cast<f64>(SDL_GetPerformanceFrequency());
+        return static_cast<T>(SDL_GetPerformanceCounter()) / static_cast<T>(SDL_GetPerformanceFrequency());
     };
 
     f64 last_frame_time = get_time();
@@ -249,7 +346,7 @@ int main(int argc, char* argv[])
 
         auto& camera_transform = camera.get_component<transform_component>();
         auto& camera_data      = camera.get_component<camera_component>();
-        controller.update_position(camera_transform, camera_data, dt);
+        controller.update_position(camera_transform, camera_data, static_cast<f32>(dt));
 
         if (!renderer.acquire_frame())
         {
@@ -307,6 +404,40 @@ int main(int argc, char* argv[])
                 vkCmdResetQueryPool(buffer, timestamp_query_pool, 0, kQueryPoolCount);
                 vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool, 0);
 
+                if (!freeze_camera_cull_dir)
+                {
+                    cull_matrices.projection =
+                        camera_data.get_projection_matrix(client_render_settings.render_distance);
+                    cull_matrices.view =
+                        camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
+                }
+
+                if (enable_cone_culling)
+                {
+                    TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "vk cmd dispatch"));
+
+                    const render::vk_descriptor_info cull_pass_bindings[] = {
+                        draw_data.buffer,
+                        draw_indirect_buffer.buffer,
+                    };
+
+                    cull_pass.bind(buffer);
+                    cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
+                    cull_pass.push_constant(
+                        buffer,
+                        comp_buf_pc {.draw_count = kRepeatDraws}.build_frustum(
+                            cull_matrices.projection, cull_matrices.view, client_render_settings.render_distance));
+
+                    vkCmdDispatch(buffer, (kRepeatDraws + 31) / 32, 1, 1);
+
+                    render::cmd_stage_barrier(
+                        buffer,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+                        VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                }
+
                 render::transition_image(buffer,
                                          renderer.get_frame_swapchain_image().image,
                                          VK_IMAGE_LAYOUT_UNDEFINED,
@@ -314,14 +445,8 @@ int main(int argc, char* argv[])
 
                 vkCmdBeginRendering(buffer, &rendering_info);
 
-                camera_proj_view = camera_data.get_projection_matrix()
-                                 * camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
-
-                if (!freeze_camera_cull_dir)
-                {
-                    camera_cull_view =
-                        camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
-                }
+                vkCmdSetScissor(buffer, 0, 1, &scissor);
+                vkCmdSetViewport(buffer, 0, 1, &viewport);
 
                 render_pipeline.bind(buffer);
 
@@ -330,7 +455,7 @@ int main(int argc, char* argv[])
                     geometry_pool.vertex.buffer.buffer,
                     geometry_pool.meshlets.buffer.buffer,
                     geometry_pool.meshlets_payload.buffer.buffer,
-                    draw_indirect_buffer.buffer,
+                    draw_data.buffer,
                 };
                 render_pipeline.push_descriptor_set(buffer, updates);
 #else
@@ -339,86 +464,38 @@ int main(int argc, char* argv[])
                 render_pipeline.push_descriptor_set(buffer, updates);
 #endif
 
-                vkCmdSetScissor(buffer, 0, 1, &scissor);
-                vkCmdSetViewport(buffer, 0, 1, &viewport);
-
 #if !SM_USE_MESHLETS
                 vkCmdBindIndexBuffer(buffer, geometry_pool.index.buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 #endif
 
-                u32 scene_triangles = 0;
-                u32 scene_meshlets  = 0;
+                camera_proj_view = camera_data.get_projection_matrix()
+                                 * camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
+                {
+                    ZoneScopedN("main.component.model.draw");
+                    TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "draw call"));
 
-                client_scene.get_view<static_model_component>().each(
-                    [&](static_model_component& component)
-                    {
-                        ZoneScopedN("main.component.model.draw");
-                        TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "draw call"));
-
-                        scene_meshlets += component.model.meshlets_count();
-                        scene_triangles += component.model.indices_count() / 3;
-
-                        {
-                            ZoneScopedN("FIXME.data.upload");
-                            std::array<mesh_draw_command, kRepeatDraws> draw_cmds {};
-
-                            for (u32 i = 0; i < kRepeatDraws; ++i)
-                            {
-                                draw_cmds[i].pos_and_scale = {i % kVolumeItemsPerSide,
-                                                              (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
-                                                              i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
-                                                              1.0F};
-#if !KITTY
-                                draw_cmds[i].pos_and_scale *= vec4(20.0F, 20.0F, 20.0F, 1.0F);
-#else
-                                draw_cmds[i].pos_and_scale *= vec4(1.5F, 1.5F, 1.5F, 1.0F);
-#endif
-                                draw_cmds[i].rotation_quat = glm::quatLookAt(
-                                    glm::normalize(vec3(draw_cmds[i].pos_and_scale) - camera_transform.position),
-                                    vec3(0, 1, 0));
-#if SM_USE_MESHLETS
-                                draw_cmds[i].mesh.groupCountX =
-                                    component.model.meshlets_count() / shader_constants::kTaskWorkGroups;
-                                draw_cmds[i].mesh.groupCountY = 1;
-                                draw_cmds[i].mesh.groupCountZ = 1;
-#else
-                                draw_cmds[i].indexed.firstIndex    = 0;
-                                draw_cmds[i].indexed.firstInstance = 0;
-                                draw_cmds[i].indexed.vertexOffset  = 0;
-                                draw_cmds[i].indexed.instanceCount = 1;
-                                draw_cmds[i].indexed.indexCount    = component.model.indices_count();
-#endif
-                            }
-                            render::upload_data(geometry_pool.transfer,
-                                                draw_indirect_buffer,
-                                                reinterpret_cast<u8*>(draw_cmds.data()),
-                                                {.size = sizeof(mesh_draw_command) * draw_cmds.size()});
-                        }
-
-                        render_pipeline.push_constant(buffer,
-                                                      pc_data {.pv          = camera_proj_view,
-                                                               .view        = camera_cull_view,
-                                                               .use_culling = enable_cone_culling});
+                    render_pipeline.push_constant(buffer,
+                                                  pc_data {.pv          = camera_proj_view,
+                                                           .view        = cull_matrices.view,
+                                                           .use_culling = enable_cone_culling});
 
 #if SM_USE_MESHLETS
-                        vkCmdDrawMeshTasksIndirectEXT(buffer,
-                                                      draw_indirect_buffer.buffer,
-                                                      offsetof(mesh_draw_command, mesh),
-                                                      kRepeatDraws,
-                                                      sizeof(mesh_draw_command));
+                    vkCmdDrawMeshTasksIndirectEXT(buffer,
+                                                  draw_indirect_buffer.buffer,
+                                                  0,
+                                                  kRepeatDraws,
+                                                  sizeof(VkDrawMeshTasksIndirectCommandEXT));
 #else
-                        vkCmdDrawIndexedIndirect(buffer,
-                                                 draw_indirect_buffer.buffer,
-                                                 offsetof(mesh_draw_command, indexed),
-                                                 kRepeatDraws,
-                                                 sizeof(mesh_draw_command));
+                    vkCmdDrawIndexedIndirect(buffer,
+                                             draw_indirect_buffer.buffer,
+                                             offsetof(mesh_draw_command, indexed),
+                                             kRepeatDraws,
+                                             sizeof(mesh_draw_command));
 #endif
-                    });
-
+                }
                 if (freeze_camera_cull_dir)
                 {
-                    frustum_renderer.draw(
-                        buffer, camera_proj_view, camera_cull_view, camera_data.get_projection_matrix(25.0F));
+                    frustum_renderer.draw(buffer, camera_proj_view, cull_matrices.view, cull_matrices.projection);
                 }
 
 #if !NO_EDITOR
@@ -430,6 +507,9 @@ int main(int argc, char* argv[])
 
                     ImGui::SeparatorText("camera controller");
                     codegen::draw(controller);
+
+                    ImGui::SeparatorText("renderer settings");
+                    codegen::draw(client_render_settings);
 
                     ImGui::SeparatorText("gpu timings");
                     codegen::draw(profile_data);
@@ -520,10 +600,10 @@ int main(int argc, char* argv[])
                                     kRepeatDraws * scene_triangles,
                                     kRepeatDraws * scene_meshlets);
 
-                auto str = cpp::stack_string::make_formatted("CPU: %.3lfms; GPU: %.3lfms; Tris/s (B): %lf",
-                                                             dt * 1000.0F,
-                                                             profile_data.gpu_render_time,
-                                                             profile_data.tris_per_second);
+                const auto str = cpp::stack_string::make_formatted("CPU: %.3lfms; GPU: %.3lfms; Tris/s (B): %lf",
+                                                                   dt * 1000.0F,
+                                                                   profile_data.gpu_render_time,
+                                                                   profile_data.tris_per_second);
                 SDL_SetWindowTitle(client_window.get_native_handle().window, str.c_str());
 #endif
 

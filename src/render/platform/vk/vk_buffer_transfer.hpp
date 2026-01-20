@@ -23,5 +23,12 @@ namespace render
 
     void destroy_buffer_transfer(VkDevice device, VmaAllocator allocator, vk_buffer_transfer& buffer_transfer);
 
-    void upload_data(const vk_buffer_transfer& transfer, vk_buffer& dst, const u8* data, const VkBufferCopy& region);
+    void upload_data(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* data,
+                     const VkBufferCopy& region);
+
+    template<typename T>
+    void upload_data(const vk_buffer_transfer& transfer, const vk_buffer& dst, const T* data, const u64 count)
+    {
+        upload_data(transfer, dst, reinterpret_cast<const u8*>(data), VkBufferCopy {.size = count * sizeof(T)});
+    }
 }

@@ -27,7 +27,7 @@ namespace render::debug
         }
 
         void draw(VkCommandBuffer cmd, const glm::mat4& camera_vp, const glm::mat4& target_view,
-                  const glm::mat4& target_proj)
+                  const glm::mat4& target_proj) const
         {
             const frustum_pc_data pc {
                 .renderer_vp   = camera_vp,

@@ -56,9 +56,12 @@ public:
 
     [[nodiscard]] u32 meshlets_count() const;
 
+    [[nodiscard]] vec4 get_bounding_sphere() const;
+
 private:
     struct stats
     {
+        vec4 b_sphere;
         u64 meshlets_count;
         u64 vertex_count;
         u64 index_count;

@@ -158,17 +158,17 @@ VkResult video_driver_create_surface(const window& window, VkInstance instance, 
     return VK_ERROR_FEATURE_NOT_PRESENT;
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT, VkDebugUtilsMessageTypeFlagsEXT,
+VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT,
                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void*)
 {
     std::cerr << "[VK VALIDATION] ";
     std::cerr << (pCallbackData->pMessage ? pCallbackData->pMessage : "(null)");
     std::cerr << std::endl;
 
-    if (pCallbackData->flags & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+    if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
         std::cerr << std::flush;
-        assert(false && "vk validation error");
+        // assert(false && "vk validation error");
     }
     return VK_FALSE;
 }

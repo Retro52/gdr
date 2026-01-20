@@ -35,9 +35,13 @@ void render::destroy_buffer_transfer(VkDevice device, VmaAllocator allocator, vk
     render::destroy_command_buffer(device, buffer_transfer.staging_command_buffer);
 }
 
-void render::upload_data(const vk_buffer_transfer& transfer, vk_buffer& dst, const u8* data, const VkBufferCopy& region)
+void render::upload_data(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* data, const VkBufferCopy& region)
 {
     ZoneScoped;
+
+    assert(data != nullptr);
+    assert(region.dstOffset + region.size < dst.size);
+    assert(region.srcOffset + region.size < transfer.staging_buffer.size);
 
     std::copy_n(data, region.size, (static_cast<u8*>(transfer.mapped)) + region.srcOffset);
 

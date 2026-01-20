@@ -31,7 +31,22 @@ struct MeshletTask
 
 struct DrawCommand
 {
-    vec4 pos_and_scale; // xyz - position, w - uniform scale
-    vec4 rotation_quat; // quaternion representing object position
-    uint _[8];          // padding, reserved for the draw command data
+    vec4 pos_and_scale;   // xyz - position, w - uniform scale
+    vec4 rotation_quat;   // quaternion representing object position
+    vec4 bounding_sphere; // bounding sphere of the whole mesh
+    uint meshlets_count;
+};
+
+struct DrawMeshIndirect
+{
+    uint group_size[3];
+};
+
+struct DrawIndexedIndirect
+{
+    uint index_count;
+    uint instance_count;
+    uint first_index;
+    int vertex_offset;
+    uint first_instance;
 };

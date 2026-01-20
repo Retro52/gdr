@@ -92,9 +92,13 @@ struct camera_controller
         transform.rotation = quat_yaw * quat_pitch;
     }
 
-    void update_position(transform_component& transform, const camera_component& cam, f32 dt)
+    void update_position(transform_component& transform, const camera_component& cam, const f32 dt) const
     {
         ZoneScoped;
+        if (m_queue.get_mouse_button_state(mouse_button::left) != button_state::down)
+        {
+            return;
+        }
 
         const glm::vec3 up      = cam.get_up(transform.rotation);
         const glm::vec3 forward = cam.get_direction(transform.rotation);

@@ -23,6 +23,36 @@ namespace
         dst_buffer.offset += count * sizeof(T);
     }
 
+    vec4 compute_bounding_sphere(const std::vector<static_model::mesh_data>& meshes)
+    {
+        ZoneScoped;
+        u32 count = 0;
+        vec3 center {};
+
+        for (const auto& mesh : meshes)
+        {
+            count += mesh.vertices.size();
+            for (const auto& v : mesh.vertices)
+            {
+                center += v.position;
+            }
+        }
+
+        f32 radius = 0.0F;
+        center /= count;
+
+        for (const auto& mesh : meshes)
+        {
+            count += mesh.vertices.size();
+            for (const auto& v : mesh.vertices)
+            {
+                radius = glm::max(radius, glm::distance(center, v.position));
+            }
+        }
+
+        return {center, radius};
+    }
+
 #if SM_USE_MESHLETS
     void build_meshlets(const static_model::mesh_data& mesh, std::vector<static_model::meshlet>& meshlets,
                         std::vector<u8>& meshlets_payload, u32 base_payload_offset) noexcept
@@ -139,10 +169,10 @@ result<static_model> static_model::load_model(const fs::path& path, render::vk_r
 {
     ZoneScoped;
 
-    stats model_stats {};
     std::vector<mesh_data> model_meshes;
     if (render::load_model<vertex>(path, model_meshes))
     {
+        stats model_stats {.b_sphere = compute_bounding_sphere(model_meshes)};
 #if SM_USE_MESHLETS
         ZoneScopedN("upload meshlets data");
 
@@ -188,6 +218,11 @@ u32 static_model::indices_count() const
 [[nodiscard]] u32 static_model::meshlets_count() const
 {
     return m_stats.meshlets_count;
+}
+
+[[nodiscard]] vec4 static_model::get_bounding_sphere() const
+{
+    return m_stats.b_sphere;
 }
 
 static_model::static_model(const stats& stats)

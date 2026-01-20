@@ -66,6 +66,8 @@ namespace render
     public:
         vk_pipeline() = default;
 
+        static result<vk_pipeline> create_compute(const vk_renderer& renderer, const vk_shader& shader);
+
         static result<vk_pipeline> create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
                                                    u32 shaders_count,
                                                    VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
@@ -83,12 +85,11 @@ namespace render
         }
 
     private:
-        explicit vk_pipeline(VkDevice device, VkPipeline pipeline, VkPipelineLayout pipeline_layout,
+        explicit vk_pipeline(VkPipeline pipeline, VkPipelineLayout pipeline_layout,
                              VkDescriptorUpdateTemplate update_template, VkPipelineBindPoint pipeline_bind_point,
                              VkShaderStageFlags push_constant_stages);
 
     private:
-        VkDevice m_device;
         VkPipeline m_pipeline {VK_NULL_HANDLE};
         VkPipelineLayout m_pipeline_layout {VK_NULL_HANDLE};
         VkDescriptorUpdateTemplate m_descriptor_update_template {VK_NULL_HANDLE};

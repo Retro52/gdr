@@ -159,12 +159,15 @@ namespace
         VkDescriptorSetLayout desc_set_layout;
         VK_ASSERT_ON_FAIL(vkCreateDescriptorSetLayout(device, &desc_set_layout_info, nullptr, &desc_set_layout));
 
+        const u32 push_constant_count                   = push_constant_range.size > 0 ? 1 : 0;
+        const VkPushConstantRange* push_constant_ranges = push_constant_count > 0 ? &push_constant_range : nullptr;
+
         const VkPipelineLayoutCreateInfo pipeline_layout_create_info {
             .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .setLayoutCount         = 1,
             .pSetLayouts            = &desc_set_layout,
-            .pushConstantRangeCount = 1,
-            .pPushConstantRanges    = &push_constant_range,
+            .pushConstantRangeCount = push_constant_count,
+            .pPushConstantRanges    = push_constant_ranges,
         };
 
         // FIXME: memory leak
@@ -273,7 +276,6 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     // 5 = first actual instruction offset as per specification
     inst += 5;
 
-    // TODO: parse shader push range
     const u32* end = static_cast<const u32*>(spv.end());
     while (inst < end)
     {
@@ -315,6 +317,13 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
         case SpvOpTypeFloat :
             spv_ids[inst[1]].name    = inst[1];
             spv_ids[inst[1]].size    = static_cast<u32>(inst[2]);
+            spv_ids[inst[1]].op_code = static_cast<SpvOp>(op_code);
+            break;
+        case SpvOpTypeArray :
+            assert(spv_ids[inst[3]].name == inst[3]);
+            assert(spv_ids[inst[3]].constant > 0);
+            spv_ids[inst[1]].name    = inst[1];
+            spv_ids[inst[1]].size    = spv_ids[inst[2]].size * spv_ids[inst[3]].constant;
             spv_ids[inst[1]].op_code = static_cast<SpvOp>(op_code);
             break;
         case SpvOpTypeVector :
@@ -381,7 +390,43 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
                                              : declaration->size;
     }
 
+    if (result.push_constant_struct_size > 128)
+    {
+        std::cerr << "WARNING: Parsed PushConstants range is over 128 bytes. Parsed size: "
+                  << result.push_constant_struct_size << std::endl;
+    }
+
     return result;
+}
+
+result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, const vk_shader& shader)
+{
+    assert(shader.meta.stage == VK_SHADER_STAGE_COMPUTE_BIT);
+
+    VkPipelineLayout pipeline_layout;
+    VK_RETURN_ON_FAIL(create_pipeline_layout(
+        renderer.get_context().device, &shader, 1, parse_push_constant_range(&shader, 1), &pipeline_layout));
+
+    VkDescriptorUpdateTemplate update_template;
+    VK_RETURN_ON_FAIL(create_update_template(
+        renderer.get_context().device, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, &shader, 1, &update_template));
+
+    const VkPipelineShaderStageCreateInfo shader_stage_info = {
+        .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage  = shader.meta.stage,
+        .module = shader.module,
+        .pName  = "main",
+    };
+
+    const VkComputePipelineCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO, .stage = shader_stage_info, .layout = pipeline_layout};
+
+    VkPipeline pipeline;
+    VK_RETURN_ON_FAIL(
+        vkCreateComputePipelines(renderer.get_context().device, VK_NULL_HANDLE, 1, &create_info, nullptr, &pipeline));
+
+    return vk_pipeline {
+        pipeline, pipeline_layout, update_template, VK_PIPELINE_BIND_POINT_COMPUTE, VK_SHADER_STAGE_COMPUTE_BIT};
 }
 
 result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
@@ -526,12 +571,8 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
                                              shaders_count,
                                              &update_template));
 
-    return vk_pipeline {renderer.get_context().device,
-                        vk_handle,
-                        pipeline_layout,
-                        update_template,
-                        VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        push_constant_range.stageFlags};
+    return vk_pipeline {
+        vk_handle, pipeline_layout, update_template, VK_PIPELINE_BIND_POINT_GRAPHICS, push_constant_range.stageFlags};
 }
 
 void vk_pipeline::bind(VkCommandBuffer command_buffer) const
@@ -549,11 +590,10 @@ void vk_pipeline::push_descriptor_set(VkCommandBuffer command_buffer, const vk_d
     vkCmdPushDescriptorSetWithTemplateKHR(command_buffer, m_descriptor_update_template, m_pipeline_layout, 0, updates);
 }
 
-vk_pipeline::vk_pipeline(VkDevice device, VkPipeline pipeline, VkPipelineLayout pipeline_layout,
+vk_pipeline::vk_pipeline(VkPipeline pipeline, VkPipelineLayout pipeline_layout,
                          VkDescriptorUpdateTemplate update_template, VkPipelineBindPoint pipeline_bind_point,
                          VkShaderStageFlags push_constant_stages)
-    : m_device(device)
-    , m_pipeline(pipeline)
+    : m_pipeline(pipeline)
     , m_pipeline_layout(pipeline_layout)
     , m_descriptor_update_template(update_template)
     , m_pipeline_bind_point(pipeline_bind_point)

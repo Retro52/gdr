@@ -2,9 +2,10 @@
 #include <render/platform/vk/vk_error.hpp>
 #include <Tracy/Tracy.hpp>
 
-void render::destroy_buffer(VmaAllocator allocator, const vk_buffer& buffer)
+void render::destroy_buffer(VmaAllocator allocator, vk_buffer& buffer)
 {
     ZoneScoped;
+    buffer.size = 0;
     vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
 }
 
@@ -27,7 +28,7 @@ result<render::vk_buffer> render::create_buffer(const VkBufferCreateInfo& buffer
 {
     ZoneScoped;
 
-    vk_buffer result;
+    vk_buffer result {.size = buffer_create_info.size};
     const VmaAllocationCreateInfo alloc_info = {.flags = allocation_flags, .usage = VMA_MEMORY_USAGE_AUTO};
     VK_RETURN_ON_FAIL(
         vmaCreateBuffer(allocator, &buffer_create_info, &alloc_info, &result.buffer, &result.allocation, nullptr));
