@@ -65,15 +65,12 @@ namespace cpp
         return dest;
     }
 
-    template<typename T>
-    constexpr void cx_memset(void* dest, T&& value, const u64 bytes)
+    template<typename It, typename T>
+    constexpr void cx_fill(It&& begin, const It& end, T&& value)
     {
-        auto* ptr = static_cast<T*>(dest);
-        auto* end = static_cast<T*>(dest) + bytes / sizeof(T);
-
-        while (ptr != end)
+        while (begin != end)
         {
-            *ptr = value;
+            *begin++ = value;
         }
     }
 

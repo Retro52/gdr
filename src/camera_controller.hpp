@@ -9,7 +9,7 @@
 // @imgui
 struct camera_controller
 {
-    f32 move_speed       = 5.0f;
+    f32 move_speed       = 500.0f;
     f32 look_sensitivity = 0.002f;
 
     /// @hide

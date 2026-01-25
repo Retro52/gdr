@@ -44,10 +44,15 @@ namespace render
     public:
         struct shader_meta
         {
-            VkDescriptorType bindings[32] {VK_DESCRIPTOR_TYPE_MAX_ENUM};
+            VkDescriptorType bindings[32];
             u32 bindings_count {0};
             u32 push_constant_struct_size {0};
             VkShaderStageFlagBits stage {VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM};
+
+            shader_meta()
+            {
+                cpp::cx_fill(std::begin(bindings), std::end(bindings), VK_DESCRIPTOR_TYPE_MAX_ENUM);
+            }
         };
 
     public:
@@ -61,10 +66,15 @@ namespace render
         shader_meta meta;
     };
 
-    class vk_pipeline
+    struct vk_pipeline
     {
-    public:
-        vk_pipeline() = default;
+        VkPipeline m_pipeline {VK_NULL_HANDLE};
+        VkPipelineLayout m_pipeline_layout {VK_NULL_HANDLE};
+        VkDescriptorUpdateTemplate m_descriptor_update_template {VK_NULL_HANDLE};
+
+        VkPipelineBindPoint m_pipeline_bind_point {VK_PIPELINE_BIND_POINT_GRAPHICS};
+        VkShaderStageFlags m_push_constant_stages {VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM};
+        DEBUG_ONLY(u32 m_push_constants_max_size);
 
         static result<vk_pipeline> create_compute(const vk_renderer& renderer, const vk_shader& shader);
 
@@ -83,18 +93,5 @@ namespace render
         {
             push_constant(command_buffer, sizeof(T), &data);
         }
-
-    private:
-        explicit vk_pipeline(VkPipeline pipeline, VkPipelineLayout pipeline_layout,
-                             VkDescriptorUpdateTemplate update_template, VkPipelineBindPoint pipeline_bind_point,
-                             VkShaderStageFlags push_constant_stages);
-
-    private:
-        VkPipeline m_pipeline {VK_NULL_HANDLE};
-        VkPipelineLayout m_pipeline_layout {VK_NULL_HANDLE};
-        VkDescriptorUpdateTemplate m_descriptor_update_template {VK_NULL_HANDLE};
-
-        VkPipelineBindPoint m_pipeline_bind_point {VK_PIPELINE_BIND_POINT_GRAPHICS};
-        VkShaderStageFlags m_push_constant_stages {VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM};
     };
 }

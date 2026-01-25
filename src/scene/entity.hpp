@@ -8,7 +8,14 @@ class entity
 {
 public:
     template<typename T, typename... Args>
-    T& add_component(Args&&... args) const
+    void add_component(Args&&... args) const
+    {
+        ZoneScoped;
+        m_registry.emplace<T>(m_entity, std::forward<Args>(args)...);
+    }
+
+    template<typename T, typename... Args>
+    T& emplace_component(Args&&... args) const
     {
         ZoneScoped;
         return m_registry.emplace<T>(m_entity, std::forward<Args>(args)...);

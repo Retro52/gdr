@@ -26,15 +26,23 @@ struct Meshlet
 struct MeshletTask
 {
     uint draw_id;
+    uint base_vertex;
     uint meshlet_ids[kMaxVerticesPerMeshlet];
 };
 
-struct DrawCommand
+struct MeshData
+{
+    float center[3];
+    float radius;
+    uint base_vertex;
+    uint base_meshlet;
+    uint meshlets_count;
+};
+
+struct MeshTransform
 {
     vec4 pos_and_scale;   // xyz - position, w - uniform scale
     vec4 rotation_quat;   // quaternion representing object position
-    vec4 bounding_sphere; // bounding sphere of the whole mesh
-    uint meshlets_count;
 };
 
 struct DrawMeshIndirect
@@ -47,6 +55,6 @@ struct DrawIndexedIndirect
     uint index_count;
     uint instance_count;
     uint first_index;
-    int vertex_offset;
+    int  vertex_offset;
     uint first_instance;
 };

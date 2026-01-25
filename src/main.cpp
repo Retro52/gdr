@@ -33,14 +33,6 @@
 
 #define NO_EDITOR 0
 
-struct alignas(16) mesh_draw_command
-{
-    vec4 pos_and_scale;
-    glm::quat rotation_quat;
-    vec4 bounding_sphere;
-    u32 meshlets_count;
-};
-
 struct pc_data
 {
     glm::mat4 pv;
@@ -59,7 +51,7 @@ struct comp_buf_pc
     vec4 frustum[6];
     u32 draw_count;
 
-    comp_buf_pc& build_frustum(const glm::mat4& proj, const glm::mat4& view, f32 draw_distance)
+    comp_buf_pc& build_frustum(const glm::mat4& proj, const glm::mat4& view)
     {
         auto t_pv  = glm::transpose(proj * view);
         frustum[0] = t_pv[3] + t_pv[0];  // left
@@ -67,7 +59,12 @@ struct comp_buf_pc
         frustum[2] = t_pv[3] + t_pv[1];  // bottom
         frustum[3] = t_pv[3] - t_pv[1];  // top
         frustum[4] = t_pv[3] - t_pv[2];  // near
-        // frustum[5] = vec4(0, 0, -1, draw_distance);
+        frustum[5] = t_pv[2];
+
+        for (auto& plane : frustum)
+        {
+            plane /= glm::length(glm::vec3(plane));
+        }
 
         return *this;
     }
@@ -115,51 +112,84 @@ void draw_tris_per_meshlet_score(f64 tpm_average)
 #endif
 }
 
-void upload_draw_data(const u32 draw_count, const render::vk_buffer_transfer& transfer,
-                      const render::vk_buffer& draw_dst, const static_model models[], u32 models_count)
+f32 get_random_f32(f32 min, f32 max)
+{
+    return min + (static_cast<f32>(rand()) / RAND_MAX) * (max - min);
+}
+
+i32 get_random_i32(i32 min, i32 max)
+{
+    return min + static_cast<int>(get_random_f32(0.0F, 1.0F) * (max - min));
+}
+
+void populate_scene(const u32 draw_count, const char* models[], u32 models_count, scene& scene,
+                    render::vk_scene_geometry_pool& geometry_pool)
 {
     ZoneScoped;
+    std::vector<static_model> unique_models;
+    const u32 kVolumeItemsPerSide = std::cbrtl(draw_count);
 
-    if (models_count == 0)
+    for (u32 i = 0; i < models_count; i++)
     {
-        return;
+        ZoneScopedN("load all models");
+        auto&& loaded = *static_model::load(models[i], geometry_pool);
+        unique_models.insert(unique_models.end(), loaded.begin(), loaded.end());
     }
-
-    std::vector<mesh_draw_command> draw_cmds(draw_count);
-    const u32 kVolumeItemsPerSide = std::lround(std::cbrt(draw_count));
 
     for (u32 i = 0; i < draw_count; ++i)
     {
-        draw_cmds[i].pos_and_scale = {i % kVolumeItemsPerSide,
-                                      (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
-                                      i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
-                                      1.0F};
-        draw_cmds[i].pos_and_scale *= vec4(1.5F, 1.5F, 1.5F, 1.0F);
+        ZoneScopedN("create models within the scene");
+        auto entity = scene.create_entity();
+        entity.add_component<static_model_component>(unique_models[get_random_i32(0, models_count)]);
+        entity.add_component<id_component>();
 
-#if 0
-        draw_cmds[i].rotation_quat = glm::quatLookAt(
-            glm::normalize(vec3(draw_cmds[i].pos_and_scale) - camera_transform.position), vec3(0, 1, 0));
-#endif
+        auto& transform = entity.emplace_component<transform_component>();
 
-#if SM_USE_MESHLETS
-        draw_cmds[i].meshlets_count  = models[models_count - 1].meshlets_count();
-        draw_cmds[i].bounding_sphere = models[models_count - 1].get_bounding_sphere();
-#else
-        draw_cmds[i].indexed.firstIndex    = 0;
-        draw_cmds[i].indexed.firstInstance = 0;
-        draw_cmds[i].indexed.vertexOffset  = 0;
-        draw_cmds[i].indexed.instanceCount = 1;
-        draw_cmds[i].indexed.indexCount    = component.model.indices_count();
-#endif
+        transform.position = {
+            i % kVolumeItemsPerSide,
+            (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
+            i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
+        };
+
+        transform.position *=
+            vec3(get_random_f32(-20.0F, 20.0F), get_random_f32(-20.0F, 20.0F), get_random_f32(-20.0F, 20.0F));
+        transform.uniform_scale = get_random_f32(0.1F, 2.25F);
+        transform.rotation      = glm::quat(vec3(get_random_f32(0, 89), get_random_f32(0, 89), get_random_f32(0, 89)));
     }
-    render::upload_data(transfer,
-                        draw_dst,
-                        reinterpret_cast<u8*>(draw_cmds.data()),
-                        {.size = sizeof(mesh_draw_command) * draw_cmds.size()});
+}
+
+void upload_draw_data(const render::vk_buffer_transfer& transfer, const render::vk_buffer& transform_buffer,
+                      const render::vk_buffer& mesh_data_buffer, const scene& scene)
+{
+    ZoneScoped;
+
+    auto&& view              = scene.get_view<transform_component, static_model_component>();
+    const u64 view_size_hint = view.size_hint();
+
+    transform_component* transforms = static_cast<transform_component*>(transfer.mapped);
+    static_model* static_models     = reinterpret_cast<static_model*>(static_cast<u8*>(transfer.mapped)
+                                                                  + sizeof(transform_component) * view_size_hint);
+
+    u32 index = 0;
+    view.each(
+        [&](const transform_component& tc, const static_model_component& smc)
+        {
+            transforms[index]    = tc;
+            static_models[index] = smc.model;
+
+            ++index;
+        });
+
+    render::submit_transfer(transfer, transform_buffer, VkBufferCopy {.size = index * sizeof(transform_component)});
+    render::submit_transfer(
+        transfer,
+        mesh_data_buffer,
+        VkBufferCopy {.srcOffset = sizeof(transform_component) * view_size_hint, .size = index * sizeof(static_model)});
 }
 
 int main(int argc, char* argv[])
 {
+    srand(322);
     TracySetProgramName("gdr");
 
     window client_window("VK window", {1920, 960}, false);
@@ -230,8 +260,14 @@ int main(int argc, char* argv[])
     };
 
     const auto render_pipeline = *render::vk_pipeline::create_graphics(renderer, shaders, COUNT_OF(shaders));
-    const auto cull_pass       = *render::vk_pipeline::create_compute(
-        renderer, *render::vk_shader::load(renderer, "../shaders/mesh_cull.comp.spv"));
+    const auto cull_pass =
+        *render::vk_pipeline::create_compute(renderer,
+#if SM_USE_MESHLETS
+                                             *render::vk_shader::load(renderer, "../shaders/meshlets_cull.comp.spv")
+#else
+                                             *render::vk_shader::load(renderer, "../shaders/mesh_cull.comp.spv")
+#endif
+        );
 
 #if !NO_EDITOR
     imgui_layer editor(client_window, renderer);
@@ -269,29 +305,16 @@ int main(int argc, char* argv[])
                                                     renderer.get_context().queues[render::queue_kind::eTransfer],
                                                     64 * 1024 * 1024)};
 
-#define KITTY 1
-
-    // FIXME: multiple object support
-#if KITTY  // It was broken quite a while actually, ever since I moved vertices into SSBO
-    auto kitten = client_scene.create_entity();
-    kitten.add_component<id_component>(DEBUG_ONLY(id_component("kitten model")));
-    kitten.add_component<transform_component>();
-    kitten.add_component<static_model_component>(
-        *static_model::load_model("../data/kitten.obj", renderer, geometry_pool));
-#endif
-
-#if !KITTY
-    auto random_guy = client_scene.create_entity();
-    random_guy.add_component<id_component>(DEBUG_ONLY(id_component("random guy model")));
-    random_guy.add_component<transform_component>();
-    random_guy.add_component<static_model_component>(
-        *static_model::load_model("../data/guy.obj", renderer, geometry_pool));
-#endif
-
     constexpr u32 kQueryPoolCount    = 64;
     VkQueryPool timestamp_query_pool = *render::create_vk_query_pool(renderer.get_context().device, kQueryPoolCount);
 
-    render::vk_buffer draw_data =
+    render::vk_buffer meshes_data =
+        *render::create_buffer(4 * 1024 * 1024,
+                               VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                               renderer.get_context().allocator,
+                               0);
+
+    render::vk_buffer meshes_transforms =
         *render::create_buffer(4 * 1024 * 1024,
                                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                renderer.get_context().allocator,
@@ -312,20 +335,14 @@ int main(int argc, char* argv[])
     bool enable_cone_culling    = true;
     bool freeze_camera_cull_dir = false;
 
-    std::vector<static_model> models;
     u32 scene_triangles = 0;
     u32 scene_meshlets  = 0;
 
-    client_scene.get_view<static_model_component>().each(
-        [&](const static_model_component& component)
-        {
-            models.push_back(component.model);
-            scene_meshlets += component.model.meshlets_count();
-            scene_triangles += component.model.indices_count() / 3;
-        });
-
     constexpr u32 kRepeatDraws = 3'375;
-    upload_draw_data(kRepeatDraws, geometry_pool.transfer, draw_data, models.data(), models.size());
+    const char* models[]       = {"../data/kitten.obj", "../data/moon.obj"};
+
+    populate_scene(kRepeatDraws, models, COUNT_OF(models), client_scene, geometry_pool);
+    upload_draw_data(geometry_pool.transfer, meshes_transforms, meshes_data, client_scene);
 
     auto get_time = []<typename T = f64>()
     {
@@ -407,7 +424,10 @@ int main(int argc, char* argv[])
                 if (!freeze_camera_cull_dir)
                 {
                     cull_matrices.projection =
-                        camera_data.get_projection_matrix(client_render_settings.render_distance);
+                        client_render_settings.render_distance > 0
+                            ? camera_data.get_projection_matrix(client_render_settings.render_distance)
+                            : camera_data.get_projection_matrix();
+
                     cull_matrices.view =
                         camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
                 }
@@ -417,16 +437,16 @@ int main(int argc, char* argv[])
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "vk cmd dispatch"));
 
                     const render::vk_descriptor_info cull_pass_bindings[] = {
-                        draw_data.buffer,
+                        meshes_data.buffer,
+                        meshes_transforms.buffer,
                         draw_indirect_buffer.buffer,
                     };
 
                     cull_pass.bind(buffer);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
-                    cull_pass.push_constant(
-                        buffer,
-                        comp_buf_pc {.draw_count = kRepeatDraws}.build_frustum(
-                            cull_matrices.projection, cull_matrices.view, client_render_settings.render_distance));
+                    cull_pass.push_constant(buffer,
+                                            comp_buf_pc {.draw_count = kRepeatDraws}.build_frustum(
+                                                cull_matrices.projection, cull_matrices.view));
 
                     vkCmdDispatch(buffer, (kRepeatDraws + 31) / 32, 1, 1);
 
@@ -434,7 +454,7 @@ int main(int argc, char* argv[])
                         buffer,
                         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                        VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT,
+                        VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
                         VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
                 }
 
@@ -451,17 +471,18 @@ int main(int argc, char* argv[])
                 render_pipeline.bind(buffer);
 
 #if SM_USE_MESHLETS
-                const render::vk_descriptor_info updates[] = {
+                const render::vk_descriptor_info render_bindings[] = {
                     geometry_pool.vertex.buffer.buffer,
                     geometry_pool.meshlets.buffer.buffer,
                     geometry_pool.meshlets_payload.buffer.buffer,
-                    draw_data.buffer,
+                    meshes_data.buffer,
+                    meshes_transforms.buffer,
                 };
-                render_pipeline.push_descriptor_set(buffer, updates);
+                render_pipeline.push_descriptor_set(buffer, render_bindings);
 #else
-                const render::vk_descriptor_info updates[] = {geometry_pool.vertex.buffer.buffer,
-                                                              draw_indirect_buffer.buffer};
-                render_pipeline.push_descriptor_set(buffer, updates);
+                const render::vk_descriptor_info render_bindings[] = {
+                    geometry_pool.vertex.buffer.buffer, meshes_data.buffer, meshes_transforms.buffer};
+                render_pipeline.push_descriptor_set(buffer, render_bindings);
 #endif
 
 #if !SM_USE_MESHLETS
@@ -486,11 +507,8 @@ int main(int argc, char* argv[])
                                                   kRepeatDraws,
                                                   sizeof(VkDrawMeshTasksIndirectCommandEXT));
 #else
-                    vkCmdDrawIndexedIndirect(buffer,
-                                             draw_indirect_buffer.buffer,
-                                             offsetof(mesh_draw_command, indexed),
-                                             kRepeatDraws,
-                                             sizeof(mesh_draw_command));
+                    vkCmdDrawIndexedIndirect(
+                        buffer, draw_indirect_buffer.buffer, 0, kRepeatDraws, sizeof(VkDrawIndexedIndirectCommand));
 #endif
                 }
                 if (freeze_camera_cull_dir)

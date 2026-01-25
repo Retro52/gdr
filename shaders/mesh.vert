@@ -10,9 +10,14 @@ layout (binding = 0) readonly buffer Vertices
     Vertex vertices[];
 };
 
-layout (binding = 1) readonly buffer DrawCommands
+layout (binding = 1) readonly buffer MeshesData
 {
-    DrawCommand draw_cmds[];
+    MeshData meshes_data[];
+};
+
+layout (binding = 2) readonly buffer MeshesTransforms
+{
+    MeshTransform meshes_transforms[];
 };
 
 // FIXME: most of this data is temporary and may exceed the hardware limits
@@ -21,6 +26,7 @@ layout (push_constant) uniform constants
 {
     mat4 vp;
     mat4 view;
+    uint padding;
 } pc;
 
 out VS_OUT {
@@ -37,10 +43,10 @@ out VS_OUT {
 
 void main()
 {
-    Vertex v = vertices[gl_VertexIndex];
+    Vertex v = vertices[meshes_data[gl_DrawID].base_vertex + gl_VertexIndex];
 
     vec3 local_pos = vec3(v.px, v.py, v.pz);
-    vs_out.world_pos = vec4(transform_vec3(local_pos, draw_cmds[gl_DrawID].pos_and_scale, draw_cmds[gl_DrawID].rotation_quat), 1.0);
+    vs_out.world_pos = vec4(transform_vec3(local_pos, meshes_transforms[gl_DrawID].pos_and_scale, meshes_transforms[gl_DrawID].rotation_quat), 1.0);
     vs_out.normal = vec3(v.nx, v.ny, v.nz);
 
 #if 0

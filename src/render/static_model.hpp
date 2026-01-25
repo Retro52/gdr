@@ -9,23 +9,17 @@
 
 #define SM_USE_MESHLETS 1
 
-class static_model
+struct static_model
 {
-public:
-    struct vertex
-    {
-        vec3 position;
-        vec3 normal;
-#if 0
-        vec2 uv;
-        vec3 tangent;
-#endif
-    };
+    vec4 b_sphere;
+    u32 base_vertex;
+    u32 base_meshlet;    // Can be treated as base index for non-meshlet path
+    u32 meshlets_count;  // Can be treated as index count for non-meshlet path
 
 #if SM_USE_MESHLETS
+    constexpr static u32 kMaxIndicesPerMeshlet   = shader_constants::kMaxIndicesPerMeshlet;
     constexpr static u32 kMaxVerticesPerMeshlet  = shader_constants::kMaxVerticesPerMeshlet;
     constexpr static u32 kMaxTrianglesPerMeshlet = shader_constants::kMaxTrianglesPerMeshlet;
-    constexpr static u32 kMaxIndicesPerMeshlet   = shader_constants::kMaxIndicesPerMeshlet;
 
     struct meshlet
     {
@@ -39,36 +33,16 @@ public:
     };
 #endif
 
-    using mesh_data = render::mesh_data<static_model::vertex>;
-
-    struct mesh_buffers
+    struct vertex
     {
-        u64 indices_count {0};
-        render::vk_buffer index;
-        render::vk_buffer vertex;
+        vec3 position;
+        vec3 normal;
+#if 0
+        vec2 uv;
+        vec3 tangent;
+#endif
     };
 
-public:
-    static result<static_model> load_model(const fs::path& path, render::vk_renderer& renderer,
-                                           render::vk_scene_geometry_pool& geometry_pool);
-
-    [[nodiscard]] u32 indices_count() const;
-
-    [[nodiscard]] u32 meshlets_count() const;
-
-    [[nodiscard]] vec4 get_bounding_sphere() const;
-
-private:
-    struct stats
-    {
-        vec4 b_sphere;
-        u64 meshlets_count;
-        u64 vertex_count;
-        u64 index_count;
-    };
-
-    explicit static_model(const stats& offsets);
-
-private:
-    stats m_stats;
+    using mesh_data = render::mesh_data<vertex>;
+    static result<std::vector<static_model>> load(const fs::path& path, render::vk_scene_geometry_pool& geometry_pool);
 };

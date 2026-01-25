@@ -40,7 +40,7 @@ struct id_component
     DEBUG_ONLY(cpp::stack_string name);
 
     id_component() = default;
-    DEBUG_ONLY(id_component(const char* name) : name(name) {});
+    DEBUG_ONLY(id_component(const cpp::stack_string& name) : name(name) {});
 
 private:
     /// @hide

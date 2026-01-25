@@ -17,6 +17,12 @@ public:
         return m_registry.view<Components...>();
     }
 
+    template<typename... Components>
+    auto get_view() const
+    {
+        return m_registry.view<Components...>();
+    }
+
     template<typename T>
     [[nodiscard]] T& get_component(entt::entity entity)
     {

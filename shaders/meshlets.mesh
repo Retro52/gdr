@@ -30,9 +30,9 @@ layout (binding = 2) readonly buffer MeshletVertices
     uint meshlets_vertices[];
 };
 
-layout (binding = 3) readonly buffer DrawCommands
+layout (binding = 4) readonly buffer MeshesTransforms
 {
-    DrawCommand draw_cmds[];
+    MeshTransform meshes_transforms[];
 };
 
 // FIXME: most of this data is temporary
@@ -72,14 +72,14 @@ void main()
     // Each thread processes multiple vertices, striding by workgroup size
     for (uint i = t_idx; i < vertex_count; i += gl_WorkGroupSize.x)
     {
-        const uint vid = meshlets_vertices[base_vertex + i];
+        const uint vid = meshlet_task.base_vertex + meshlets_vertices[base_vertex + i];
 #if VISUALIZE_MESHLETS
         vs_out[i].triangle_id = t_idx;
         vs_out[i].meshlet_id = m_idx;
 #endif
 
         vec3 local_pos = vec3(vertices[vid].px, vertices[vid].py, vertices[vid].pz);
-        vs_out[i].world_pos = vec4(transform_vec3(local_pos, draw_cmds[meshlet_task.draw_id].pos_and_scale, draw_cmds[meshlet_task.draw_id].rotation_quat), 1.0);
+        vs_out[i].world_pos = vec4(transform_vec3(local_pos, meshes_transforms[meshlet_task.draw_id].pos_and_scale, meshes_transforms[meshlet_task.draw_id].rotation_quat), 1.0);
         vs_out[i].normal = vec3(vertices[vid].nx, vertices[vid].ny, vertices[vid].nz);
 
 #if 0

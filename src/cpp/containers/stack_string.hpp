@@ -63,7 +63,7 @@ namespace cpp
 
         constexpr void clear()
         {
-            cpp::cx_memset(m_str, 0, sizeof(char) * N);
+            cpp::cx_fill(&m_str[0], m_str + N, 0);
         }
 
         [[nodiscard]] constexpr bool empty() const
@@ -182,11 +182,34 @@ namespace cpp
             return *this;
         }
 
+        constexpr auto& operator+=(const char* other)
+        {
+            append_value(other, cpp::cx_strlen(other), this->length());
+            return *this;
+        }
+
         template<size_t No>
         constexpr auto& operator+=(const stack_string_base<No>& other)
         {
             append_value(other.c_str(), other.length(), this->length());
             return *this;
+        }
+
+        constexpr stack_string operator+(const char* other)
+        {
+            stack_string result;
+            result += *this;
+            result += other;
+            return result;
+        }
+
+        template<size_t No>
+        constexpr stack_string operator+(const stack_string_base<No>& other)
+        {
+            stack_string result;
+            result += *this;
+            result += other;
+            return result;
         }
 
         [[nodiscard]] constexpr char& operator[](const size_t pos)

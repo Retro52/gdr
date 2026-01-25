@@ -17,9 +17,9 @@ layout (binding = 1) readonly buffer MeshesTransforms
     MeshTransform meshes_transforms[];
 };
 
-layout (binding = 2) writeonly buffer DrawIndexedIndirects
+layout (binding = 2) writeonly buffer DrawMeshIndirects
 {
-    DrawIndexedIndirect draw_indirect_cmds[];
+    DrawMeshIndirect draw_indirect_cmds[];
 };
 
 layout (push_constant) uniform constants
@@ -41,14 +41,10 @@ void main()
 
         bool visible = true;
         for (int i = 0; i < 6; ++i)
-            visible = visible && dot(pc.frustum[i], vec4(center, 1)) > -radius;
+            visible = visible && (dot(pc.frustum[i], vec4(center, 1)) + radius) >= 0;
 
-        // i'm an author that's my vision :)
-        // NOTE: meshlets_count should be equal to index_count in vertex mode
-        draw_indirect_cmds[idx].first_index = meshes_data[idx].base_meshlet;
-        draw_indirect_cmds[idx].index_count = visible ? meshes_data[idx].meshlets_count : 0;
-        draw_indirect_cmds[idx].instance_count = 1;
-        draw_indirect_cmds[idx].vertex_offset = 0;
-        draw_indirect_cmds[idx].first_instance = 0;
+        draw_indirect_cmds[idx].group_size[0] = visible ? ((meshes_data[idx].meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups) : 0;
+        draw_indirect_cmds[idx].group_size[1] = 1;
+        draw_indirect_cmds[idx].group_size[2] = 1;
     }
 }

@@ -403,9 +403,10 @@ result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, con
 {
     assert(shader.meta.stage == VK_SHADER_STAGE_COMPUTE_BIT);
 
+    const auto pc_range = parse_push_constant_range(&shader, 1);
+
     VkPipelineLayout pipeline_layout;
-    VK_RETURN_ON_FAIL(create_pipeline_layout(
-        renderer.get_context().device, &shader, 1, parse_push_constant_range(&shader, 1), &pipeline_layout));
+    VK_RETURN_ON_FAIL(create_pipeline_layout(renderer.get_context().device, &shader, 1, pc_range, &pipeline_layout));
 
     VkDescriptorUpdateTemplate update_template;
     VK_RETURN_ON_FAIL(create_update_template(
@@ -425,8 +426,12 @@ result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, con
     VK_RETURN_ON_FAIL(
         vkCreateComputePipelines(renderer.get_context().device, VK_NULL_HANDLE, 1, &create_info, nullptr, &pipeline));
 
-    return vk_pipeline {
-        pipeline, pipeline_layout, update_template, VK_PIPELINE_BIND_POINT_COMPUTE, VK_SHADER_STAGE_COMPUTE_BIT};
+    return vk_pipeline {pipeline,
+                        pipeline_layout,
+                        update_template,
+                        VK_PIPELINE_BIND_POINT_COMPUTE,
+                        VK_SHADER_STAGE_COMPUTE_BIT,
+                        DEBUG_ONLY(pc_range.size)};
 }
 
 result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
@@ -436,6 +441,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     std::vector<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
     for (u32 i = 0; i < shaders_count; ++i)
     {
+        assert(shaders[i].meta.stage != VK_SHADER_STAGE_COMPUTE_BIT);
         shader_stage_create_infos[i] = {
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage  = shaders[i].meta.stage,
@@ -571,8 +577,12 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
                                              shaders_count,
                                              &update_template));
 
-    return vk_pipeline {
-        vk_handle, pipeline_layout, update_template, VK_PIPELINE_BIND_POINT_GRAPHICS, push_constant_range.stageFlags};
+    return vk_pipeline {vk_handle,
+                        pipeline_layout,
+                        update_template,
+                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        push_constant_range.stageFlags,
+                        DEBUG_ONLY(push_constant_range.size)};
 }
 
 void vk_pipeline::bind(VkCommandBuffer command_buffer) const
@@ -582,21 +592,11 @@ void vk_pipeline::bind(VkCommandBuffer command_buffer) const
 
 void vk_pipeline::push_constant(VkCommandBuffer command_buffer, u32 size, const void* data) const
 {
+    DEBUG_ONLY(assert(m_push_constants_max_size >= size));
     vkCmdPushConstants(command_buffer, m_pipeline_layout, m_push_constant_stages, 0, size, data);
 }
 
 void vk_pipeline::push_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_info* updates) const
 {
     vkCmdPushDescriptorSetWithTemplateKHR(command_buffer, m_descriptor_update_template, m_pipeline_layout, 0, updates);
-}
-
-vk_pipeline::vk_pipeline(VkPipeline pipeline, VkPipelineLayout pipeline_layout,
-                         VkDescriptorUpdateTemplate update_template, VkPipelineBindPoint pipeline_bind_point,
-                         VkShaderStageFlags push_constant_stages)
-    : m_pipeline(pipeline)
-    , m_pipeline_layout(pipeline_layout)
-    , m_descriptor_update_template(update_template)
-    , m_pipeline_bind_point(pipeline_bind_point)
-    , m_push_constant_stages(push_constant_stages)
-{
 }

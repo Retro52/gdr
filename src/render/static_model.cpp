@@ -23,31 +23,21 @@ namespace
         dst_buffer.offset += count * sizeof(T);
     }
 
-    vec4 compute_bounding_sphere(const std::vector<static_model::mesh_data>& meshes)
+    vec4 compute_bounding_sphere(const static_model::mesh_data& mesh)
     {
         ZoneScoped;
-        u32 count = 0;
-        vec3 center {};
-
-        for (const auto& mesh : meshes)
+        vec3 center(0.0F);
+        for (const auto& v : mesh.vertices)
         {
-            count += mesh.vertices.size();
-            for (const auto& v : mesh.vertices)
-            {
-                center += v.position;
-            }
+            center += v.position;
         }
 
         f32 radius = 0.0F;
-        center /= count;
+        center /= mesh.vertices.size();
 
-        for (const auto& mesh : meshes)
+        for (const auto& v : mesh.vertices)
         {
-            count += mesh.vertices.size();
-            for (const auto& v : mesh.vertices)
-            {
-                radius = glm::max(radius, glm::distance(center, v.position));
-            }
+            radius = glm::max(radius, glm::distance(center, v.position));
         }
 
         return {center, radius};
@@ -87,7 +77,7 @@ namespace
         {
             ZoneScopedN("meshopt_optimizeMeshlet and data copy");
 
-            u64 total_bytes_written = base_payload_offset;
+            u64 total_bytes_written = 0;
             meshlets_payload.resize(meshlets_count * static_model::kMaxIndicesPerMeshlet
                                     + meshlets_count * sizeof(u32) * static_model::kMaxVerticesPerMeshlet);
 
@@ -109,9 +99,9 @@ namespace
                                                  sizeof(static_model::vertex));
 
                 auto& meshlet           = meshlets[i];
-                meshlet.payload_offset  = total_bytes_written;
                 meshlet.triangles_count = meshopt_meshlet.triangle_count;
                 meshlet.vertices_count  = meshopt_meshlet.vertex_count;
+                meshlet.payload_offset  = base_payload_offset + total_bytes_written;
 
                 cpp::cx_memcpy(meshlets_payload.data() + total_bytes_written,
                                &meshlet_vertices_ptr[meshopt_meshlet.vertex_offset],
@@ -147,7 +137,7 @@ namespace
 #if SM_USE_MESHLETS
                          const std::vector<static_model::meshlet>& meshlets, const std::vector<u8>& meshlets_payload,
 #endif
-                         const vk_renderer& renderer, vk_scene_geometry_pool& geometry_pool)
+                         vk_scene_geometry_pool& geometry_pool)
     {
         ZoneScoped;
 
@@ -164,68 +154,46 @@ namespace
     }
 }
 
-result<static_model> static_model::load_model(const fs::path& path, render::vk_renderer& renderer,
-                                              render::vk_scene_geometry_pool& geometry_pool)
+result<std::vector<static_model>> static_model::load(const fs::path& path,
+                                                     render::vk_scene_geometry_pool& geometry_pool)
 {
     ZoneScoped;
 
     std::vector<mesh_data> model_meshes;
     if (render::load_model<vertex>(path, model_meshes))
     {
-        stats model_stats {.b_sphere = compute_bounding_sphere(model_meshes)};
+        std::vector<static_model> models(model_meshes.size());
 #if SM_USE_MESHLETS
-        ZoneScopedN("upload meshlets data");
-
-        for (auto& mesh : model_meshes)
+        for (u32 i = 0; i < model_meshes.size(); ++i)
         {
-            std::vector<u8> meshlets_payload;
             std::vector<meshlet> meshlets;
+            std::vector<u8> meshlets_payload;
 
-            build_meshlets(mesh, meshlets, meshlets_payload, geometry_pool.meshlets_payload.offset);
+            build_meshlets(model_meshes[i], meshlets, meshlets_payload, geometry_pool.meshlets_payload.offset);
 
-            model_stats.vertex_count += mesh.vertices.size();
-            model_stats.meshlets_count += meshlets.size();
-            for (auto& meshlet : meshlets)
-            {
-                model_stats.index_count += meshlet.triangles_count * 3;
-            }
+            models[i].meshlets_count = meshlets.size();
+            models[i].b_sphere       = compute_bounding_sphere(model_meshes[i]);
 
-            upload_to_scene(mesh, meshlets, meshlets_payload, renderer, geometry_pool);
-            break;
+            assert(geometry_pool.vertex.offset % sizeof(vertex) == 0);
+            assert(geometry_pool.meshlets.offset % sizeof(meshlet) == 0);
+
+            models[i].base_vertex  = geometry_pool.vertex.offset / sizeof(vertex);
+            models[i].base_meshlet = geometry_pool.meshlets.offset / sizeof(meshlet);
+            upload_to_scene(model_meshes[i], meshlets, meshlets_payload, geometry_pool);
         }
 #else
-        ZoneScopedN("static_model::load_model: upload data");
-
-        for (auto& mesh : model_meshes)
+        for (u32 i = 0; i < model_meshes.size(); ++i)
         {
-            model_stats.index_count += mesh.indices.size();
-            model_stats.vertex_count += mesh.vertices.size();
+            models[i].meshlets_count = model_meshes[i].indices.size();
+            models[i].base_vertex    = geometry_pool.vertex.offset / sizeof(vertex);
+            models[i].base_meshlet   = geometry_pool.index.offset / sizeof(u32);
 
-            upload_to_scene(mesh, renderer, geometry_pool);
+            models[i].b_sphere = compute_bounding_sphere(model_meshes[i]);
+            upload_to_scene(model_meshes[i], geometry_pool);
         }
 #endif
-        return static_model {model_stats};
+        return models;
     }
 
-    return "failed to parse model";
-}
-
-u32 static_model::indices_count() const
-{
-    return m_stats.index_count;
-}
-
-[[nodiscard]] u32 static_model::meshlets_count() const
-{
-    return m_stats.meshlets_count;
-}
-
-[[nodiscard]] vec4 static_model::get_bounding_sphere() const
-{
-    return m_stats.b_sphere;
-}
-
-static_model::static_model(const stats& stats)
-    : m_stats(stats)
-{
+    return "failed to parse the model";
 }

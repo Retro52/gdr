@@ -23,6 +23,8 @@ namespace render
 
     void destroy_buffer_transfer(VkDevice device, VmaAllocator allocator, vk_buffer_transfer& buffer_transfer);
 
+    void submit_transfer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const VkBufferCopy& region);
+
     void upload_data(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* data,
                      const VkBufferCopy& region);
 
