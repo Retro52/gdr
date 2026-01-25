@@ -17,22 +17,15 @@ struct gpu_profile_data
     /// @readonly @name(Tris/s (B))
     f64 tris_per_second {0.0F};
 
-    /// @readonly @name(Tris/Meshlet (B))
-    f64 tris_per_meshlet {0.0F};
-
     /// @readonly
     u64 tris_in_scene_total {0};
 
-    /// @readonly
-    u64 meshlets_in_scene_total {0};
-
-    void update(f64 start, f64 end, u64 tris_count, u64 meshlets_count)
+    void update(f64 start, f64 end, u64 tris_count)
     {
         frame_start = start;
         frame_end   = end;
 
         tris_in_scene_total     = tris_count;
-        meshlets_in_scene_total = meshlets_count;
 
         // smooth the averages over time
         constexpr f32 kSmoothingFactor = 0.9F;
@@ -43,6 +36,5 @@ struct gpu_profile_data
 
         // to convert it to billions we'd use 1e-9, but we also convert ms to s, so 1e-3 cancel out
         tris_per_second = static_cast<f64>(tris_count) * 1e-6 / (gpu_render_time);
-        tris_per_meshlet = static_cast<f64>(tris_count) / static_cast<f64>(meshlets_count);
     }
 };

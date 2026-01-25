@@ -22,6 +22,7 @@ namespace render
             eSynchronization2 = 1 << 3,
             eDrawIndirect     = 1 << 4,
             e8BitIntegers     = 1 << 5,
+            ePipelineStats    = 1 << 6,
             eCOUNT
         };
 
@@ -40,7 +41,7 @@ namespace render
             return (flag & supported_features) > 0;
         }
 
-        [[nodiscard]] bool enable(rendering_features_table::flag flag) const noexcept
+        [[nodiscard]] bool wanted(rendering_features_table::flag flag) const noexcept
         {
             return (flag & supported_features) > 0 && requested(flag);
         }

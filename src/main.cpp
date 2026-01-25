@@ -21,8 +21,8 @@
 #include <render/platform/vk/vk_barrier.hpp>
 #include <render/platform/vk/vk_image.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
+#include <render/platform/vk/vk_query.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
-#include <render/platform/vk/vk_timestamp.hpp>
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 #include <scene/scene.hpp>
@@ -84,32 +84,6 @@ void draw_shared_buffer_stats(const char* label, const render::vk_shared_buffer&
                        static_cast<f64>(buffer.offset) * 100.0 / buffer.size);
 }
 
-void draw_tris_per_meshlet_score(f64 tpm_average)
-{
-    constexpr f64 upper_bound = static_cast<f64>(static_model::kMaxTrianglesPerMeshlet);
-
-    if (tpm_average > upper_bound * 0.9)
-    {
-        ImGuiEx::ScopedColor _(ImGuiCol_Text, IM_COL32(80, 200, 120, 255));
-        ImGui::Text("TPM Score: excellent (%lf%% from max)", tpm_average * 100.0F / upper_bound);
-    }
-    else if (tpm_average > upper_bound * 0.75)
-    {
-        ImGuiEx::ScopedColor _(ImGuiCol_Text, IM_COL32(50, 200, 120, 255));
-        ImGui::Text("TPM Score: good (%lf%% from max)", tpm_average * 100.0F / upper_bound);
-    }
-    else if (tpm_average > upper_bound * 0.5)
-    {
-        ImGuiEx::ScopedColor _(ImGuiCol_Text, IM_COL32(255, 255, 0, 255));
-        ImGui::Text("TPM Score: suboptimal (%lf%% from max)", tpm_average * 100.0F / upper_bound);
-    }
-    else
-    {
-        ImGuiEx::ScopedColor _(ImGuiCol_Text, IM_COL32(255, 50, 50, 255));
-        ImGui::Text("TPM Score: bad (%lf%% from max)", tpm_average * 100.0F / upper_bound);
-    }
-}
-
 f32 get_random_f32(f32 min, f32 max)
 {
     return min + (static_cast<f32>(rand()) / RAND_MAX) * (max - min);
@@ -150,8 +124,9 @@ void populate_scene(const u32 draw_count, const char* models[], u32 models_count
         };
 
         transform.position *=
-            vec3(get_random_f32(-20.0F, 20.0F), get_random_f32(-20.0F, 20.0F), get_random_f32(-20.0F, 20.0F));
-        transform.uniform_scale = get_random_f32(0.1F, 2.25F);
+            vec3(10.0F)
+            * vec3(get_random_f32(-20.0F, 20.0F), get_random_f32(-20.0F, 20.0F), get_random_f32(-20.0F, 20.0F));
+        transform.uniform_scale = get_random_f32(0.1F, 5.0F);
         transform.rotation      = glm::quat(vec3(get_random_f32(0, 89), get_random_f32(0, 89), get_random_f32(0, 89)));
     }
 }
@@ -198,6 +173,7 @@ int main(int argc, char* argv[])
                               .request(render::rendering_features_table::eValidation)
 #endif
                               .request(render::rendering_features_table::eMeshShading)
+                              .request(render::rendering_features_table::ePipelineStats)
                               .require(render::rendering_features_table::e8BitIntegers)
                               .require(render::rendering_features_table::eDrawIndirect)
                               .require(render::rendering_features_table::eDynamicRender)
@@ -309,8 +285,16 @@ int main(int argc, char* argv[])
             render::vk_shared_buffer(renderer, 16 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     }
 
-    constexpr u32 kQueryPoolCount    = 64;
-    VkQueryPool timestamp_query_pool = *render::create_vk_query_pool(renderer.get_context().device, kQueryPoolCount);
+    constexpr u32 kQueryPoolCount = 64;
+    VkQueryPool timestamp_query_pool =
+        *render::create_vk_query_pool(renderer.get_context().device, kQueryPoolCount, VK_QUERY_TYPE_TIMESTAMP);
+
+    VkQueryPool pipeline_statistics_query = VK_NULL_HANDLE;
+    if (renderer.get_context().enabled_device_features.supported(render::rendering_features_table::ePipelineStats))
+    {
+        pipeline_statistics_query = *render::create_vk_pipeline_stat_query_pool(
+            renderer.get_context().device, kQueryPoolCount, VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT);
+    }
 
     render::vk_buffer meshes_data =
         *render::create_buffer(4 * 1024 * 1024,
@@ -347,10 +331,9 @@ int main(int argc, char* argv[])
     bool enable_meshlets_pipeline = mesh_shading_supported;
 
     u32 scene_triangles = 0;
-    u32 scene_meshlets  = 0;
 
     constexpr u32 kRepeatDraws = 3'375;
-    const char* models[]       = {"../data/kitten.obj", "../data/moon.obj"};
+    const char* models[]       = {"../data/kitten.obj", "../data/guy.obj"};
 
     populate_scene(kRepeatDraws, models, COUNT_OF(models), client_scene, geometry_pool);
     upload_draw_data(geometry_pool.transfer, meshes_transforms, meshes_data, client_scene);
@@ -430,6 +413,11 @@ int main(int argc, char* argv[])
                 TRACY_ONLY(TracyVkCollect(renderer.get_frame_tracy_context(), buffer));
 
                 vkCmdResetQueryPool(buffer, timestamp_query_pool, 0, kQueryPoolCount);
+                if (pipeline_statistics_query)
+                {
+                    vkCmdResetQueryPool(buffer, pipeline_statistics_query, 0, kQueryPoolCount);
+                }
+
                 vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool, 0);
 
                 if (!freeze_camera_cull_dir)
@@ -492,6 +480,10 @@ int main(int argc, char* argv[])
                     buffer,
                     pc_data {.pv = camera_proj_view, .view = cull_matrices.view, .use_culling = enable_cone_culling});
 
+                if (pipeline_statistics_query)
+                {
+                    vkCmdBeginQuery(buffer, pipeline_statistics_query, 0, 0);
+                }
                 if (enable_meshlets_pipeline)
                 {
                     ZoneScopedN("draw using meshlets");
@@ -526,6 +518,10 @@ int main(int argc, char* argv[])
                                              kRepeatDraws,
                                              sizeof(VkDrawIndexedIndirectCommand));
                 }
+                if (pipeline_statistics_query)
+                {
+                    vkCmdEndQuery(buffer, pipeline_statistics_query, 0);
+                }
 
                 if (freeze_camera_cull_dir)
                 {
@@ -550,7 +546,6 @@ int main(int argc, char* argv[])
 
                     ImGui::SeparatorText("gpu timings");
                     codegen::draw(profile_data);
-                    draw_tris_per_meshlet_score(profile_data.tris_per_meshlet);
 
                     ImGui::SeparatorText("gpu stats");
                     draw_shared_buffer_stats("Vertices", geometry_pool.vertex);
@@ -615,24 +610,35 @@ int main(int argc, char* argv[])
                 renderer.present_frame(buffer);
 
 #if !defined(NDEBUG) || 1
-                uint64_t query_results[2];
+                u64 query_results[2];
                 vkDeviceWaitIdle(renderer.get_context().device);
                 VK_ASSERT_ON_FAIL(vkGetQueryPoolResults(renderer.get_context().device,
                                                         timestamp_query_pool,
                                                         0,
-                                                        ARRAYSIZE(query_results),
+                                                        COUNT_OF(query_results),
                                                         sizeof(query_results),
                                                         query_results,
                                                         sizeof(query_results[0]),
                                                         VK_QUERY_RESULT_64_BIT));
+
+                if (pipeline_statistics_query)
+                {
+                    VK_ASSERT_ON_FAIL(vkGetQueryPoolResults(renderer.get_context().device,
+                                                            pipeline_statistics_query,
+                                                            0,
+                                                            1,
+                                                            sizeof(scene_triangles),
+                                                            &scene_triangles,
+                                                            sizeof(scene_triangles),
+                                                            0));
+                }
 
                 VkPhysicalDeviceProperties props = {};
                 vkGetPhysicalDeviceProperties(renderer.get_context().physical_device, &props);
 
                 profile_data.update(static_cast<f64>(query_results[0]) * props.limits.timestampPeriod * 1e-6,
                                     static_cast<f64>(query_results[1]) * props.limits.timestampPeriod * 1e-6,
-                                    kRepeatDraws * scene_triangles,
-                                    kRepeatDraws * scene_meshlets);
+                                    scene_triangles);
 
                 const auto str = cpp::stack_string::make_formatted("CPU: %.3lfms; GPU: %.3lfms; Tris/s (B): %lf",
                                                                    dt * 1000.0F,

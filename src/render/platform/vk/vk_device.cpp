@@ -2,6 +2,7 @@
 #include <cpp/containers/stack_string.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
+#include <soft_assert/soft_assert.hpp>
 #include <Tracy/Tracy.hpp>
 
 #include <algorithm>
@@ -169,7 +170,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT s
     if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
         std::cerr << std::flush;
-        // assert(false && "vk validation error");
+        soft_assert(false, pCallbackData->pMessage ? pCallbackData->pMessage : "VK validation error");
     }
     return VK_FALSE;
 }
@@ -365,6 +366,8 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
                                  vk13_features.maintenance4 && mesh_features.meshShader && mesh_features.taskShader);
     features_table.set_supported(rendering_features_table::eDrawIndirect,
                                  device_features2.features.multiDrawIndirect && vk11_features.shaderDrawParameters);
+    features_table.set_supported(rendering_features_table::ePipelineStats,
+                                 device_features2.features.pipelineStatisticsQuery);
 
     return not_found_extensions.empty() && features_table.all_required_supported();
 }
@@ -497,33 +500,35 @@ VkResult create_vulkan_device(const rendering_features_table& rendering_features
 
     VkPhysicalDeviceVulkan13Features vk13_features {
         .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        .synchronization2 = rendering_features.enable(rendering_features_table::eSynchronization2),
-        .dynamicRendering = rendering_features.enable(rendering_features_table::eDynamicRender),
-        .maintenance4     = rendering_features.enable(rendering_features_table::eMeshShading)};
+        .synchronization2 = rendering_features.wanted(rendering_features_table::eSynchronization2),
+        .dynamicRendering = rendering_features.wanted(rendering_features_table::eDynamicRender),
+        .maintenance4     = rendering_features.wanted(rendering_features_table::eMeshShading)};
 
     VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features {};
-    if (rendering_features.enable(rendering_features_table::eMeshShading))
+    if (rendering_features.wanted(rendering_features_table::eMeshShading))
     {
-        mesh_features = {
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT, .taskShader = true, .meshShader = true};
+        mesh_features       = {.sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
+                               .taskShader = true,
+                               .meshShader = true};
         vk13_features.pNext = &mesh_features;
     }
 
     VkPhysicalDeviceVulkan12Features vk12_features {
         .sType                   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
         .pNext                   = &vk13_features,
-        .storageBuffer8BitAccess = rendering_features.enable(rendering_features_table::e8BitIntegers)};
+        .storageBuffer8BitAccess = rendering_features.wanted(rendering_features_table::e8BitIntegers)};
 
     VkPhysicalDeviceVulkan11Features vk11_features {
         .sType                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
         .pNext                = &vk12_features,
-        .shaderDrawParameters = rendering_features.enable(rendering_features_table::eDrawIndirect)};
+        .shaderDrawParameters = rendering_features.wanted(rendering_features_table::eDrawIndirect)};
 
     VkPhysicalDeviceFeatures2 device_features {
         .sType    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext    = &vk11_features,
         .features = {
-                     .multiDrawIndirect = rendering_features.enable(rendering_features_table::eDrawIndirect),
+                     .multiDrawIndirect       = rendering_features.wanted(rendering_features_table::eDrawIndirect),
+                     .pipelineStatisticsQuery = rendering_features.wanted(rendering_features_table::ePipelineStats),
                      }
     };
 
