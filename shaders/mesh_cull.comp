@@ -43,12 +43,10 @@ void main()
         for (int i = 0; i < 6; ++i)
             visible = visible && dot(pc.frustum[i], vec4(center, 1)) > -radius;
 
-        // i'm an author that's my vision :)
-        // NOTE: meshlets_count should be equal to index_count in vertex mode
-        draw_indirect_cmds[idx].first_index = meshes_data[idx].base_meshlet;
-        draw_indirect_cmds[idx].index_count = visible ? meshes_data[idx].meshlets_count : 0;
         draw_indirect_cmds[idx].instance_count = 1;
-        draw_indirect_cmds[idx].vertex_offset = 0;
         draw_indirect_cmds[idx].first_instance = 0;
+        draw_indirect_cmds[idx].first_index = meshes_data[idx].base_index;
+        draw_indirect_cmds[idx].vertex_offset = int(meshes_data[idx].base_vertex);
+        draw_indirect_cmds[idx].index_count = visible ? meshes_data[idx].indices_count : 0;
     }
 }

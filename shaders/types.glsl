@@ -37,6 +37,8 @@ struct MeshData
     uint base_vertex;
     uint base_meshlet;
     uint meshlets_count;
+    uint base_index;
+    uint indices_count;
 };
 
 struct MeshTransform

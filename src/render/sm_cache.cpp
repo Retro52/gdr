@@ -96,7 +96,6 @@ sm_mesh_data load_mesh<sm_vertex>(const aiMesh* mesh) noexcept
         meshopt_remapIndexBuffer(indices.data(), indices.data(), indices.size(), remap.data());
     }
 
-#if !SM_USE_MESHLETS
     {
         ZoneScopedN("meshopt_optimizeVertexCache");
         meshopt_optimizeVertexCache(indices.data(), indices.data(), indices.size(), vertices.size());
@@ -111,7 +110,6 @@ sm_mesh_data load_mesh<sm_vertex>(const aiMesh* mesh) noexcept
                                     vertices.size(),
                                     sizeof(static_model::vertex));
     }
-#endif
 
     return {.vertices = vertices, .indices = indices};
 }

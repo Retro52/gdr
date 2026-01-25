@@ -10,12 +10,7 @@ layout (binding = 0) readonly buffer Vertices
     Vertex vertices[];
 };
 
-layout (binding = 1) readonly buffer MeshesData
-{
-    MeshData meshes_data[];
-};
-
-layout (binding = 2) readonly buffer MeshesTransforms
+layout (binding = 1) readonly buffer MeshesTransforms
 {
     MeshTransform meshes_transforms[];
 };
@@ -37,13 +32,12 @@ out VS_OUT {
     layout (location = 4) out vec4 world_pos;
 #if VISUALIZE_MESHLETS
     layout (location = 5) out flat uint meshlet_id;
-    layout (location = 6) out flat uint triangle_id;
 #endif
 } vs_out;
 
 void main()
 {
-    Vertex v = vertices[meshes_data[gl_DrawID].base_vertex + gl_VertexIndex];
+    Vertex v = vertices[gl_VertexIndex];
 
     vec3 local_pos = vec3(v.px, v.py, v.pz);
     vs_out.world_pos = vec4(transform_vec3(local_pos, meshes_transforms[gl_DrawID].pos_and_scale, meshes_transforms[gl_DrawID].rotation_quat), 1.0);
@@ -56,8 +50,7 @@ void main()
 #endif
 
 #if VISUALIZE_MESHLETS
-    vs_out.meshlet_id = 0x225;
-    vs_out.triangle_id = gl_VertexIndex;
+    vs_out.meshlet_id = gl_VertexIndex;
 #endif
 
     gl_Position = pc.vp * vs_out.world_pos;

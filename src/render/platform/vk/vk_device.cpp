@@ -158,7 +158,8 @@ VkResult video_driver_create_surface(const window& window, VkInstance instance, 
     return VK_ERROR_FEATURE_NOT_PRESENT;
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT,
+VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+                                        VkDebugUtilsMessageTypeFlagsEXT,
                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void*)
 {
     std::cerr << "[VK VALIDATION] ";
@@ -176,7 +177,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT s
 void load_instance_layers_and_extensions(const window& window, const instance_desc& desc,
                                          std::vector<const char*>& layers, std::vector<const char*>& extensions)
 {
-    if (desc.device_features.required(rendering_features_table::eValidation)
+    if (desc.device_features.requested(rendering_features_table::eValidation)
         && layer_available("VK_LAYER_KHRONOS_validation") && inst_ext_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
     {
         layers.push_back("VK_LAYER_KHRONOS_validation");
@@ -296,8 +297,7 @@ std::vector<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysicalDevice devi
 }
 
 bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR surface,
-                                         const ext_array& required_extensions,
-                                         const rendering_features_table& required_features)
+                                         const ext_array& required_extensions, rendering_features_table& features_table)
 {
     ZoneScoped;
     u32 families[queue_kind::COUNT];
@@ -339,7 +339,11 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
         not_found_extensions.erase(extension.extensionName);
     }
 
-    VkPhysicalDeviceVulkan13Features vk13_features {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+    VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
+
+    VkPhysicalDeviceVulkan13Features vk13_features {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+                                                    .pNext = &mesh_features};
 
     VkPhysicalDeviceVulkan12Features vk12_features {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
                                                     .pNext = &vk13_features};
@@ -353,21 +357,46 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
                                                 .pNext = &vk11_features};
     vkGetPhysicalDeviceFeatures2(device, &device_features2);
 
-    const bool features_supported =
-        cpp::cx_implies(required_features.required(rendering_features_table::eDrawIndirect),
-                        vk11_features.shaderDrawParameters)
-        && cpp::cx_implies(required_features.required(rendering_features_table::eDrawIndirect),
-                           device_features2.features.multiDrawIndirect)
-        && cpp::cx_implies(required_features.required(rendering_features_table::eMeshShading),
-                           vk12_features.storageBuffer8BitAccess)
-        && cpp::cx_implies(required_features.required(rendering_features_table::eMeshShading),
-                           vk13_features.maintenance4)
-        && cpp::cx_implies(required_features.required(rendering_features_table::eDynamicRender),
-                           vk13_features.dynamicRendering)
-        && cpp::cx_implies(required_features.required(rendering_features_table::eSynchronization2),
-                           vk13_features.synchronization2);
+    features_table.set_supported(rendering_features_table::eDynamicRender, vk13_features.dynamicRendering);
+    features_table.set_supported(rendering_features_table::eSynchronization2, vk13_features.synchronization2);
 
-    return not_found_extensions.empty() && features_supported;
+    features_table.set_supported(rendering_features_table::e8BitIntegers, vk12_features.storageBuffer8BitAccess);
+    features_table.set_supported(rendering_features_table::eMeshShading,
+                                 vk13_features.maintenance4 && mesh_features.meshShader && mesh_features.taskShader);
+    features_table.set_supported(rendering_features_table::eDrawIndirect,
+                                 device_features2.features.multiDrawIndirect && vk11_features.shaderDrawParameters);
+
+    return not_found_extensions.empty() && features_table.all_required_supported();
+}
+
+ext_array build_extensions_from_feature_table(const rendering_features_table& features_table,
+                                              bool required_only = false)
+{
+    ext_array array {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+                     VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+                     TRACY_ONLY(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME)};
+    for (u32 i = 0; i < cpp::cx_get_enum_bit_count(rendering_features_table::flag::eCOUNT); ++i)
+    {
+        const auto feature = static_cast<rendering_features_table::flag>(1 << i);
+        if ((required_only && features_table.required(feature))
+            || (features_table.requested(feature) && features_table.supported(feature)))
+        {
+            switch (feature)
+            {
+            case rendering_features_table::eMeshShading :
+                array.emplace_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
+                array.emplace_back(VK_KHR_MAINTENANCE_4_EXTENSION_NAME);
+                break;
+            case rendering_features_table::e8BitIntegers :
+                array.emplace_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
+                break;
+            default :
+                break;
+            }
+        }
+    }
+
+    return array;
 }
 
 u32 rate_device(VkPhysicalDevice physical_device)
@@ -386,7 +415,7 @@ u32 rate_device(VkPhysicalDevice physical_device)
 }
 
 VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface, const ext_array& required_extensions,
-                                      const rendering_features_table& required_features)
+                                      rendering_features_table& required_features)
 {
     ZoneScoped;
     u32 device_count = 0;
@@ -395,8 +424,9 @@ VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
     std::vector<VkPhysicalDevice> devices(device_count);
     vkEnumeratePhysicalDevices(instance, &device_count, devices.data());
 
-    u32 best_rating               = 0;
-    VkPhysicalDevice current_pick = VK_NULL_HANDLE;
+    u32 best_rating                                  = 0;
+    VkPhysicalDevice current_pick                    = VK_NULL_HANDLE;
+    rendering_features_table device_features_support = required_features;
 
     for (const auto device : devices)
     {
@@ -404,11 +434,13 @@ VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
         if (check_device_basic_features_support(device, surface, required_extensions, required_features)
             && rating > best_rating)
         {
-            best_rating  = rating;
-            current_pick = device;
+            best_rating             = rating;
+            current_pick            = device;
+            device_features_support = required_features;
         }
     }
 
+    required_features = device_features_support;
     return current_pick;
 }
 
@@ -447,9 +479,7 @@ VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhysicalDe
     };
 
     const VmaAllocatorCreateInfo allocator_create_info = {
-        .flags = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
-        //        .flags            = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT |
-        //        VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+        .flags            = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
         .physicalDevice   = physical_device,
         .device           = device,
         .pVulkanFunctions = &vma_vulkan_functions,
@@ -458,6 +488,56 @@ VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhysicalDe
     };
 
     return vmaCreateAllocator(&allocator_create_info, allocator);
+}
+
+VkResult create_vulkan_device(const rendering_features_table& rendering_features, const ext_array& device_extensions,
+                              VkPhysicalDevice phys_device, VkSurfaceKHR surface, VkDevice* device)
+{
+    const auto queue_create_info = get_queue_create_info(phys_device, surface);
+
+    VkPhysicalDeviceVulkan13Features vk13_features {
+        .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+        .synchronization2 = rendering_features.enable(rendering_features_table::eSynchronization2),
+        .dynamicRendering = rendering_features.enable(rendering_features_table::eDynamicRender),
+        .maintenance4     = rendering_features.enable(rendering_features_table::eMeshShading)};
+
+    VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features {};
+    if (rendering_features.enable(rendering_features_table::eMeshShading))
+    {
+        mesh_features = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT, .taskShader = true, .meshShader = true};
+        vk13_features.pNext = &mesh_features;
+    }
+
+    VkPhysicalDeviceVulkan12Features vk12_features {
+        .sType                   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .pNext                   = &vk13_features,
+        .storageBuffer8BitAccess = rendering_features.enable(rendering_features_table::e8BitIntegers)};
+
+    VkPhysicalDeviceVulkan11Features vk11_features {
+        .sType                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .pNext                = &vk12_features,
+        .shaderDrawParameters = rendering_features.enable(rendering_features_table::eDrawIndirect)};
+
+    VkPhysicalDeviceFeatures2 device_features {
+        .sType    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext    = &vk11_features,
+        .features = {
+                     .multiDrawIndirect = rendering_features.enable(rendering_features_table::eDrawIndirect),
+                     }
+    };
+
+    VkDeviceCreateInfo device_create_info {
+        .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext                   = &device_features,
+        .queueCreateInfoCount    = static_cast<u32>(queue_create_info.size()),
+        .pQueueCreateInfos       = queue_create_info.data(),
+        .enabledExtensionCount   = static_cast<u32>(device_extensions.size()),
+        .ppEnabledExtensionNames = device_extensions.data(),
+        .pEnabledFeatures        = nullptr,
+    };
+
+    return vkCreateDevice(phys_device, &device_create_info, nullptr, device);
 }
 
 result<context> create_vk_context(const window& window, const instance_desc& desc)
@@ -497,7 +577,7 @@ result<context> create_vk_context(const window& window, const instance_desc& des
     volkLoadInstance(context.instance);
 
     // Create debug messenger if available and requested
-    if (desc.device_features.required(rendering_features_table::eValidation))
+    if (desc.device_features.requested(rendering_features_table::eValidation))
     {
         const VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -513,57 +593,22 @@ result<context> create_vk_context(const window& window, const instance_desc& des
 
     VK_RETURN_ON_FAIL(video_driver_create_surface(window, context.instance, &context.surface));
 
-    context.enabled_device_features   = desc.device_features;
-    context.enabled_device_extensions = desc.device_extensions;
-    context.physical_device =
-        pick_physical_device(context.instance, context.surface, desc.device_extensions, desc.device_features);
+    // copy requested & required features
+    context.enabled_device_features = desc.device_features;
 
-    const auto queue_create_info = get_queue_create_info(context.physical_device, context.surface);
+    // here context.enabled_device_features is populated with all supported features, both required and requested
+    context.physical_device = pick_physical_device(context.instance,
+                                                   context.surface,
+                                                   build_extensions_from_feature_table(desc.device_features, true),
+                                                   context.enabled_device_features);
 
-    VkPhysicalDeviceVulkan13Features vk13_features {
-        .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        .synchronization2 = desc.device_features.required(rendering_features_table::eSynchronization2),
-        .dynamicRendering = desc.device_features.required(rendering_features_table::eDynamicRender),
-        .maintenance4     = desc.device_features.required(rendering_features_table::eMeshShading)};
-
-    if (desc.device_features.required(rendering_features_table::eMeshShading))
-    {
-        VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features = {
-            .sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
-            .taskShader = true,
-            .meshShader = true};
-        vk13_features.pNext = &mesh_features;
-    }
-
-    VkPhysicalDeviceVulkan12Features vk12_features {
-        .sType                   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        .pNext                   = &vk13_features,
-        .storageBuffer8BitAccess = desc.device_features.required(rendering_features_table::eMeshShading)};
-
-    VkPhysicalDeviceVulkan11Features vk11_features {
-        .sType                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-        .pNext                = &vk12_features,
-        .shaderDrawParameters = desc.device_features.required(rendering_features_table::eDrawIndirect)};
-
-    VkPhysicalDeviceFeatures2 device_features {
-        .sType    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext    = &vk11_features,
-        .features = {
-                     .multiDrawIndirect = desc.device_features.required(rendering_features_table::eDrawIndirect),
-                     }
-    };
-
-    VkDeviceCreateInfo device_create_info {
-        .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext                   = &device_features,
-        .queueCreateInfoCount    = static_cast<u32>(queue_create_info.size()),
-        .pQueueCreateInfos       = queue_create_info.data(),
-        .enabledExtensionCount   = static_cast<u32>(context.enabled_device_extensions.size()),
-        .ppEnabledExtensionNames = context.enabled_device_extensions.data(),
-        .pEnabledFeatures        = nullptr,
-    };
-
-    VK_RETURN_ON_FAIL(vkCreateDevice(context.physical_device, &device_create_info, nullptr, &context.device));
+    // build new extensions table with required + (requested & supported) extensions included
+    context.enabled_device_extensions = build_extensions_from_feature_table(context.enabled_device_features);
+    VK_RETURN_ON_FAIL(create_vulkan_device(context.enabled_device_features,
+                                           context.enabled_device_extensions,
+                                           context.physical_device,
+                                           context.surface,
+                                           &context.device));
     VK_RETURN_ON_FAIL(
         create_vma_allocator(context.instance, context.device, context.physical_device, &context.allocator));
 

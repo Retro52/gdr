@@ -11,7 +11,6 @@ in VS_IN {
     layout (location = 4) in vec4 world_pos;
 #if VISUALIZE_MESHLETS
     layout (location = 5) flat in uint meshlet_id;
-    layout (location = 6) flat in uint triangle_id;
 #endif
 } vs_in;
 
@@ -38,20 +37,15 @@ vec3 uint_color(uint num)
     );
 }
 
-vec3 meshlet_color(uint id, uint tris)
+vec3 meshlet_color(uint id)
 {
-#if VISUALIZE_MESHLET_TRIANGLES
-    float kTrisColFactor = 0.15F;
-#else
-    float kTrisColFactor = 0.0F;
-#endif
-    return (1.0F - kTrisColFactor) * uint_color(lowbias32(id)) + kTrisColFactor * uint_color(lowbias32(tris));
+    return uint_color(lowbias32(id));
 }
 
 void main()
 {
 #if VISUALIZE_MESHLETS
-    o_frag_color = vec4(meshlet_color(vs_in.meshlet_id, vs_in.triangle_id), 1.0F);
+    o_frag_color = vec4(meshlet_color(vs_in.meshlet_id), 1.0F);
 #else
     o_frag_color = vec4(vs_in.normal, 1.0F);
 #endif

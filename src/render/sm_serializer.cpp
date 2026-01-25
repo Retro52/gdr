@@ -9,11 +9,7 @@
 
 namespace
 {
-#if SM_USE_MESHLETS
-    constexpr u64 kSMMagic = "model blob v1 (meshlets)"_hs;
-#else
-    constexpr u64 kSMMagic = "model blob v1 (vertex pipeline)"_hs;
-#endif
+    constexpr u64 kSMMagic = "wazzup"_hs;
 
     struct mesh_header
     {

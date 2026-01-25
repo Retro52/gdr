@@ -86,7 +86,6 @@ void draw_shared_buffer_stats(const char* label, const render::vk_shared_buffer&
 
 void draw_tris_per_meshlet_score(f64 tpm_average)
 {
-#if SM_USE_MESHLETS
     constexpr f64 upper_bound = static_cast<f64>(static_model::kMaxTrianglesPerMeshlet);
 
     if (tpm_average > upper_bound * 0.9)
@@ -109,7 +108,6 @@ void draw_tris_per_meshlet_score(f64 tpm_average)
         ImGuiEx::ScopedColor _(ImGuiCol_Text, IM_COL32(255, 50, 50, 255));
         ImGui::Text("TPM Score: bad (%lf%% from max)", tpm_average * 100.0F / upper_bound);
     }
-#endif
 }
 
 f32 get_random_f32(f32 min, f32 max)
@@ -197,30 +195,26 @@ int main(int argc, char* argv[])
 
     auto features_table = render::rendering_features_table()
 #if !defined(NDEBUG)
-                              .enable(render::rendering_features_table::eValidation)
+                              .request(render::rendering_features_table::eValidation)
 #endif
-#if SM_USE_MESHLETS
-                              .enable(render::rendering_features_table::eMeshShading)
-#endif
-                              .enable(render::rendering_features_table::eDrawIndirect)
-                              .enable(render::rendering_features_table::eDynamicRender)
-                              .enable(render::rendering_features_table::eSynchronization2);
+                              .request(render::rendering_features_table::eMeshShading)
+                              .require(render::rendering_features_table::e8BitIntegers)
+                              .require(render::rendering_features_table::eDrawIndirect)
+                              .require(render::rendering_features_table::eDynamicRender)
+                              .require(render::rendering_features_table::eSynchronization2);
 
     render::vk_renderer renderer(
         render::instance_desc {
-            .device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-#if SM_USE_MESHLETS
-                                  VK_EXT_MESH_SHADER_EXTENSION_NAME,
-#endif
-                                  VK_KHR_MAINTENANCE_4_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
-                                  VK_KHR_8BIT_STORAGE_EXTENSION_NAME, TRACY_ONLY(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME)},
             .app_name        = "Vulkan renderer",
             .app_version     = 1,
             .device_features = features_table,
-    },
+        },
         client_window);
 
     bool exit = false;
+    bool mesh_shading_supported =
+        renderer.get_context().enabled_device_features.supported(render::rendering_features_table::eMeshShading);
+
     client_events.add_watcher(
         event_type::request_close,
         [](auto&, void* user_data)
@@ -249,25 +243,33 @@ int main(int argc, char* argv[])
         },
         &renderer);
 
-    render::vk_shader shaders[] = {
-#if SM_USE_MESHLETS
-        *render::vk_shader::load(renderer, "../shaders/meshlets.task.spv"),
-        *render::vk_shader::load(renderer, "../shaders/meshlets.mesh.spv"),
-#else
+    render::vk_shader indexed_shaders[] = {
         *render::vk_shader::load(renderer, "../shaders/mesh.vert.spv"),
-#endif
         *render::vk_shader::load(renderer, "../shaders/meshlets.frag.spv"),
     };
 
-    const auto render_pipeline = *render::vk_pipeline::create_graphics(renderer, shaders, COUNT_OF(shaders));
-    const auto cull_pass =
-        *render::vk_pipeline::create_compute(renderer,
-#if SM_USE_MESHLETS
-                                             *render::vk_shader::load(renderer, "../shaders/meshlets_cull.comp.spv")
-#else
-                                             *render::vk_shader::load(renderer, "../shaders/mesh_cull.comp.spv")
-#endif
-        );
+    render::vk_shader meshlets_shaders[] = {
+        *render::vk_shader::load(renderer, "../shaders/meshlets.task.spv"),
+        *render::vk_shader::load(renderer, "../shaders/meshlets.mesh.spv"),
+        *render::vk_shader::load(renderer, "../shaders/meshlets.frag.spv"),
+    };
+
+    const auto indexed_render_pipeline =
+        *render::vk_pipeline::create_graphics(renderer, indexed_shaders, COUNT_OF(indexed_shaders));
+
+    const auto indexed_cull_pipeline = *render::vk_pipeline::create_compute(
+        renderer, *render::vk_shader::load(renderer, "../shaders/mesh_cull.comp.spv"));
+
+    render::vk_pipeline meshlets_cull_pipeline;
+    render::vk_pipeline meshlets_render_pipeline;
+    if (mesh_shading_supported)
+    {
+        meshlets_render_pipeline =
+            *render::vk_pipeline::create_graphics(renderer, meshlets_shaders, COUNT_OF(meshlets_shaders));
+
+        meshlets_cull_pipeline = *render::vk_pipeline::create_compute(
+            renderer, *render::vk_shader::load(renderer, "../shaders/meshlets_cull.comp.spv"));
+    }
 
 #if !NO_EDITOR
     imgui_layer editor(client_window, renderer);
@@ -292,18 +294,20 @@ int main(int argc, char* argv[])
     });
 
     render::vk_scene_geometry_pool geometry_pool {
-#if !SM_USE_MESHLETS
-        .index = render::vk_shared_buffer(renderer, 32 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
-#endif
-        .vertex = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-#if SM_USE_MESHLETS
-        .meshlets         = render::vk_shared_buffer(renderer, 8 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-        .meshlets_payload = render::vk_shared_buffer(renderer, 16 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-#endif
+        .index    = render::vk_shared_buffer(renderer, 32 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+        .vertex   = render::vk_shared_buffer(renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .transfer = *render::create_buffer_transfer(renderer.get_context().device,
                                                     renderer.get_context().allocator,
                                                     renderer.get_context().queues[render::queue_kind::eTransfer],
                                                     64 * 1024 * 1024)};
+
+    if (mesh_shading_supported)
+    {
+        geometry_pool.meshlets =
+            render::vk_shared_buffer(renderer, 8 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        geometry_pool.meshlets_payload =
+            render::vk_shared_buffer(renderer, 16 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    }
 
     constexpr u32 kQueryPoolCount    = 64;
     VkQueryPool timestamp_query_pool = *render::create_vk_query_pool(renderer.get_context().device, kQueryPoolCount);
@@ -320,7 +324,13 @@ int main(int argc, char* argv[])
                                renderer.get_context().allocator,
                                0);
 
-    render::vk_buffer draw_indirect_buffer = *render::create_buffer(
+    render::vk_buffer indexed_draw_indirect_buffer = *render::create_buffer(
+        1024 * 1024,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        renderer.get_context().allocator,
+        0);
+
+    render::vk_buffer meshlets_draw_indirect_buffer = *render::create_buffer(
         1024 * 1024,
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         renderer.get_context().allocator,
@@ -332,8 +342,9 @@ int main(int argc, char* argv[])
     render_settings client_render_settings;
 
     glm::mat4 camera_proj_view;
-    bool enable_cone_culling    = true;
-    bool freeze_camera_cull_dir = false;
+    bool enable_cone_culling      = true;
+    bool freeze_camera_cull_dir   = false;
+    bool enable_meshlets_pipeline = mesh_shading_supported;
 
     u32 scene_triangles = 0;
     u32 scene_meshlets  = 0;
@@ -432,6 +443,9 @@ int main(int argc, char* argv[])
                         camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
                 }
 
+                camera_proj_view = camera_data.get_projection_matrix()
+                                 * camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
+
                 if (enable_cone_culling)
                 {
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "vk cmd dispatch"));
@@ -439,9 +453,12 @@ int main(int argc, char* argv[])
                     const render::vk_descriptor_info cull_pass_bindings[] = {
                         meshes_data.buffer,
                         meshes_transforms.buffer,
-                        draw_indirect_buffer.buffer,
+                        enable_meshlets_pipeline ? meshlets_draw_indirect_buffer.buffer
+                                                 : indexed_draw_indirect_buffer.buffer,
                     };
 
+                    const render::vk_pipeline& cull_pass =
+                        enable_meshlets_pipeline ? meshlets_cull_pipeline : indexed_cull_pipeline;
                     cull_pass.bind(buffer);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
                     cull_pass.push_constant(buffer,
@@ -468,49 +485,48 @@ int main(int argc, char* argv[])
                 vkCmdSetScissor(buffer, 0, 1, &scissor);
                 vkCmdSetViewport(buffer, 0, 1, &viewport);
 
+                const auto& render_pipeline =
+                    enable_meshlets_pipeline ? meshlets_render_pipeline : indexed_render_pipeline;
                 render_pipeline.bind(buffer);
+                render_pipeline.push_constant(
+                    buffer,
+                    pc_data {.pv = camera_proj_view, .view = cull_matrices.view, .use_culling = enable_cone_culling});
 
-#if SM_USE_MESHLETS
-                const render::vk_descriptor_info render_bindings[] = {
-                    geometry_pool.vertex.buffer.buffer,
-                    geometry_pool.meshlets.buffer.buffer,
-                    geometry_pool.meshlets_payload.buffer.buffer,
-                    meshes_data.buffer,
-                    meshes_transforms.buffer,
-                };
-                render_pipeline.push_descriptor_set(buffer, render_bindings);
-#else
-                const render::vk_descriptor_info render_bindings[] = {
-                    geometry_pool.vertex.buffer.buffer, meshes_data.buffer, meshes_transforms.buffer};
-                render_pipeline.push_descriptor_set(buffer, render_bindings);
-#endif
-
-#if !SM_USE_MESHLETS
-                vkCmdBindIndexBuffer(buffer, geometry_pool.index.buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-#endif
-
-                camera_proj_view = camera_data.get_projection_matrix()
-                                 * camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
+                if (enable_meshlets_pipeline)
                 {
-                    ZoneScopedN("main.component.model.draw");
-                    TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "draw call"));
+                    ZoneScopedN("draw using meshlets");
+                    TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "draw using meshlets"));
 
-                    render_pipeline.push_constant(buffer,
-                                                  pc_data {.pv          = camera_proj_view,
-                                                           .view        = cull_matrices.view,
-                                                           .use_culling = enable_cone_culling});
-
-#if SM_USE_MESHLETS
+                    const render::vk_descriptor_info render_bindings[] = {
+                        geometry_pool.vertex.buffer.buffer,
+                        geometry_pool.meshlets.buffer.buffer,
+                        geometry_pool.meshlets_payload.buffer.buffer,
+                        meshes_data.buffer,
+                        meshes_transforms.buffer,
+                    };
+                    render_pipeline.push_descriptor_set(buffer, render_bindings);
                     vkCmdDrawMeshTasksIndirectEXT(buffer,
-                                                  draw_indirect_buffer.buffer,
+                                                  meshlets_draw_indirect_buffer.buffer,
                                                   0,
                                                   kRepeatDraws,
                                                   sizeof(VkDrawMeshTasksIndirectCommandEXT));
-#else
-                    vkCmdDrawIndexedIndirect(
-                        buffer, draw_indirect_buffer.buffer, 0, kRepeatDraws, sizeof(VkDrawIndexedIndirectCommand));
-#endif
                 }
+                else
+                {
+                    ZoneScopedN("draw using indexed buffer");
+                    TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "draw using indexed buffer"));
+
+                    const render::vk_descriptor_info render_bindings[] = {geometry_pool.vertex.buffer.buffer,
+                                                                          meshes_transforms.buffer};
+                    render_pipeline.push_descriptor_set(buffer, render_bindings);
+                    vkCmdBindIndexBuffer(buffer, geometry_pool.index.buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+                    vkCmdDrawIndexedIndirect(buffer,
+                                             indexed_draw_indirect_buffer.buffer,
+                                             0,
+                                             kRepeatDraws,
+                                             sizeof(VkDrawIndexedIndirectCommand));
+                }
+
                 if (freeze_camera_cull_dir)
                 {
                     frustum_renderer.draw(buffer, camera_proj_view, cull_matrices.view, cull_matrices.projection);
@@ -528,6 +544,9 @@ int main(int argc, char* argv[])
 
                     ImGui::SeparatorText("renderer settings");
                     codegen::draw(client_render_settings);
+                    ImGui::BeginDisabled(!mesh_shading_supported);
+                    ImGui::Checkbox("Enable meshlets path", &enable_meshlets_pipeline);
+                    ImGui::EndDisabled();
 
                     ImGui::SeparatorText("gpu timings");
                     codegen::draw(profile_data);
@@ -535,12 +554,9 @@ int main(int argc, char* argv[])
 
                     ImGui::SeparatorText("gpu stats");
                     draw_shared_buffer_stats("Vertices", geometry_pool.vertex);
-#if SM_USE_MESHLETS
+                    draw_shared_buffer_stats("Indices", geometry_pool.index);
                     draw_shared_buffer_stats("Meshlets", geometry_pool.meshlets);
                     draw_shared_buffer_stats("Meshlets payload", geometry_pool.meshlets_payload);
-#else
-                    draw_shared_buffer_stats("Indices", geometry_pool.index);
-#endif
 
                     ImGui::SeparatorText("render controls");
                     ImGui::Checkbox("Enable culling", &enable_cone_culling);

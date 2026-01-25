@@ -19,6 +19,7 @@ function(run_codegen)
     list(FILTER RC_ARGS_SOURCES INCLUDE REGEX ".*\\.hpp$")
     set(CODEGEN_OUTPUTS "")
 
+    file(MAKE_DIRECTORY "${RC_ARGS_ROOT}/codegen")
     file(COPY_FILE "${CMAKE_SOURCE_DIR}/cmake/codegen/common.hpp" "${RC_ARGS_ROOT}/codegen/common.hpp")
 
     foreach (SOURCE ${RC_ARGS_SOURCES})

@@ -11,6 +11,22 @@ namespace cpp
         return !required || supported;
     }
 
+    constexpr u32 cx_get_enum_bit_count(u64 enum_count_value) noexcept
+    {
+        u32 count      = 0;
+        auto prev_flag = enum_count_value - 1;
+
+        while (prev_flag > 0)
+        {
+            assert(prev_flag == 1 || prev_flag % 2 == 0);
+
+            ++count;
+            prev_flag = prev_flag >> 1;
+        }
+
+        return count;
+    }
+
     template<class It, class V>
     constexpr bool cx_contains(It first, const It end, const V& val)
     {

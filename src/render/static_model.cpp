@@ -43,7 +43,6 @@ namespace
         return {center, radius};
     }
 
-#if SM_USE_MESHLETS
     void build_meshlets(const static_model::mesh_data& mesh, std::vector<static_model::meshlet>& meshlets,
                         std::vector<u8>& meshlets_payload, u32 base_payload_offset) noexcept
     {
@@ -131,26 +130,18 @@ namespace
             meshlets_payload.resize(total_bytes_written);
         }
     }
-#endif
 
-    void upload_to_scene(const static_model::mesh_data& mesh,
-#if SM_USE_MESHLETS
-                         const std::vector<static_model::meshlet>& meshlets, const std::vector<u8>& meshlets_payload,
-#endif
-                         vk_scene_geometry_pool& geometry_pool)
+    void upload_to_scene(const static_model::mesh_data& mesh, const std::vector<static_model::meshlet>& meshlets,
+                         const std::vector<u8>& meshlets_payload, vk_scene_geometry_pool& geometry_pool)
     {
         ZoneScoped;
 
-#if SM_USE_MESHLETS
-        upload_data(geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
         upload_data(geometry_pool.transfer, geometry_pool.meshlets, meshlets.data(), meshlets.size());
+        upload_data(geometry_pool.transfer, geometry_pool.index, mesh.indices.data(), mesh.indices.size());
+        upload_data(geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
 
         upload_data(
             geometry_pool.transfer, geometry_pool.meshlets_payload, meshlets_payload.data(), meshlets_payload.size());
-#else
-        upload_data(geometry_pool.transfer, geometry_pool.index, mesh.indices.data(), mesh.indices.size());
-        upload_data(geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
-#endif
     }
 }
 
@@ -163,7 +154,6 @@ result<std::vector<static_model>> static_model::load(const fs::path& path,
     if (render::load_model<vertex>(path, model_meshes))
     {
         std::vector<static_model> models(model_meshes.size());
-#if SM_USE_MESHLETS
         for (u32 i = 0; i < model_meshes.size(); ++i)
         {
             std::vector<meshlet> meshlets;
@@ -174,24 +164,18 @@ result<std::vector<static_model>> static_model::load(const fs::path& path,
             models[i].meshlets_count = meshlets.size();
             models[i].b_sphere       = compute_bounding_sphere(model_meshes[i]);
 
+            assert(geometry_pool.index.offset % sizeof(u32) == 0);
             assert(geometry_pool.vertex.offset % sizeof(vertex) == 0);
             assert(geometry_pool.meshlets.offset % sizeof(meshlet) == 0);
 
             models[i].base_vertex  = geometry_pool.vertex.offset / sizeof(vertex);
             models[i].base_meshlet = geometry_pool.meshlets.offset / sizeof(meshlet);
+
+            models[i].base_index    = geometry_pool.index.offset / sizeof(u32);
+            models[i].indices_count = model_meshes[i].indices.size();
+
             upload_to_scene(model_meshes[i], meshlets, meshlets_payload, geometry_pool);
         }
-#else
-        for (u32 i = 0; i < model_meshes.size(); ++i)
-        {
-            models[i].meshlets_count = model_meshes[i].indices.size();
-            models[i].base_vertex    = geometry_pool.vertex.offset / sizeof(vertex);
-            models[i].base_meshlet   = geometry_pool.index.offset / sizeof(u32);
-
-            models[i].b_sphere = compute_bounding_sphere(model_meshes[i]);
-            upload_to_scene(model_meshes[i], geometry_pool);
-        }
-#endif
         return models;
     }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cpp/alg_constexpr.hpp>
 #include <render/platform/vk/vk_image.hpp>
 #include <render/platform/vk/vma.hpp>
 #include <result.hpp>
@@ -13,32 +14,73 @@ namespace render
 
     struct rendering_features_table
     {
-        enum flag
+        enum flag : u32
         {
             eValidation       = 1 << 0,
             eMeshShading      = 1 << 1,
             eDynamicRender    = 1 << 2,
             eSynchronization2 = 1 << 3,
             eDrawIndirect     = 1 << 4,
+            e8BitIntegers     = 1 << 5,
+            eCOUNT
         };
 
         [[nodiscard]] bool required(rendering_features_table::flag flag) const noexcept
         {
-            return (flag & features) > 0;
+            return (flag & required_features) > 0;
         }
 
-        rendering_features_table& enable(rendering_features_table::flag flag) noexcept
+        [[nodiscard]] bool requested(rendering_features_table::flag flag) const noexcept
         {
-            features |= flag;
+            return (flag & requested_features) > 0 || required(flag);
+        }
+
+        [[nodiscard]] bool supported(rendering_features_table::flag flag) const noexcept
+        {
+            return (flag & supported_features) > 0;
+        }
+
+        [[nodiscard]] bool enable(rendering_features_table::flag flag) const noexcept
+        {
+            return (flag & supported_features) > 0 && requested(flag);
+        }
+
+        rendering_features_table& require(rendering_features_table::flag flag) noexcept
+        {
+            required_features |= flag;
             return *this;
         }
 
-        u32 features {0};
+        rendering_features_table& request(rendering_features_table::flag flag) noexcept
+        {
+            requested_features |= flag;
+            return *this;
+        }
+
+        void set_supported(rendering_features_table::flag flag, bool supported = true) noexcept
+        {
+            supported_features = supported ? supported_features | flag : supported_features & ~flag;
+        }
+
+        [[nodiscard]] bool all_required_supported() const noexcept
+        {
+            bool result = true;
+            for (u32 i = 0; i < cpp::cx_get_enum_bit_count(rendering_features_table::eCOUNT); ++i)
+            {
+                const auto feature = static_cast<flag>(1 << i);
+                result |= cpp::cx_implies(this->required(feature), this->requested(feature));
+            }
+
+            return result;
+        }
+
+        u32 required_features {0};
+        u32 requested_features {0};
+        u32 supported_features {0};
     };
 
     struct instance_desc
     {
-        ext_array device_extensions;
         const char* app_name {""};
         u32 app_version {0};
         rendering_features_table device_features;

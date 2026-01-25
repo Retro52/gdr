@@ -7,16 +7,15 @@
 #include <render/sm_cache.hpp>
 #include <shaders/constants.h>
 
-#define SM_USE_MESHLETS 1
-
 struct static_model
 {
     vec4 b_sphere;
     u32 base_vertex;
-    u32 base_meshlet;    // Can be treated as base index for non-meshlet path
-    u32 meshlets_count;  // Can be treated as index count for non-meshlet path
+    u32 base_meshlet;    // Only used for meshlets path
+    u32 meshlets_count;  // Only used for meshlets path
+    u32 base_index;      // Only used for non-meshlets path
+    u32 indices_count;   // Only used for non-meshlets path
 
-#if SM_USE_MESHLETS
     constexpr static u32 kMaxIndicesPerMeshlet   = shader_constants::kMaxIndicesPerMeshlet;
     constexpr static u32 kMaxVerticesPerMeshlet  = shader_constants::kMaxVerticesPerMeshlet;
     constexpr static u32 kMaxTrianglesPerMeshlet = shader_constants::kMaxTrianglesPerMeshlet;
@@ -31,7 +30,6 @@ struct static_model
         u8 vertices_count;
         u8 triangles_count;
     };
-#endif
 
     struct vertex
     {
