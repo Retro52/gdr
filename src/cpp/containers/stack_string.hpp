@@ -1,5 +1,6 @@
 #pragma once
 
+#include <assert2.hpp>
 #include <cpp/alg_constexpr.hpp>
 #include <cpp/hash/crc_hash.hpp>
 #include <cpp/math.hpp>
@@ -214,13 +215,13 @@ namespace cpp
 
         [[nodiscard]] constexpr char& operator[](const size_t pos)
         {
-            assert(pos < capacity() && "pos can not be bigger than capacity");
+            assert2(pos < capacity() && "pos can not be bigger than capacity");
             return m_str[pos];
         }
 
         [[nodiscard]] constexpr const char& operator[](const size_t pos) const
         {
-            assert(pos < capacity() && "pos can not be bigger than capacity");
+            assert2(pos < capacity() && "pos can not be bigger than capacity");
             return m_str[pos];
         }
 

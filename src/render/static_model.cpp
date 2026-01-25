@@ -1,5 +1,5 @@
+#include <assert2.hpp>
 #include <meshoptimizer.h>
-#include <render/platform/vk/vk_error.hpp>
 #include <render/sm_cache.hpp>
 #include <render/static_model.hpp>
 #include <Tracy/Tracy.hpp>
@@ -164,9 +164,9 @@ result<std::vector<static_model>> static_model::load(const fs::path& path,
             models[i].meshlets_count = meshlets.size();
             models[i].b_sphere       = compute_bounding_sphere(model_meshes[i]);
 
-            assert(geometry_pool.index.offset % sizeof(u32) == 0);
-            assert(geometry_pool.vertex.offset % sizeof(vertex) == 0);
-            assert(geometry_pool.meshlets.offset % sizeof(meshlet) == 0);
+            assert2(geometry_pool.index.offset % sizeof(u32) == 0);
+            assert2(geometry_pool.vertex.offset % sizeof(vertex) == 0);
+            assert2(geometry_pool.meshlets.offset % sizeof(meshlet) == 0);
 
             models[i].base_vertex  = geometry_pool.vertex.offset / sizeof(vertex);
             models[i].base_meshlet = geometry_pool.meshlets.offset / sizeof(meshlet);

@@ -3,7 +3,7 @@
 
 result<VkQueryPool> render::create_vk_query_pool(VkDevice device, u32 queries, VkQueryType type)
 {
-    assert(type != VK_QUERY_TYPE_PIPELINE_STATISTICS);
+    assert2(type != VK_QUERY_TYPE_PIPELINE_STATISTICS);
 
     VkQueryPoolCreateInfo create_info = {
         .sType      = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,

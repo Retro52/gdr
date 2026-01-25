@@ -2,6 +2,8 @@
 
 #include <types.hpp>
 
+#include <assert2.hpp>
+
 #include <cassert>
 #include <type_traits>
 #include <utility>
@@ -140,31 +142,31 @@ struct result
 
     T& operator*() &
     {
-        assert(status == status::ok);
+        assert2(status == status::ok);
         return value;
     }
 
     T operator*() &&
     {
-        assert(status == status::ok);
+        assert2(status == status::ok);
         return value;
     }
 
     const T& operator*() const&
     {
-        assert(status == status::ok);
+        assert2(status == status::ok);
         return value;
     }
 
     T* operator->()
     {
-        assert(status == status::ok);
+        assert2(status == status::ok);
         return &value;
     }
 
     const T* operator->() const
     {
-        assert(status == status::ok);
+        assert2(status == status::ok);
         return &value;
     }
 

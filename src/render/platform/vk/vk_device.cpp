@@ -1,8 +1,8 @@
+#include <assert2.hpp>
 #include <cpp/alg_constexpr.hpp>
 #include <cpp/containers/stack_string.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
-#include <soft_assert/soft_assert.hpp>
 #include <Tracy/Tracy.hpp>
 
 #include <algorithm>
@@ -170,7 +170,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT s
     if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
         std::cerr << std::flush;
-        soft_assert(false, pCallbackData->pMessage ? pCallbackData->pMessage : "VK validation error");
+        assert2m(false, pCallbackData->pMessage ? pCallbackData->pMessage : "VK validation error");
     }
     return VK_FALSE;
 }

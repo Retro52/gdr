@@ -1,5 +1,5 @@
-#include <cpp/hash/hashed_string.hpp>
 #include <fs/fs.hpp>
+#include <assert2.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 
 #define SPV_ENABLE_UTILITY_CODE
@@ -229,7 +229,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     {
         if (static_cast<SpvStorageClass>(storage_class) == SpvStorageClassPushConstant)
         {
-            assert(!push_constant_variable);
+            assert2(!push_constant_variable);
             push_constant_variable = self;
         }
     };
@@ -242,7 +242,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
             size += member ? member->size : 0;
         }
 
-        assert(size % 8 == 0);
+        assert2(size % 8 == 0);
         return size / 8;
     };
 
@@ -257,7 +257,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     };
 
     shader_meta result {};
-    assert(!spv.empty() && spv.size() % 4 == 0 && "SPV shall not be empty, and contain a stream of u32 packed data");
+    assert2(!spv.empty() && spv.size() % 4 == 0 && "SPV shall not be empty, and contain a stream of u32 packed data");
 
     // As per Khronos spec:
     // 0 - magic number
@@ -268,7 +268,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     // 5 - first word of an instruction stream
 
     const u32* inst = static_cast<const u32*>(spv.data());
-    assert(inst[0] == SpvMagicNumber);
+    assert2(inst[0] == SpvMagicNumber);
 
     const u32 id_count = inst[3];
     std::vector<spv_id> spv_ids(id_count);
@@ -320,8 +320,8 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
             spv_ids[inst[1]].op_code = static_cast<SpvOp>(op_code);
             break;
         case SpvOpTypeArray :
-            assert(spv_ids[inst[3]].name == inst[3]);
-            assert(spv_ids[inst[3]].constant > 0);
+            assert2(spv_ids[inst[3]].name == inst[3]);
+            assert2(spv_ids[inst[3]].constant > 0);
             spv_ids[inst[1]].name    = inst[1];
             spv_ids[inst[1]].size    = spv_ids[inst[2]].size * spv_ids[inst[3]].constant;
             spv_ids[inst[1]].op_code = static_cast<SpvOp>(op_code);
@@ -373,7 +373,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
 
     for (const auto& [_, push_desc] : push_descriptors)
     {
-        assert(push_desc.binding < COUNT_OF(result.bindings) && "binding id too high?");
+        assert2(push_desc.binding < COUNT_OF(result.bindings) && "binding id too high?");
 
         // find the root type declaration
         const spv_id* declaration = get_spv_id_root(push_desc.variable);
@@ -401,7 +401,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
 
 result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, const vk_shader& shader)
 {
-    assert(shader.meta.stage == VK_SHADER_STAGE_COMPUTE_BIT);
+    assert2(shader.meta.stage == VK_SHADER_STAGE_COMPUTE_BIT);
 
     const auto pc_range = parse_push_constant_range(&shader, 1);
 
@@ -441,7 +441,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     std::vector<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
     for (u32 i = 0; i < shaders_count; ++i)
     {
-        assert(shaders[i].meta.stage != VK_SHADER_STAGE_COMPUTE_BIT);
+        assert2(shaders[i].meta.stage != VK_SHADER_STAGE_COMPUTE_BIT);
         shader_stage_create_infos[i] = {
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage  = shaders[i].meta.stage,
@@ -592,7 +592,7 @@ void vk_pipeline::bind(VkCommandBuffer command_buffer) const
 
 void vk_pipeline::push_constant(VkCommandBuffer command_buffer, u32 size, const void* data) const
 {
-    DEBUG_ONLY(assert(m_push_constants_max_size >= size));
+    DEBUG_ONLY(assert2(m_push_constants_max_size >= size));
     vkCmdPushConstants(command_buffer, m_pipeline_layout, m_push_constant_stages, 0, size, data);
 }
 

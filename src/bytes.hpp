@@ -2,6 +2,7 @@
 
 #include <types.hpp>
 
+#include <assert2.hpp>
 #include <Tracy/Tracy.hpp>
 
 #include <memory>
@@ -67,7 +68,7 @@ struct bytes
     template<typename T>
     [[nodiscard]] T* get() noexcept
     {
-        assert(size() % sizeof(T) == 0);
+        assert2(size() % sizeof(T) == 0);
         return reinterpret_cast<T*>(m_memory.get());
     }
 

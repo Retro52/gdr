@@ -5,6 +5,7 @@
 
 #include <types.hpp>
 
+#include <assert2.hpp>
 #include <camera_controller.hpp>
 #include <codegen/camera_controller.hpp>
 #include <codegen/imgui/gpu_profile_data.hpp>
@@ -166,6 +167,8 @@ int main(int argc, char* argv[])
     TracySetProgramName("gdr");
 
     window client_window("VK window", {1920, 960}, false);
+    debug::assert2_set_window(client_window.get_native_handle().window);
+
     events_queue client_events(client_window);
 
     auto features_table = render::rendering_features_table()

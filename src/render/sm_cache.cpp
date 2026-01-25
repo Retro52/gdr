@@ -1,3 +1,4 @@
+#include <assert2.hpp>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
@@ -39,7 +40,7 @@ template<>
 sm_mesh_data load_mesh<sm_vertex>(const aiMesh* mesh) noexcept
 {
     ZoneScoped;
-    assert(mesh->HasNormals());
+    assert2(mesh->HasNormals());
 
     std::vector<sm_vertex> raw_vertices(mesh->mNumVertices);
     for (u32 i = 0; i < mesh->mNumVertices; i++)
@@ -69,7 +70,7 @@ sm_mesh_data load_mesh<sm_vertex>(const aiMesh* mesh) noexcept
     {
         const u32 base = i * 3;
         const u32* src = mesh->mFaces[i].mIndices;
-        assert(mesh->mFaces[i].mNumIndices == 3);
+        assert2(mesh->mFaces[i].mNumIndices == 3);
 
         indices[base + 0] = src[0];
         indices[base + 1] = src[1];
@@ -141,7 +142,7 @@ bool load_from_cache(const fs::path& path, std::vector<T>& meshes)
             render::load_mesh_cache_stats(
                 &(*model_cache)[data_pointer], indices_count, vertices_count, vertices_stride);
 
-            assert(vertices_stride == sizeof(sm_vertex));
+            assert2(vertices_stride == sizeof(sm_vertex));
 
             data.indices.resize(indices_count);
             data.vertices.resize(vertices_count);

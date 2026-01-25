@@ -1,6 +1,7 @@
 #pragma once
 
 #include <types.hpp>
+#include <assert2.hpp>
 
 namespace cpp
 {
@@ -18,7 +19,7 @@ namespace cpp
 
         while (prev_flag > 0)
         {
-            assert(prev_flag == 1 || prev_flag % 2 == 0);
+            assert2(prev_flag == 1 || prev_flag % 2 == 0);
 
             ++count;
             prev_flag = prev_flag >> 1;

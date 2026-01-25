@@ -2,6 +2,8 @@
 
 #include <volk.h>
 
+#include <assert2.hpp>
+
 #define VK_FAIL_HANDLE(EXPR, FAIL_OP)                                                              \
     switch (res)                                                                                   \
     {                                                                                              \
@@ -96,7 +98,7 @@
     }
 
 #if !defined(NDEBUG)
-#define VK_ASSERT(MSG) assert(false && (MSG))
+#define VK_ASSERT(MSG) assert2(false && (MSG))
 
 #define VK_ASSERT_ON_FAIL(EXPR)                   \
     if (const auto res = EXPR; res != VK_SUCCESS) \

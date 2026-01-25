@@ -1,5 +1,6 @@
 #pragma once
 
+#include <assert2.hpp>
 #include <cpp/alg_constexpr.hpp>
 #include <cpp/hash/hashed_string.hpp>
 #include <fs/fs.hpp>
@@ -69,9 +70,9 @@ void render::load_mesh_cache_data(const void* data, u32* indices, void* vertices
     u64 val_vertices_count  = 0;
     u64 val_vertices_stride = 0;
     load_mesh_cache_stats(data, val_indices_count, val_vertices_count, val_vertices_stride);
-    assert(val_indices_count == indices_count);
-    assert(val_vertices_count == vertices_count);
-    assert(val_vertices_stride == vertices_stride);
+    assert2(val_indices_count == indices_count);
+    assert2(val_vertices_count == vertices_count);
+    assert2(val_vertices_stride == vertices_stride);
 #endif
 
     u64 data_pointer = sizeof(mesh_header);
@@ -154,7 +155,7 @@ result<bytes> render::load_model_cache(const fs::path& path, u32& mesh_count)
     {
         if (data_pointer + bytes > file_size)
         {
-            assert(false && "read past data bounds");
+            assert2(false && "read past data bounds");
             return;
         }
 

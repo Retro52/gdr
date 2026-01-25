@@ -107,17 +107,17 @@ IncludeCategories:
     Priority: 0
     SortPriority: 0
     CaseSensitive: false
+  - Regex: ("|<)windows.h("|>)
+    Priority: 0
+    SortPriority: 0
+    CaseSensitive: false
   - Regex: <SDL3/.*>
     Priority: 1
     SortPriority: 1
     CaseSensitive: false
-  - Regex: <.*types.h.*>
+  - Regex: <types.hpp>
     Priority: 2
     SortPriority: 2
-    CaseSensitive: false
-  - Regex: ("|<)windows.h("|>)
-    Priority: 5
-    SortPriority: 5
     CaseSensitive: false
   - Regex: ^<.*\.(h|hpp|hxx)>
     Priority: 3

@@ -1,3 +1,4 @@
+#include <assert2.hpp>
 #include <render/platform/vk/vk_buffer_transfer.hpp>
 
 result<render::vk_buffer_transfer> render::create_buffer_transfer(VkDevice device, VmaAllocator allocator,
@@ -39,8 +40,8 @@ void render::submit_transfer(const vk_buffer_transfer& transfer, const vk_buffer
 {
     ZoneScoped;
 
-    assert(region.dstOffset + region.size < dst.size);
-    assert(region.srcOffset + region.size < transfer.staging_buffer.size);
+    assert2(region.dstOffset + region.size < dst.size);
+    assert2(region.srcOffset + region.size < transfer.staging_buffer.size);
 
     VkCommandBufferBeginInfo begin_info {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -66,7 +67,7 @@ void render::upload_data(const vk_buffer_transfer& transfer, const vk_buffer& ds
 {
     ZoneScoped;
 
-    assert(data != nullptr);
+    assert2(data != nullptr);
     std::copy_n(data, region.size, (static_cast<u8*>(transfer.mapped)) + region.srcOffset);
     submit_transfer(transfer, dst, region);
 }
