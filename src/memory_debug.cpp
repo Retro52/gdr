@@ -2,7 +2,6 @@
 #include <Tracy/Tracy.hpp>
 
 #if TRACY_ENABLE
-
 void* operator new(std::size_t count)
 {
     auto ptr = malloc(count);

@@ -6,7 +6,6 @@
 #include <Tracy/Tracy.hpp>
 
 #include <algorithm>
-#include <cstdio>
 #include <iostream>
 #include <ranges>
 #include <unordered_set>
@@ -584,7 +583,7 @@ result<context> create_vk_context(const window& window, const instance_desc& des
     // Create debug messenger if available and requested
     if (desc.device_features.requested(rendering_features_table::eValidation))
     {
-        const VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info {
+        constexpr VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
             .messageSeverity =
                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
@@ -843,7 +842,7 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
 
         VK_RETURN_ON_FAIL(vkCreateImageView(vk_context.device, &image_view_create_info, nullptr, &sc_image.image_view));
 
-        const VkSemaphoreCreateInfo semaphore_create_info {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        constexpr VkSemaphoreCreateInfo semaphore_create_info {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
         VK_ASSERT_ON_FAIL(
             vkCreateSemaphore(vk_context.device, &semaphore_create_info, nullptr, &sc_image.release_semaphore));
 

@@ -43,15 +43,16 @@ namespace
         return {center, radius};
     }
 
-    void build_meshlets(const static_model::mesh_data& mesh, std::vector<static_model::meshlet>& meshlets,
-                        std::vector<u8>& meshlets_payload, u32 base_payload_offset) noexcept
+    void build_meshlets(const std::vector<static_model::vertex>& vertices, const std::vector<u32>& indices,
+                        std::vector<static_model::meshlet>& meshlets, std::vector<u8>& meshlets_payload,
+                        u32 base_payload_offset) noexcept
     {
         ZoneScoped;
         const u64 meshlets_upper_bound = meshopt_buildMeshletsBound(
-            mesh.indices.size(), static_model::kMaxVerticesPerMeshlet, static_model::kMaxTrianglesPerMeshlet);
+            indices.size(), static_model::kMaxVerticesPerMeshlet, static_model::kMaxTrianglesPerMeshlet);
 
-        const u64 vertices_offset = mesh.indices.size();
-        std::vector<u8> meshlets_data(mesh.indices.size() * 5);
+        const u64 vertices_offset = indices.size();
+        std::vector<u8> meshlets_data(indices.size() * 5);
 
         u8* meshlet_indices_ptr   = meshlets_data.data();
         u32* meshlet_vertices_ptr = reinterpret_cast<u32*>(meshlets_data.data() + vertices_offset);
@@ -61,10 +62,10 @@ namespace
         const u64 meshlets_count = meshopt_buildMeshlets(meshopt_meshlets.data(),
                                                          meshlet_vertices_ptr,
                                                          meshlet_indices_ptr,
-                                                         mesh.indices.data(),
-                                                         mesh.indices.size(),
-                                                         &mesh.vertices.data()->position.x,
-                                                         mesh.vertices.size(),
+                                                         indices.data(),
+                                                         indices.size(),
+                                                         &vertices.data()->position.x,
+                                                         vertices.size(),
                                                          sizeof(static_model::vertex),
                                                          static_model::kMaxVerticesPerMeshlet,
                                                          static_model::kMaxTrianglesPerMeshlet,
@@ -93,8 +94,8 @@ namespace
                     meshopt_computeMeshletBounds(&meshlet_vertices_ptr[meshopt_meshlet.vertex_offset],
                                                  &meshlet_indices_ptr[meshopt_meshlet.triangle_offset],
                                                  meshopt_meshlet.triangle_count,
-                                                 &mesh.vertices[0].position.x,
-                                                 mesh.vertices.size(),
+                                                 &vertices[0].position.x,
+                                                 vertices.size(),
                                                  sizeof(static_model::vertex));
 
                 auto& meshlet           = meshlets[i];
@@ -126,22 +127,15 @@ namespace
                 meshlet.sphere_center[2] = bounds.center[2];
             }
 
+            for (u32 i = meshlets_count; i < meshlets.size(); i++)
+            {
+                meshlets[i].vertices_count = 0;
+                meshlets[i].triangles_count = 0;
+            }
+
             // fit the array to compact the amount of data we upload to the GPU
             meshlets_payload.resize(total_bytes_written);
         }
-    }
-
-    void upload_to_scene(const static_model::mesh_data& mesh, const std::vector<static_model::meshlet>& meshlets,
-                         const std::vector<u8>& meshlets_payload, vk_scene_geometry_pool& geometry_pool)
-    {
-        ZoneScoped;
-
-        upload_data(geometry_pool.transfer, geometry_pool.meshlets, meshlets.data(), meshlets.size());
-        upload_data(geometry_pool.transfer, geometry_pool.index, mesh.indices.data(), mesh.indices.size());
-        upload_data(geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
-
-        upload_data(
-            geometry_pool.transfer, geometry_pool.meshlets_payload, meshlets_payload.data(), meshlets_payload.size());
     }
 }
 
@@ -154,27 +148,96 @@ result<std::vector<static_model>> static_model::load(const fs::path& path,
     if (render::load_model<vertex>(path, model_meshes))
     {
         std::vector<static_model> models(model_meshes.size());
+
+        std::vector<meshlet> meshlets;
+        std::vector<u8> meshlets_payload;
+
         for (u32 i = 0; i < model_meshes.size(); ++i)
         {
-            std::vector<meshlet> meshlets;
-            std::vector<u8> meshlets_payload;
+            auto& mesh  = model_meshes[i];
+            auto& model = models[i];
 
-            build_meshlets(model_meshes[i], meshlets, meshlets_payload, geometry_pool.meshlets_payload.offset);
+            models[i].b_sphere = compute_bounding_sphere(mesh);
 
-            models[i].meshlets_count = meshlets.size();
-            models[i].b_sphere       = compute_bounding_sphere(model_meshes[i]);
-
-            assert2(geometry_pool.index.offset % sizeof(u32) == 0);
             assert2(geometry_pool.vertex.offset % sizeof(vertex) == 0);
-            assert2(geometry_pool.meshlets.offset % sizeof(meshlet) == 0);
+            models[i].base_vertex = geometry_pool.vertex.offset / sizeof(vertex);
+            upload_data(geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
 
-            models[i].base_vertex  = geometry_pool.vertex.offset / sizeof(vertex);
-            models[i].base_meshlet = geometry_pool.meshlets.offset / sizeof(meshlet);
+            std::vector<u32> indices_work_copy = mesh.indices;
+            const f32 lod_scale =
+                meshopt_simplifyScale(&mesh.vertices[0].position.x, mesh.vertices.size(), sizeof(vertex));
 
-            models[i].base_index    = geometry_pool.index.offset / sizeof(u32);
-            models[i].indices_count = model_meshes[i].indices.size();
+            f32 curr_error = 0.0F;
+            for (u32 j = 0; j < COUNT_OF(lod_array); ++j)
+            {
+                constexpr f32 kSimplifyMaxError         = 0.1F;
+                constexpr f32 kSimplifyAttribWeights[]  = {1.0F, 1.0F, 1.0F};
+                constexpr unsigned int kSimplifyOptions = meshopt_SimplifySparse;
 
-            upload_to_scene(model_meshes[i], meshlets, meshlets_payload, geometry_pool);
+                build_meshlets(mesh.vertices,
+                               indices_work_copy,
+                               meshlets,
+                               meshlets_payload,
+                               geometry_pool.meshlets_payload.offset);
+
+                ++model.lod_count;
+                auto& curr_lod = model.lod_array[j];
+
+                curr_lod.lod_error = curr_error * lod_scale;
+
+                assert2(geometry_pool.index.offset % sizeof(u32) == 0);
+                assert2(geometry_pool.meshlets.offset % sizeof(meshlet) == 0);
+
+                curr_lod.meshlets_count = meshlets.size();
+                curr_lod.base_meshlet   = geometry_pool.meshlets.offset / sizeof(meshlet);
+
+                curr_lod.indices_count = indices_work_copy.size();
+                curr_lod.base_index    = geometry_pool.index.offset / sizeof(u32);
+
+                upload_data(geometry_pool.transfer, geometry_pool.meshlets, meshlets.data(), meshlets.size());
+                upload_data(
+                    geometry_pool.transfer, geometry_pool.index, indices_work_copy.data(), indices_work_copy.size());
+                upload_data(geometry_pool.transfer,
+                            geometry_pool.meshlets_payload,
+                            meshlets_payload.data(),
+                            meshlets_payload.size());
+
+                if (j == COUNT_OF(lod_array) - 1)
+                {
+                    break;
+                }
+
+                const u64 indices_target_count =
+                    (static_cast<u64>(static_cast<f64>(indices_work_copy.size()) * 0.6) / 3) * 3;
+
+                f32 lod_error           = 0.f;
+                const u64 indices_count = meshopt_simplifyWithAttributes(indices_work_copy.data(),
+                                                                         indices_work_copy.data(),
+                                                                         indices_work_copy.size(),
+                                                                         &mesh.vertices[0].position.x,
+                                                                         mesh.vertices.size(),
+                                                                         sizeof(mesh.vertices[0]),
+                                                                         &mesh.vertices[0].normal.x,
+                                                                         sizeof(mesh.vertices[0]),
+                                                                         kSimplifyAttribWeights,
+                                                                         COUNT_OF(kSimplifyAttribWeights),
+                                                                         nullptr,
+                                                                         indices_target_count,
+                                                                         kSimplifyMaxError,
+                                                                         kSimplifyOptions,
+                                                                         &lod_error);
+
+                assert2(indices_count <= indices_work_copy.size());
+                if (indices_count == indices_work_copy.size() || indices_count == 0)
+                {
+                    break;
+                }
+
+                indices_work_copy.resize(indices_count);
+                curr_error = std::max(curr_error * 1.5F, lod_error);
+                meshopt_optimizeVertexCache(
+                    indices_work_copy.data(), indices_work_copy.data(), indices_work_copy.size(), mesh.vertices.size());
+            }
         }
         return models;
     }

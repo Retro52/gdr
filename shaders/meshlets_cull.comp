@@ -26,6 +26,7 @@ layout (push_constant) uniform constants
 {
     vec4 frustum[6];
     uint draw_count;
+    uint base_lod;
 } pc;
 
 void main()
@@ -43,8 +44,11 @@ void main()
         for (int i = 0; i < 6; ++i)
             visible = visible && (dot(pc.frustum[i], vec4(center, 1)) + radius) >= 0;
 
-        draw_indirect_cmds[idx].group_size[0] = visible ? ((meshes_data[idx].meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups) : 0;
+        LODData selected_lod = meshes_data[idx].lod_array[min(pc.base_lod, meshes_data[idx].lod_count - 1)];
+
+        draw_indirect_cmds[idx].group_size[0] = visible ? ((selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups) : 0;
         draw_indirect_cmds[idx].group_size[1] = 1;
         draw_indirect_cmds[idx].group_size[2] = 1;
+        draw_indirect_cmds[idx].base_meshlet = selected_lod.base_meshlet;
     }
 }

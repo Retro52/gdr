@@ -47,10 +47,17 @@ struct cull_data
     glm::mat4 projection;
 };
 
+struct draw_task_indirect_cmd
+{
+    u32 work_group_count[3];
+    u32 base_meshlet;
+};
+
 struct comp_buf_pc
 {
     vec4 frustum[6];
     u32 draw_count;
+    u32 base_lod;
 
     comp_buf_pc& build_frustum(const glm::mat4& proj, const glm::mat4& view)
     {
@@ -193,6 +200,8 @@ int main(int argc, char* argv[])
     bool exit = false;
     bool mesh_shading_supported =
         renderer.get_context().enabled_device_features.supported(render::rendering_features_table::eMeshShading);
+    bool pipeline_stats_supported =
+        renderer.get_context().enabled_device_features.supported(render::rendering_features_table::ePipelineStats);
 
     client_events.add_watcher(
         event_type::request_close,
@@ -293,7 +302,7 @@ int main(int argc, char* argv[])
         *render::create_vk_query_pool(renderer.get_context().device, kQueryPoolCount, VK_QUERY_TYPE_TIMESTAMP);
 
     VkQueryPool pipeline_statistics_query = VK_NULL_HANDLE;
-    if (renderer.get_context().enabled_device_features.supported(render::rendering_features_table::ePipelineStats))
+    if (pipeline_stats_supported)
     {
         pipeline_statistics_query = *render::create_vk_pipeline_stat_query_pool(
             renderer.get_context().device, kQueryPoolCount, VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT);
@@ -333,6 +342,7 @@ int main(int argc, char* argv[])
     bool freeze_camera_cull_dir   = false;
     bool enable_meshlets_pipeline = mesh_shading_supported;
 
+    int base_lod        = 0;
     u32 scene_triangles = 0;
 
     constexpr u32 kRepeatDraws = 3'375;
@@ -452,9 +462,10 @@ int main(int argc, char* argv[])
                         enable_meshlets_pipeline ? meshlets_cull_pipeline : indexed_cull_pipeline;
                     cull_pass.bind(buffer);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
-                    cull_pass.push_constant(buffer,
-                                            comp_buf_pc {.draw_count = kRepeatDraws}.build_frustum(
-                                                cull_matrices.projection, cull_matrices.view));
+                    cull_pass.push_constant(
+                        buffer,
+                        comp_buf_pc {.draw_count = kRepeatDraws, .base_lod = static_cast<u32>(base_lod)}.build_frustum(
+                            cull_matrices.projection, cull_matrices.view));
 
                     vkCmdDispatch(buffer, (kRepeatDraws + 31) / 32, 1, 1);
 
@@ -498,13 +509,11 @@ int main(int argc, char* argv[])
                         geometry_pool.meshlets_payload.buffer.buffer,
                         meshes_data.buffer,
                         meshes_transforms.buffer,
+                        meshlets_draw_indirect_buffer.buffer,
                     };
                     render_pipeline.push_descriptor_set(buffer, render_bindings);
-                    vkCmdDrawMeshTasksIndirectEXT(buffer,
-                                                  meshlets_draw_indirect_buffer.buffer,
-                                                  0,
-                                                  kRepeatDraws,
-                                                  sizeof(VkDrawMeshTasksIndirectCommandEXT));
+                    vkCmdDrawMeshTasksIndirectEXT(
+                        buffer, meshlets_draw_indirect_buffer.buffer, 0, kRepeatDraws, sizeof(draw_task_indirect_cmd));
                 }
                 else
                 {
@@ -543,6 +552,7 @@ int main(int argc, char* argv[])
 
                     ImGui::SeparatorText("renderer settings");
                     codegen::draw(client_render_settings);
+                    ImGui::SliderInt("Base LOD: ", &base_lod, 0, static_model::kLODCount - 1);
                     ImGui::BeginDisabled(!mesh_shading_supported);
                     ImGui::Checkbox("Enable meshlets path", &enable_meshlets_pipeline);
                     ImGui::EndDisabled();

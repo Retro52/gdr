@@ -26,6 +26,7 @@ layout (push_constant) uniform constants
 {
     vec4 frustum[6];
     uint draw_count;
+    uint base_lod;
 } pc;
 
 void main()
@@ -41,12 +42,15 @@ void main()
 
         bool visible = true;
         for (int i = 0; i < 6; ++i)
-            visible = visible && dot(pc.frustum[i], vec4(center, 1)) > -radius;
+            visible = visible && (dot(pc.frustum[i], vec4(center, 1)) + radius) >= 0;
 
         draw_indirect_cmds[idx].instance_count = 1;
         draw_indirect_cmds[idx].first_instance = 0;
-        draw_indirect_cmds[idx].first_index = meshes_data[idx].base_index;
         draw_indirect_cmds[idx].vertex_offset = int(meshes_data[idx].base_vertex);
-        draw_indirect_cmds[idx].index_count = visible ? meshes_data[idx].indices_count : 0;
+
+        LODData selected_lod = meshes_data[idx].lod_array[min(pc.base_lod, meshes_data[idx].lod_count - 1)];
+
+        draw_indirect_cmds[idx].first_index = selected_lod.base_index;
+        draw_indirect_cmds[idx].index_count = visible ? selected_lod.indices_count : 0;
     }
 }

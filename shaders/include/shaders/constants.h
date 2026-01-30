@@ -10,6 +10,8 @@ namespace shader_constants
     const uint kMaxTrianglesPerMeshlet = 94;
     const uint kMaxIndicesPerMeshlet   = kMaxTrianglesPerMeshlet * 3;
 
+    const uint kLODCount = 8;
+
     const uint kTaskWorkGroups = 32;
     const uint kMeshWorkGroups = 32;
 

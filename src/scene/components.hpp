@@ -14,7 +14,7 @@
 struct transform_component
 {
     vec3 position;
-    float uniform_scale;
+    float uniform_scale {1.0F};
     glm::quat rotation;
 };
 

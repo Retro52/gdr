@@ -23,6 +23,11 @@ layout (binding = 4) readonly buffer MeshesTransforms
     MeshTransform meshes_transforms[];
 };
 
+layout (binding = 5) readonly buffer DrawMeshIndirects
+{
+    DrawMeshIndirect draw_mesh_cmds[];
+};
+
 // FIXME: most of this data is temporary
 layout (push_constant) uniform constants
 {
@@ -45,7 +50,7 @@ bool should_cull(vec3 cone_axis, vec3 center, float radius, float cutoff)
 void main()
 {
     uint meshlet_warp = gl_WorkGroupID.x;
-    uint meshlet_id = meshes_data[gl_DrawID].base_meshlet + meshlet_warp * kTaskWorkGroups + gl_LocalInvocationID.x;
+    uint meshlet_id = draw_mesh_cmds[gl_DrawID].base_meshlet + meshlet_warp * kTaskWorkGroups + gl_LocalInvocationID.x;
 
     meshlet_task.draw_id = gl_DrawID;
     meshlet_task.base_vertex = meshes_data[gl_DrawID].base_vertex;
