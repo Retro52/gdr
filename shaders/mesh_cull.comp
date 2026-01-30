@@ -25,8 +25,8 @@ layout (binding = 2) writeonly buffer DrawIndexedIndirects
 layout (push_constant) uniform constants
 {
     vec4 frustum[6];
+    vec3 camera_pos;
     uint draw_count;
-    uint base_lod;
 } pc;
 
 void main()
@@ -48,7 +48,8 @@ void main()
         draw_indirect_cmds[idx].first_instance = 0;
         draw_indirect_cmds[idx].vertex_offset = int(meshes_data[idx].base_vertex);
 
-        LODData selected_lod = meshes_data[idx].lod_array[min(pc.base_lod, meshes_data[idx].lod_count - 1)];
+        uint lod_base = min(meshes_data[idx].lod_count - 1, max(0, uint(floor(log2(length(pc.camera_pos.xyz - center) / 50.0F)))));
+        LODData selected_lod = meshes_data[idx].lod_array[lod_base];
 
         draw_indirect_cmds[idx].first_index = selected_lod.base_index;
         draw_indirect_cmds[idx].index_count = visible ? selected_lod.indices_count : 0;

@@ -56,8 +56,8 @@ struct draw_task_indirect_cmd
 struct comp_buf_pc
 {
     vec4 frustum[6];
+    vec3 camera_pos;
     u32 draw_count;
-    u32 base_lod;
 
     comp_buf_pc& build_frustum(const glm::mat4& proj, const glm::mat4& view)
     {
@@ -335,6 +335,7 @@ int main(int argc, char* argv[])
     gpu_profile_data profile_data;
 
     cull_data cull_matrices {};
+    vec3 cull_camera_pos;
     render_settings client_render_settings;
 
     glm::mat4 camera_proj_view;
@@ -342,7 +343,6 @@ int main(int argc, char* argv[])
     bool freeze_camera_cull_dir   = false;
     bool enable_meshlets_pipeline = mesh_shading_supported;
 
-    int base_lod        = 0;
     u32 scene_triangles = 0;
 
     constexpr u32 kRepeatDraws = 3'375;
@@ -435,6 +435,7 @@ int main(int argc, char* argv[])
 
                 if (!freeze_camera_cull_dir)
                 {
+                    cull_camera_pos = camera_transform.position;
                     cull_matrices.projection =
                         client_render_settings.render_distance > 0
                             ? camera_data.get_projection_matrix(client_render_settings.render_distance)
@@ -462,10 +463,10 @@ int main(int argc, char* argv[])
                         enable_meshlets_pipeline ? meshlets_cull_pipeline : indexed_cull_pipeline;
                     cull_pass.bind(buffer);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
-                    cull_pass.push_constant(
-                        buffer,
-                        comp_buf_pc {.draw_count = kRepeatDraws, .base_lod = static_cast<u32>(base_lod)}.build_frustum(
-                            cull_matrices.projection, cull_matrices.view));
+                    cull_pass.push_constant(buffer,
+                                            comp_buf_pc {.camera_pos = cull_camera_pos,
+                                                         .draw_count = kRepeatDraws}
+                                                .build_frustum(cull_matrices.projection, cull_matrices.view));
 
                     vkCmdDispatch(buffer, (kRepeatDraws + 31) / 32, 1, 1);
 
@@ -552,7 +553,6 @@ int main(int argc, char* argv[])
 
                     ImGui::SeparatorText("renderer settings");
                     codegen::draw(client_render_settings);
-                    ImGui::SliderInt("Base LOD: ", &base_lod, 0, static_model::kLODCount - 1);
                     ImGui::BeginDisabled(!mesh_shading_supported);
                     ImGui::Checkbox("Enable meshlets path", &enable_meshlets_pipeline);
                     ImGui::EndDisabled();
