@@ -37,7 +37,7 @@ void main()
     uint idx = mi * gl_WorkGroupSize.x + ti;
     if (idx < pc.draw_count)
     {
-        vec3 center = vec3(meshes_data[idx].center[0], meshes_data[idx].center[1], meshes_data[idx].center[2]) + meshes_transforms[idx].pos_and_scale.xyz;
+        vec3 center = transform_vec3(vec3(meshes_data[idx].center[0], meshes_data[idx].center[1], meshes_data[idx].center[2]), meshes_transforms[idx].pos_and_scale, meshes_transforms[idx].rotation_quat);
         float radius = meshes_data[idx].radius * meshes_transforms[idx].pos_and_scale.w;
 
         bool visible = true;
@@ -48,7 +48,8 @@ void main()
         draw_indirect_cmds[idx].first_instance = 0;
         draw_indirect_cmds[idx].vertex_offset = int(meshes_data[idx].base_vertex);
 
-        uint lod_base = min(meshes_data[idx].lod_count - 1, max(0, uint(floor(log2(length(pc.camera_pos.xyz - center) / 50.0F)))));
+        const float kLODFactor = 50.0F;
+        uint lod_base = min(meshes_data[idx].lod_count - 1, max(0, uint(floor(log2((length(pc.camera_pos.xyz - center) + kLODFactor) / kLODFactor)))));
         LODData selected_lod = meshes_data[idx].lod_array[lod_base];
 
         draw_indirect_cmds[idx].first_index = selected_lod.base_index;
