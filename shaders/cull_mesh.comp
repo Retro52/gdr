@@ -48,7 +48,7 @@ void main()
         draw_indirect_cmds[idx].first_instance = 0;
         draw_indirect_cmds[idx].vertex_offset = int(meshes_data[idx].base_vertex);
 
-        const float kLODFactor = 50.0F;
+        const float kLODFactor = 10.0F;
         uint lod_base = min(meshes_data[idx].lod_count - 1, max(0, uint(floor(log2((length(pc.camera_pos.xyz - center) + kLODFactor) / kLODFactor)))));
         LODData selected_lod = meshes_data[idx].lod_array[lod_base];
 

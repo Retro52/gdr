@@ -17,7 +17,6 @@
 #include <imgui.h>
 #include <imgui/gpu_profile_data.hpp>
 #include <imgui/imgui_layer.hpp>
-#include <imgui/imgui_utils.hpp>
 #include <render/debug/frustum_renderer.hpp>
 #include <render/platform/vk/vk_barrier.hpp>
 #include <render/platform/vk/vk_image.hpp>
@@ -32,7 +31,9 @@
 
 #include <vector>
 
-#define NO_EDITOR 0
+#define NO_EDITOR          0
+#define NO_PERF_QUERY      0
+#define TEST_MULTI_OBJECTS 0
 
 struct pc_data
 {
@@ -120,7 +121,7 @@ void populate_scene(const u32 draw_count, const char* models[], u32 models_count
     {
         ZoneScopedN("create models within the scene");
         auto entity = scene.create_entity();
-        entity.add_component<static_model_component>(unique_models[get_random_i32(0, models_count)]);
+        entity.add_component<static_model_component>(unique_models[get_random_i32(0, models_count - 1)]);
         entity.add_component<id_component>();
 
         auto& transform = entity.emplace_component<transform_component>();
@@ -131,11 +132,22 @@ void populate_scene(const u32 draw_count, const char* models[], u32 models_count
             i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
         };
 
+#if TEST_MULTI_OBJECTS
         transform.position *=
             vec3(10.0F)
             * vec3(get_random_f32(-20.0F, 20.0F), get_random_f32(-20.0F, 20.0F), get_random_f32(-20.0F, 20.0F));
         transform.uniform_scale = get_random_f32(0.1F, 5.0F);
-        transform.rotation      = glm::quat(vec3(get_random_f32(0, 89), get_random_f32(0, 89), get_random_f32(0, 89)));
+#else
+        constexpr f32 kDensityInverse = 7.5F;
+        transform.position *= vec3(1.5F);
+        transform.position *= vec3(get_random_f32(-kDensityInverse, kDensityInverse),
+                                   get_random_f32(-kDensityInverse, kDensityInverse),
+                                   get_random_f32(-kDensityInverse, kDensityInverse));
+
+        transform.uniform_scale = get_random_f32(0.75F, 1.25F);
+        transform.rotation =
+            glm::quat(vec3(get_random_f32(-180, 180), get_random_f32(-180, 180), get_random_f32(-180, 180)));
+#endif
     }
 }
 
@@ -232,21 +244,21 @@ int main(int argc, char* argv[])
         &renderer);
 
     render::vk_shader indexed_shaders[] = {
-        *render::vk_shader::load(renderer, "../shaders/mesh.vert.spv"),
-        *render::vk_shader::load(renderer, "../shaders/meshlets.frag.spv"),
+        *render::vk_shader::load(renderer, "../shaders/bin/mesh.vert.spv"),
+        *render::vk_shader::load(renderer, "../shaders/bin/meshlets.frag.spv"),
     };
 
     render::vk_shader meshlets_shaders[] = {
-        *render::vk_shader::load(renderer, "../shaders/meshlets.task.spv"),
-        *render::vk_shader::load(renderer, "../shaders/meshlets.mesh.spv"),
-        *render::vk_shader::load(renderer, "../shaders/meshlets.frag.spv"),
+        *render::vk_shader::load(renderer, "../shaders/bin/meshlets.task.spv"),
+        *render::vk_shader::load(renderer, "../shaders/bin/meshlets.mesh.spv"),
+        *render::vk_shader::load(renderer, "../shaders/bin/meshlets.frag.spv"),
     };
 
     const auto indexed_render_pipeline =
         *render::vk_pipeline::create_graphics(renderer, indexed_shaders, COUNT_OF(indexed_shaders));
 
     const auto indexed_cull_pipeline = *render::vk_pipeline::create_compute(
-        renderer, *render::vk_shader::load(renderer, "../shaders/mesh_cull.comp.spv"));
+        renderer, *render::vk_shader::load(renderer, "../shaders/bin/cull_mesh.comp.spv"));
 
     render::vk_pipeline meshlets_cull_pipeline;
     render::vk_pipeline meshlets_render_pipeline;
@@ -256,7 +268,7 @@ int main(int argc, char* argv[])
             *render::vk_pipeline::create_graphics(renderer, meshlets_shaders, COUNT_OF(meshlets_shaders));
 
         meshlets_cull_pipeline = *render::vk_pipeline::create_compute(
-            renderer, *render::vk_shader::load(renderer, "../shaders/meshlets_cull.comp.spv"));
+            renderer, *render::vk_shader::load(renderer, "../shaders/bin/cull_meshlets.comp.spv"));
     }
 
 #if !NO_EDITOR
@@ -309,25 +321,25 @@ int main(int argc, char* argv[])
     }
 
     render::vk_buffer meshes_data =
-        *render::create_buffer(4 * 1024 * 1024,
+        *render::create_buffer(32 * 1024 * 1024,
                                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                renderer.get_context().allocator,
                                0);
 
     render::vk_buffer meshes_transforms =
-        *render::create_buffer(4 * 1024 * 1024,
+        *render::create_buffer(32 * 1024 * 1024,
                                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                renderer.get_context().allocator,
                                0);
 
     render::vk_buffer indexed_draw_indirect_buffer = *render::create_buffer(
-        1024 * 1024,
+        16 * 1024 * 1024,
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         renderer.get_context().allocator,
         0);
 
     render::vk_buffer meshlets_draw_indirect_buffer = *render::create_buffer(
-        1024 * 1024,
+        16 * 1024 * 1024,
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         renderer.get_context().allocator,
         0);
@@ -343,11 +355,13 @@ int main(int argc, char* argv[])
     bool freeze_camera_cull_dir   = false;
     bool enable_meshlets_pipeline = mesh_shading_supported;
 
-    u32 scene_triangles = 0;
-
+#if TEST_MULTI_OBJECTS
     constexpr u32 kRepeatDraws = 3'375;
-    const char* models[]       = {"../data/kitten.obj", "../data/guy.obj"};
-
+    const char* models[]       = {"../data/kitten.obj", "../data/backpack/backpack.obj"};
+#else
+    constexpr u32 kRepeatDraws = 125'000;
+    const char* models[]       = {"../data/kitten.obj"};
+#endif
     populate_scene(kRepeatDraws, models, COUNT_OF(models), client_scene, geometry_pool);
     upload_draw_data(geometry_pool.transfer, meshes_transforms, meshes_data, client_scene);
 
@@ -370,7 +384,7 @@ int main(int argc, char* argv[])
 
         auto& camera_transform = camera.get_component<transform_component>();
         auto& camera_data      = camera.get_component<camera_component>();
-        controller.update_position(camera_transform, camera_data, static_cast<f32>(dt));
+        controller.update(camera_transform, camera_data, static_cast<f32>(dt));
 
         if (!renderer.acquire_frame())
         {
@@ -463,10 +477,10 @@ int main(int argc, char* argv[])
                         enable_meshlets_pipeline ? meshlets_cull_pipeline : indexed_cull_pipeline;
                     cull_pass.bind(buffer);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
-                    cull_pass.push_constant(buffer,
-                                            comp_buf_pc {.camera_pos = cull_camera_pos,
-                                                         .draw_count = kRepeatDraws}
-                                                .build_frustum(cull_matrices.projection, cull_matrices.view));
+                    cull_pass.push_constant(
+                        buffer,
+                        comp_buf_pc {.camera_pos = cull_camera_pos, .draw_count = kRepeatDraws}.build_frustum(
+                            cull_matrices.projection, cull_matrices.view));
 
                     vkCmdDispatch(buffer, (kRepeatDraws + 31) / 32, 1, 1);
 
@@ -570,43 +584,11 @@ int main(int argc, char* argv[])
                     ImGui::Checkbox("Enable culling", &enable_cone_culling);
                     ImGui::Checkbox("Freeze culling data", &freeze_camera_cull_dir);
 
-                    client_scene.get_view<entt::entity>().each(
-                        [&](const entt::entity entity)
-                        {
-                            cpp::stack_string label;
-
-                            if (client_scene.has_component<id_component>(entity))
-                            {
-                                DEBUG_ONLY(auto& id = client_scene.get_component<id_component>(entity));
-                                DEBUG_ONLY(label = cpp::stack_string::make_formatted("Entity '%s'", id.name.c_str()))
-
-                                NDEBUG_ONLY(label = cpp::stack_string::make_formatted("Entity (id: %d)",
-                                                                                      static_cast<const int>(entity)));
-                            }
-                            else
-                            {
-                                label = cpp::stack_string::make_formatted("Entity (id: %d)",
-                                                                          static_cast<const int>(entity));
-                            }
-
-                            if (ImGui::CollapsingHeader(label.c_str()))
-                            {
-                                ImGui::PushID(static_cast<const int>(entity));
-
-                                codegen::detail_components::for_each_type(
-                                    [&]<typename component>()
-                                    {
-                                        if (client_scene.has_component<component>(entity))
-                                        {
-                                            auto& data = client_scene.get_component<component>(entity);
-                                            ImGui::SeparatorText((codegen::type_name<component>).data());
-                                            codegen::draw(data);
-                                        }
-                                    });
-                                ImGui::PopID();
-                            }
-                        });
-
+                    if (ImGui::CollapsingHeader("Camera data", ImGuiTreeNodeFlags_DefaultOpen))
+                    {
+                        codegen::draw(camera_data);
+                        codegen::draw(camera_transform);
+                    }
                     editor.end_frame(renderer);
                 }
 #endif
@@ -622,7 +604,7 @@ int main(int argc, char* argv[])
                 vkEndCommandBuffer(buffer);
                 renderer.present_frame(buffer);
 
-#if !defined(NDEBUG) || 1
+#if !NO_PERF_QUERY
                 u64 query_results[2];
                 vkDeviceWaitIdle(renderer.get_context().device);
                 VK_ASSERT_ON_FAIL(vkGetQueryPoolResults(renderer.get_context().device,
@@ -634,6 +616,7 @@ int main(int argc, char* argv[])
                                                         sizeof(query_results[0]),
                                                         VK_QUERY_RESULT_64_BIT));
 
+                u32 scene_triangles = 0;
                 if (pipeline_statistics_query)
                 {
                     VK_ASSERT_ON_FAIL(vkGetQueryPoolResults(renderer.get_context().device,

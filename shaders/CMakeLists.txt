@@ -42,7 +42,7 @@ endfunction()
 
 find_package(Vulkan REQUIRED COMPONENTS glslc glslangValidator)
 
-file(GLOB_RECURSE SHADERS
+file(GLOB SHADERS
         ${PROJECT_SOURCE_DIR}/*.vert
         ${PROJECT_SOURCE_DIR}/*.frag
         ${PROJECT_SOURCE_DIR}/*.comp
@@ -63,15 +63,14 @@ foreach (SHADER IN LISTS SHADERS)
     collect_shader_dependencies("${SHADER}" SHADER_DEPENDENCIES)
 
     message(STATUS "Dependencies of ${SHADER}: ${SHADER_DEPENDENCIES}")
-
+    set(SHADER_BIN_OUTPUT "${PROJECT_SOURCE_DIR}/bin/${FILENAME}.spv")
     add_custom_command(
-            OUTPUT "${SHADER_DIRECTORY}/${FILENAME}.spv"
-            COMMAND ${Vulkan_GLSLC_EXECUTABLE} "${SHADER}" -o "${SHADER_DIRECTORY}/${FILENAME}.spv" --target-env=vulkan1.3
-            # COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER}" -o "${SHADER_DIRECTORY}/${FILENAME}.spv" --target-env vulkan1.3
+            OUTPUT "${SHADER_BIN_OUTPUT}"
+            COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER}" -o "${SHADER_BIN_OUTPUT}" --target-env vulkan1.3
             DEPENDS ${SHADER_DEPENDENCIES}
-            COMMENT "Compiling ${FILENAME}"
+            COMMENT "Compiling shader '${FILENAME}' to '${SHADER_BIN_OUTPUT}'"
     )
-    list(APPEND SPV_SHADERS "${SHADER_DIRECTORY}/${FILENAME}.spv")
+    list(APPEND SPV_SHADERS "${SHADER_BIN_OUTPUT}")
 endforeach ()
 
 set(BUILD_TARGET_NAME ${PROJECT_NAME}_build)

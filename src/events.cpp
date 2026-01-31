@@ -113,6 +113,30 @@ void events_queue::add_watcher(event_type event, const watcher_t& func, void* us
     m_watchers[static_cast<u32>(event)].emplace_back(func, user_data);
 }
 
+void events_queue::remove_watcher(void* user_data)
+{
+    for (u32 i = static_cast<u32>(event_type::dummy); i < static_cast<u32>(event_type::count); ++i)
+    {
+        this->remove_watcher(static_cast<event_type>(i), user_data);
+    }
+}
+
+void events_queue::remove_watcher(event_type event, void* user_data)
+{
+    ZoneScoped;
+    auto& group = m_watchers[static_cast<u32>(event)];
+    for (auto it = group.begin(); it != group.end();)
+    {
+        if (it->user_data == user_data)
+        {
+            it = group.erase(it);
+            continue;
+        }
+
+        ++it;
+    }
+}
+
 void events_queue::remove_watcher(event_type event, const watcher_t& func)
 {
     ZoneScoped;

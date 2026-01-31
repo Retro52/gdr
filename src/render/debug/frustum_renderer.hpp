@@ -18,8 +18,8 @@ namespace render::debug
         explicit frustum_renderer(const vk_renderer& renderer)
         {
             render::vk_shader shaders[] = {
-                *render::vk_shader::load(renderer, "../shaders/frustum.vert.spv"),
-                *render::vk_shader::load(renderer, "../shaders/frustum.frag.spv"),
+                *render::vk_shader::load(renderer, "../shaders/bin/frustum.vert.spv"),
+                *render::vk_shader::load(renderer, "../shaders/bin/frustum.frag.spv"),
             };
 
             m_pipeline = *render::vk_pipeline::create_graphics(

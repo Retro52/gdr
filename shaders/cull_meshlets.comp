@@ -44,7 +44,7 @@ void main()
         for (int i = 0; i < 6; ++i)
             visible = visible && (dot(pc.frustum[i], vec4(center, 1)) + radius) >= 0;
 
-        const float kLODFactor = 50.0F;
+        const float kLODFactor = 10.0F;
         uint lod_base = min(meshes_data[idx].lod_count - 1, max(0, uint(floor(log2((length(pc.camera_pos.xyz - center) + kLODFactor) / kLODFactor)))));
         LODData selected_lod = meshes_data[idx].lod_array[lod_base];
 

@@ -124,6 +124,10 @@ enum class keycode
     sc_backspace = SDL_SCANCODE_BACKSPACE,
     sc_tab       = SDL_SCANCODE_TAB,
     sc_space     = SDL_SCANCODE_SPACE,
+    sc_ctrl      = SDL_SCANCODE_LCTRL,
+    sc_shift     = SDL_SCANCODE_LSHIFT,
+    sc_ctrl_r    = SDL_SCANCODE_RCTRL,
+    sc_shift_r   = SDL_SCANCODE_RSHIFT,
 };
 
 struct dummy_event
@@ -189,6 +193,10 @@ public:
     ~events_queue();
 
     void poll();
+
+    void remove_watcher(void* user_data);
+
+    void remove_watcher(event_type event, void* user_data);
 
     void remove_watcher(event_type event, const watcher_t& func);
 
