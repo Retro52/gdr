@@ -25,7 +25,7 @@ struct Meshlet
 
 struct MeshletTask
 {
-    uint draw_id;
+    uint mesh_id;
     uint base_vertex;
     uint meshlet_ids[kMaxVerticesPerMeshlet];
 };
@@ -58,6 +58,7 @@ struct DrawMeshIndirect
 {
     uint group_size[3];
     uint base_meshlet;
+    uint mesh_id;
 };
 
 struct DrawIndexedIndirect
@@ -67,4 +68,5 @@ struct DrawIndexedIndirect
     uint first_index;
     int vertex_offset;
     uint first_instance;
+    uint mesh_id;
 };

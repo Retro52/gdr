@@ -41,10 +41,11 @@ taskPayloadSharedEXT MeshletTask meshlet_task;
 
 bool should_cull(vec3 cone_axis, vec3 center, float radius, float cutoff)
 {
-    vec3 view_axis = (pc.view * vec4(quat_rotate_vec3(cone_axis, meshes_transforms[gl_DrawID].rotation_quat), 0.0F)).xyz;
-    vec3 view_center = (pc.view * vec4(transform_vec3(center, meshes_transforms[gl_DrawID].pos_and_scale, meshes_transforms[gl_DrawID].rotation_quat), 1.0F)).xyz;
+    uint mesh_id = draw_mesh_cmds[gl_DrawID].mesh_id;
+    vec3 view_axis = (pc.view * vec4(quat_rotate_vec3(cone_axis, meshes_transforms[mesh_id].rotation_quat), 0.0F)).xyz;
+    vec3 view_center = (pc.view * vec4(transform_vec3(center, meshes_transforms[mesh_id].pos_and_scale, meshes_transforms[mesh_id].rotation_quat), 1.0F)).xyz;
 
-    return dot(view_center, view_axis) >= cutoff * length(view_center) + (radius * meshes_transforms[gl_DrawID].pos_and_scale.w);
+    return dot(view_center, view_axis) >= cutoff * length(view_center) + (radius * meshes_transforms[mesh_id].pos_and_scale.w);
 }
 
 void main()
@@ -52,7 +53,7 @@ void main()
     uint meshlet_warp = gl_WorkGroupID.x;
     uint meshlet_id = draw_mesh_cmds[gl_DrawID].base_meshlet + meshlet_warp * kTaskWorkGroups + gl_LocalInvocationID.x;
 
-    meshlet_task.draw_id = gl_DrawID;
+    meshlet_task.mesh_id = draw_mesh_cmds[gl_DrawID].mesh_id;
     meshlet_task.base_vertex = meshes_data[gl_DrawID].base_vertex;
 
     #if USE_CONE_CULLING

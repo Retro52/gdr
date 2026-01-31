@@ -52,6 +52,17 @@ struct draw_task_indirect_cmd
 {
     u32 work_group_count[3];
     u32 base_meshlet;
+    u32 mesh_id;
+};
+
+struct draw_indexed_indirect
+{
+    u32 index_count;
+    u32 instance_count;
+    u32 first_index;
+    i32 vertex_offset;
+    u32 first_instance;
+    u32 mesh_id;
 };
 
 struct comp_buf_pc
@@ -59,6 +70,8 @@ struct comp_buf_pc
     vec4 frustum[6];
     vec3 camera_pos;
     u32 draw_count;
+    u32 enable_culling;
+    u32 enable_lod;
 
     comp_buf_pc& build_frustum(const glm::mat4& proj, const glm::mat4& view)
     {
@@ -84,6 +97,20 @@ f64 bytes_to_mb(u64 bytes)
     return static_cast<f64>(bytes) / (1024.0 * 1024);
 }
 
+cpp::stack_string format_big_number(u64 number)
+{
+    if (number < 1'000)
+    {
+        return cpp::stack_string::make_formatted("%d", number);
+    }
+
+    const char* magnitudes_per_thousand[] = {"K", "M", "B", "T"};
+
+    auto magnitude     = static_cast<i32>(std::log10(number) / 3);
+    const f64 fraction = static_cast<f64>(number) / glm::pow(1000, magnitude);
+    return cpp::stack_string::make_formatted("%lf%s", fraction, magnitudes_per_thousand[magnitude - 1]);
+}
+
 void draw_shared_buffer_stats(const char* label, const render::vk_shared_buffer& buffer)
 {
     ImGui::TextWrapped("%s buffer: %lf MB used (%lf MB total, %lf%%)",
@@ -103,10 +130,13 @@ i32 get_random_i32(i32 min, i32 max)
     return min + static_cast<int>(get_random_f32(0.0F, 1.0F) * (max - min));
 }
 
-void populate_scene(const u32 draw_count, const char* models[], u32 models_count, scene& scene,
-                    render::vk_scene_geometry_pool& geometry_pool)
+u64 populate_scene(const u32 draw_count, const char* models[], u32 models_count, scene& scene,
+                   render::vk_scene_geometry_pool& geometry_pool)
 {
     ZoneScoped;
+    auto test = format_big_number(draw_count);
+
+    u64 scene_triangles_total = 0;
     std::vector<static_model> unique_models;
     const u32 kVolumeItemsPerSide = std::cbrtl(draw_count);
 
@@ -120,8 +150,11 @@ void populate_scene(const u32 draw_count, const char* models[], u32 models_count
     for (u32 i = 0; i < draw_count; ++i)
     {
         ZoneScopedN("create models within the scene");
+        auto& model = unique_models[get_random_i32(0, models_count - 1)];
+        scene_triangles_total += model.lod_array[0].indices_count / 3;
+
         auto entity = scene.create_entity();
-        entity.add_component<static_model_component>(unique_models[get_random_i32(0, models_count - 1)]);
+        entity.add_component<static_model_component>(model);
         entity.add_component<id_component>();
 
         auto& transform = entity.emplace_component<transform_component>();
@@ -149,6 +182,8 @@ void populate_scene(const u32 draw_count, const char* models[], u32 models_count
             glm::quat(vec3(get_random_f32(-180, 180), get_random_f32(-180, 180), get_random_f32(-180, 180)));
 #endif
     }
+
+    return scene_triangles_total;
 }
 
 void upload_draw_data(const render::vk_buffer_transfer& transfer, const render::vk_buffer& transform_buffer,
@@ -320,6 +355,12 @@ int main(int argc, char* argv[])
             renderer.get_context().device, kQueryPoolCount, VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT);
     }
 
+    render::vk_buffer draw_count_buffer = *render::create_buffer(
+        sizeof(u32),
+        VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        renderer.get_context().allocator,
+        0);
+
     render::vk_buffer meshes_data =
         *render::create_buffer(32 * 1024 * 1024,
                                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -351,7 +392,8 @@ int main(int argc, char* argv[])
     render_settings client_render_settings;
 
     glm::mat4 camera_proj_view;
-    bool enable_cone_culling      = true;
+    bool enable_lods              = true;
+    bool enable_culling           = true;
     bool freeze_camera_cull_dir   = false;
     bool enable_meshlets_pipeline = mesh_shading_supported;
 
@@ -362,7 +404,8 @@ int main(int argc, char* argv[])
     constexpr u32 kRepeatDraws = 125'000;
     const char* models[]       = {"../data/kitten.obj"};
 #endif
-    populate_scene(kRepeatDraws, models, COUNT_OF(models), client_scene, geometry_pool);
+
+    u64 scene_triangles_max = populate_scene(kRepeatDraws, models, COUNT_OF(models), client_scene, geometry_pool);
     upload_draw_data(geometry_pool.transfer, meshes_transforms, meshes_data, client_scene);
 
     auto get_time = []<typename T = f64>()
@@ -462,13 +505,21 @@ int main(int argc, char* argv[])
                 camera_proj_view = camera_data.get_projection_matrix()
                                  * camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
 
-                if (enable_cone_culling)
+                vkCmdFillBuffer(buffer, draw_count_buffer.buffer, 0, draw_count_buffer.size, 0);
+                render::cmd_buffer_barrier(buffer,
+                                           draw_count_buffer.buffer,
+                                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                           VK_ACCESS_TRANSFER_WRITE_BIT,
+                                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                           VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+
                 {
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "vk cmd dispatch"));
 
                     const render::vk_descriptor_info cull_pass_bindings[] = {
                         meshes_data.buffer,
                         meshes_transforms.buffer,
+                        draw_count_buffer.buffer,
                         enable_meshlets_pipeline ? meshlets_draw_indirect_buffer.buffer
                                                  : indexed_draw_indirect_buffer.buffer,
                     };
@@ -477,10 +528,12 @@ int main(int argc, char* argv[])
                         enable_meshlets_pipeline ? meshlets_cull_pipeline : indexed_cull_pipeline;
                     cull_pass.bind(buffer);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
-                    cull_pass.push_constant(
-                        buffer,
-                        comp_buf_pc {.camera_pos = cull_camera_pos, .draw_count = kRepeatDraws}.build_frustum(
-                            cull_matrices.projection, cull_matrices.view));
+                    cull_pass.push_constant(buffer,
+                                            comp_buf_pc {.camera_pos     = cull_camera_pos,
+                                                         .draw_count     = kRepeatDraws,
+                                                         .enable_culling = enable_culling,
+                                                         .enable_lod     = enable_lods}
+                                                .build_frustum(cull_matrices.projection, cull_matrices.view));
 
                     vkCmdDispatch(buffer, (kRepeatDraws + 31) / 32, 1, 1);
 
@@ -507,7 +560,7 @@ int main(int argc, char* argv[])
                 render_pipeline.bind(buffer);
                 render_pipeline.push_constant(
                     buffer,
-                    pc_data {.pv = camera_proj_view, .view = cull_matrices.view, .use_culling = enable_cone_culling});
+                    pc_data {.pv = camera_proj_view, .view = cull_matrices.view, .use_culling = enable_culling});
 
                 if (pipeline_statistics_query)
                 {
@@ -527,8 +580,13 @@ int main(int argc, char* argv[])
                         meshlets_draw_indirect_buffer.buffer,
                     };
                     render_pipeline.push_descriptor_set(buffer, render_bindings);
-                    vkCmdDrawMeshTasksIndirectEXT(
-                        buffer, meshlets_draw_indirect_buffer.buffer, 0, kRepeatDraws, sizeof(draw_task_indirect_cmd));
+                    vkCmdDrawMeshTasksIndirectCountEXT(buffer,
+                                                       meshlets_draw_indirect_buffer.buffer,
+                                                       0,
+                                                       draw_count_buffer.buffer,
+                                                       0,
+                                                       kRepeatDraws,
+                                                       sizeof(draw_task_indirect_cmd));
                 }
                 else
                 {
@@ -536,14 +594,17 @@ int main(int argc, char* argv[])
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "draw using indexed buffer"));
 
                     const render::vk_descriptor_info render_bindings[] = {geometry_pool.vertex.buffer.buffer,
-                                                                          meshes_transforms.buffer};
+                                                                          meshes_transforms.buffer,
+                                                                          indexed_draw_indirect_buffer.buffer};
                     render_pipeline.push_descriptor_set(buffer, render_bindings);
                     vkCmdBindIndexBuffer(buffer, geometry_pool.index.buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-                    vkCmdDrawIndexedIndirect(buffer,
-                                             indexed_draw_indirect_buffer.buffer,
-                                             0,
-                                             kRepeatDraws,
-                                             sizeof(VkDrawIndexedIndirectCommand));
+                    vkCmdDrawIndexedIndirectCount(buffer,
+                                                  indexed_draw_indirect_buffer.buffer,
+                                                  0,
+                                                  draw_count_buffer.buffer,
+                                                  0,
+                                                  kRepeatDraws,
+                                                  sizeof(draw_indexed_indirect));
                 }
                 if (pipeline_statistics_query)
                 {
@@ -573,6 +634,10 @@ int main(int argc, char* argv[])
 
                     ImGui::SeparatorText("gpu timings");
                     codegen::draw(profile_data);
+                    ImGui::Text("Total triangless rendered:");
+                    ImGui::ProgressBar(profile_data.tris_from_max);
+                    ImGui::Text("Tris Max: %s", format_big_number(profile_data.tris_in_scene_max).c_str());
+                    ImGui::Text("Tris Drawn: %s", format_big_number(profile_data.tris_in_scene_total).c_str());
 
                     ImGui::SeparatorText("gpu stats");
                     draw_shared_buffer_stats("Vertices", geometry_pool.vertex);
@@ -581,7 +646,8 @@ int main(int argc, char* argv[])
                     draw_shared_buffer_stats("Meshlets payload", geometry_pool.meshlets_payload);
 
                     ImGui::SeparatorText("render controls");
-                    ImGui::Checkbox("Enable culling", &enable_cone_culling);
+                    ImGui::Checkbox("Enable culling", &enable_culling);
+                    ImGui::Checkbox("Enable LODs", &enable_lods);
                     ImGui::Checkbox("Freeze culling data", &freeze_camera_cull_dir);
 
                     if (ImGui::CollapsingHeader("Camera data", ImGuiTreeNodeFlags_DefaultOpen))
@@ -616,7 +682,7 @@ int main(int argc, char* argv[])
                                                         sizeof(query_results[0]),
                                                         VK_QUERY_RESULT_64_BIT));
 
-                u32 scene_triangles = 0;
+                u64 scene_triangles = 0;
                 if (pipeline_statistics_query)
                 {
                     VK_ASSERT_ON_FAIL(vkGetQueryPoolResults(renderer.get_context().device,
@@ -626,7 +692,7 @@ int main(int argc, char* argv[])
                                                             sizeof(scene_triangles),
                                                             &scene_triangles,
                                                             sizeof(scene_triangles),
-                                                            0));
+                                                            VK_QUERY_RESULT_64_BIT));
                 }
 
                 VkPhysicalDeviceProperties props = {};
@@ -634,7 +700,8 @@ int main(int argc, char* argv[])
 
                 profile_data.update(static_cast<f64>(query_results[0]) * props.limits.timestampPeriod * 1e-6,
                                     static_cast<f64>(query_results[1]) * props.limits.timestampPeriod * 1e-6,
-                                    scene_triangles);
+                                    scene_triangles,
+                                    scene_triangles_max);
 
                 const auto str = cpp::stack_string::make_formatted("CPU: %.3lfms; GPU: %.3lfms; Tris/s (B): %lf",
                                                                    dt * 1000.0F,

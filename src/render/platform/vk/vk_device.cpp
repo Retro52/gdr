@@ -364,7 +364,8 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
     features_table.set_supported(rendering_features_table::eMeshShading,
                                  vk13_features.maintenance4 && mesh_features.meshShader && mesh_features.taskShader);
     features_table.set_supported(rendering_features_table::eDrawIndirect,
-                                 device_features2.features.multiDrawIndirect && vk11_features.shaderDrawParameters);
+                                 vk12_features.drawIndirectCount && device_features2.features.multiDrawIndirect
+                                     && vk11_features.shaderDrawParameters);
     features_table.set_supported(rendering_features_table::ePipelineStats,
                                  device_features2.features.pipelineStatisticsQuery);
 
@@ -515,7 +516,9 @@ VkResult create_vulkan_device(const rendering_features_table& rendering_features
     VkPhysicalDeviceVulkan12Features vk12_features {
         .sType                   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
         .pNext                   = &vk13_features,
-        .storageBuffer8BitAccess = rendering_features.wanted(rendering_features_table::e8BitIntegers)};
+        .drawIndirectCount       = rendering_features.wanted(rendering_features_table::eDrawIndirect),
+        .storageBuffer8BitAccess = rendering_features.wanted(rendering_features_table::e8BitIntegers),
+    };
 
     VkPhysicalDeviceVulkan11Features vk11_features {
         .sType                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,

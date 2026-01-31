@@ -33,3 +33,29 @@ void render::cmd_stage_barrier(VkCommandBuffer cmd, VkPipelineStageFlags2 src_st
 
     vkCmdPipelineBarrier2(cmd, &dependency_info);
 }
+
+void render::cmd_buffer_barrier(VkCommandBuffer cmd, VkBuffer buffer, VkPipelineStageFlags2 src_stage,
+                                VkAccessFlags2 src_access, VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access)
+{
+    VkBufferMemoryBarrier2 buf_barrier = {
+        .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+        .srcStageMask        = src_stage,
+        .srcAccessMask       = src_access,
+        .dstStageMask        = dst_stage,
+        .dstAccessMask       = dst_access,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer              = buffer,
+        .offset              = 0,
+        .size                = VK_WHOLE_SIZE,
+    };
+
+    VkDependencyInfo dep_info = {
+        .sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .dependencyFlags          = VK_DEPENDENCY_BY_REGION_BIT,
+        .bufferMemoryBarrierCount = 1,
+        .pBufferMemoryBarriers    = &buf_barrier,
+    };
+
+    vkCmdPipelineBarrier2(cmd, &dep_info);
+}

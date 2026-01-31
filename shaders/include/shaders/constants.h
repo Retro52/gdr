@@ -21,5 +21,5 @@ namespace shader_constants
 
 #define USE_CONE_CULLING 1
 
-#define VISUALIZE_MESHLETS          1
+#define VISUALIZE_MESHLETS          0
 #define VISUALIZE_MESHLET_TRIANGLES 0
