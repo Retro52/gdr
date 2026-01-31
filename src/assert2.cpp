@@ -5,11 +5,15 @@
 #include <types.hpp>
 
 #include <assert2.hpp>
+#include <cpp/hash/hashed_string.hpp>
 #include <debug.hpp>
 
 #include <string>
 
 static SDL_Window* g_window = nullptr;
+
+constexpr cpp::hashed_string kEmptySkip  = ""_hs;
+static cpp::hashed_string g_last_skipped = kEmptySkip;
 
 static std::string wrap_text(const char* text)
 {
@@ -72,22 +76,30 @@ void debug::assert2_set_window(SDL_Window* window)
 
 void debug::assert2_show_assert_popup(const char* message)
 {
+    if (g_last_skipped != kEmptySkip && cpp::hashed_string(message) == g_last_skipped)
+    {
+        return;
+    }
+
     enum button_ids : int
     {
-        eSkip  = 1,
-        eBreak = 2,
-        eAbort = 3,
+        eSkip,
+        eSkipAll,
+        eBreak,
+        eAbort,
     };
 
-    SDL_MessageBoxButtonData kNoDebuggerButtons[2] = {
-        SDL_MessageBoxButtonData {.buttonID = eSkip,  .text = "Skip" },
-        SDL_MessageBoxButtonData {.buttonID = eAbort, .text = "Abort"},
+    SDL_MessageBoxButtonData kNoDebuggerButtons[3] = {
+        SDL_MessageBoxButtonData {.buttonID = eSkip,    .text = "Skip"    },
+        SDL_MessageBoxButtonData {.buttonID = eSkipAll, .text = "Skip All"},
+        SDL_MessageBoxButtonData {.buttonID = eAbort,   .text = "Abort"   },
     };
 
-    SDL_MessageBoxButtonData kDebuggerPresentButtons[3] = {
-        SDL_MessageBoxButtonData {.buttonID = eSkip,  .text = "Skip" },
-        SDL_MessageBoxButtonData {.buttonID = eBreak, .text = "Break"},
-        SDL_MessageBoxButtonData {.buttonID = eAbort, .text = "Abort"},
+    SDL_MessageBoxButtonData kDebuggerPresentButtons[4] = {
+        SDL_MessageBoxButtonData {.buttonID = eSkip,    .text = "Skip"    },
+        SDL_MessageBoxButtonData {.buttonID = eSkipAll, .text = "Skip All"},
+        SDL_MessageBoxButtonData {.buttonID = eBreak,   .text = "Break"   },
+        SDL_MessageBoxButtonData {.buttonID = eAbort,   .text = "Abort"   },
     };
 
     const int buttons_count =
@@ -110,12 +122,18 @@ void debug::assert2_show_assert_popup(const char* message)
     switch (clicked)
     {
     case eBreak :
+        g_last_skipped = kEmptySkip;
         debug::break_into_debugger();
         break;
     case eAbort :
+        g_last_skipped = kEmptySkip;
         std::abort();
     default :
+    case eSkipAll :
+        g_last_skipped = cpp::hashed_string(message);
+        break;
     case eSkip :
+        g_last_skipped = kEmptySkip;
         break;
     }
 }
