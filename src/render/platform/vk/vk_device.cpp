@@ -849,6 +849,7 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
         VK_ASSERT_ON_FAIL(
             vkCreateSemaphore(vk_context.device, &semaphore_create_info, nullptr, &sc_image.release_semaphore));
 
+        // TODO: move out, so we create depth attachment ourselves
         const VkImageCreateInfo image_create_info {
             .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
             .imageType     = VK_IMAGE_TYPE_2D,
@@ -858,7 +859,7 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
             .arrayLayers   = 1,
             .samples       = VK_SAMPLE_COUNT_1_BIT,
             .tiling        = VK_IMAGE_TILING_OPTIMAL,
-            .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
             .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         };

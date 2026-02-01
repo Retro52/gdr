@@ -35,7 +35,7 @@ namespace
         case SpvOpTypeSampler :
             return VK_DESCRIPTOR_TYPE_SAMPLER;
         case SpvOpTypeSampledImage :
-            return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         case SpvOpTypeAccelerationStructureKHR :
             return VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
         default :

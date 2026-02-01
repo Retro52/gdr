@@ -108,7 +108,7 @@ cpp::stack_string format_big_number(u64 number)
 
     auto magnitude     = static_cast<i32>(std::log10(number) / 3);
     const f64 fraction = static_cast<f64>(number) / glm::pow(1000, magnitude);
-    return cpp::stack_string::make_formatted("%lf%s", fraction, magnitudes_per_thousand[magnitude - 1]);
+    return cpp::stack_string::make_formatted("%.3lf%s", fraction, magnitudes_per_thousand[magnitude - 1]);
 }
 
 void draw_shared_buffer_stats(const char* label, const render::vk_shared_buffer& buffer)
@@ -134,7 +134,6 @@ u64 populate_scene(const u32 draw_count, const char* models[], u32 models_count,
                    render::vk_scene_geometry_pool& geometry_pool)
 {
     ZoneScoped;
-    auto test = format_big_number(draw_count);
 
     u64 scene_triangles_total = 0;
     std::vector<static_model> unique_models;
@@ -550,6 +549,11 @@ int main(int argc, char* argv[])
                                          VK_IMAGE_LAYOUT_UNDEFINED,
                                          VK_IMAGE_LAYOUT_GENERAL);
 
+                render::transition_image(buffer,
+                                         renderer.get_frame_swapchain_image().depth_image.image,
+                                         VK_IMAGE_LAYOUT_UNDEFINED,
+                                         VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
                 vkCmdBeginRendering(buffer, &rendering_info);
 
                 vkCmdSetScissor(buffer, 0, 1, &scissor);
@@ -650,16 +654,41 @@ int main(int argc, char* argv[])
                     ImGui::Checkbox("Enable LODs", &enable_lods);
                     ImGui::Checkbox("Freeze culling data", &freeze_camera_cull_dir);
 
+                    if (ImGui::CollapsingHeader("Color targets", ImGuiTreeNodeFlags_DefaultOpen))
+                    {
+                        static int img_in_line = 2;
+                        ImGui::SliderInt("Images in line", &img_in_line, 1, 2);
+
+                        const auto size_x = ImGui::GetContentRegionAvail().x / img_in_line;
+                        const auto size_y = (ImGui::GetContentRegionAvail().x / img_in_line) / camera_data.aspect_ratio;
+
+                        editor.depth_image(renderer.get_frame_swapchain_image().depth_image.image,
+                                           renderer.get_frame_swapchain_image().depth_image_view,
+                                           VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                                           {size_x, size_y});
+                        if (img_in_line > 1)
+                            ImGui::SameLine();
+
+                        editor.image(renderer.get_frame_swapchain_image().image,
+                                     renderer.get_frame_swapchain_image().image_view,
+                                     VK_IMAGE_LAYOUT_GENERAL,
+                                     {size_x, size_y});
+                    }
+
                     if (ImGui::CollapsingHeader("Camera data", ImGuiTreeNodeFlags_DefaultOpen))
                     {
                         codegen::draw(camera_data);
                         codegen::draw(camera_transform);
                     }
-                    editor.end_frame(renderer);
+                    editor.end_frame(buffer);
                 }
 #endif
 
                 vkCmdEndRendering(buffer);
+
+#if !NO_EDITOR
+                editor.flush_pending(buffer);
+#endif
 
                 render::transition_image(buffer,
                                          renderer.get_frame_swapchain_image().image,
