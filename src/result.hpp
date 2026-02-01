@@ -3,6 +3,7 @@
 #include <types.hpp>
 
 #include <assert2.hpp>
+#include <cpp/containers/stack_string.hpp>
 
 #include <cassert>
 #include <type_traits>
@@ -142,31 +143,31 @@ struct result
 
     T& operator*() &
     {
-        assert2(status == status::ok);
+        assert2m(status == status::ok, message);
         return value;
     }
 
     T operator*() &&
     {
-        assert2(status == status::ok);
+        assert2m(status == status::ok, message);
         return value;
     }
 
     const T& operator*() const&
     {
-        assert2(status == status::ok);
+        assert2m(status == status::ok, message);
         return value;
     }
 
     T* operator->()
     {
-        assert2(status == status::ok);
+        assert2m(status == status::ok, message);
         return &value;
     }
 
     const T* operator->() const
     {
-        assert2(status == status::ok);
+        assert2m(status == status::ok, message);
         return &value;
     }
 

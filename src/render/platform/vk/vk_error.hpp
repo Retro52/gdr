@@ -33,8 +33,6 @@
         FAIL_OP(#EXPR " failed. Reason: (VK_ERROR_FRAGMENTED_POOL)");                              \
     case VK_ERROR_UNKNOWN :                                                                        \
         FAIL_OP(#EXPR " failed. Reason: (VK_ERROR_UNKNOWN)");                                      \
-    case VK_ERROR_VALIDATION_FAILED :                                                              \
-        FAIL_OP(#EXPR " failed. Reason: (VK_ERROR_VALIDATION_FAILED)");                            \
     case VK_ERROR_OUT_OF_POOL_MEMORY :                                                             \
         FAIL_OP(#EXPR " failed. Reason: (VK_ERROR_OUT_OF_POOL_MEMORY)");                           \
     case VK_ERROR_INVALID_EXTERNAL_HANDLE :                                                        \

@@ -787,13 +787,15 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_context.physical_device, vk_context.surface, &capabilities);
 
     const VkSwapchainCreateInfoKHR swapchain_create_info {
-        .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .pNext            = nullptr,
-        .flags            = 0,
-        .surface          = vk_context.surface,
-        .minImageCount    = std::clamp(frames_in_flight,
-                                    capabilities.minImageCount,
-                                    capabilities.maxImageCount > 0 ? capabilities.maxImageCount : frames_in_flight),
+        .sType   = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .pNext   = nullptr,
+        .flags   = 0,
+        .surface = vk_context.surface,
+        .minImageCount =
+            std::clamp(frames_in_flight,
+                       capabilities.minImageCount,
+                       capabilities.maxImageCount > 0 ? capabilities.maxImageCount
+                                                      : (std::max(frames_in_flight, capabilities.minImageCount))),
         .imageFormat      = sc_data.surface_format.format,
         .imageColorSpace  = sc_data.surface_format.colorSpace,
         .imageExtent      = choose_extent(capabilities, {static_cast<u32>(size.x), static_cast<u32>(size.y)}),

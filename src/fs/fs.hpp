@@ -17,7 +17,12 @@ namespace fs
         std::ifstream file(path.c_str(), std::ios::binary | std::ios::ate);
         if (!file)
         {
-            return "failed to open file";
+            if (file.bad())
+            {
+                return "fs::read_file: badbit is set.";
+            }
+
+            return "fs::read_file: failed to open file";
         }
 
         const auto size = file.tellg();
