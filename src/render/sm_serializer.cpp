@@ -1,12 +1,10 @@
-#pragma once
-
 #include <assert2.hpp>
 #include <cpp/alg_constexpr.hpp>
 #include <cpp/hash/hashed_string.hpp>
 #include <fs/fs.hpp>
 #include <render/sm_serializer.hpp>
 #include <render/static_model.hpp>
-#include <Tracy/Tracy.hpp>
+#include <tracy/Tracy.hpp>
 
 namespace
 {

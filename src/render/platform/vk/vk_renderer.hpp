@@ -3,7 +3,7 @@
 #include <bytes.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_command_buffer.hpp>
-#include <Tracy/TracyVulkan.hpp>
+#include <tracy/TracyVulkan.hpp>
 #include <window.hpp>
 
 namespace render

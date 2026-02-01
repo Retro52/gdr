@@ -1,6 +1,6 @@
 #include <render/platform/vk/vk_error.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
-#include <Tracy/Tracy.hpp>
+#include <tracy/Tracy.hpp>
 
 using namespace render;
 

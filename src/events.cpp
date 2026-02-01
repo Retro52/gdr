@@ -3,7 +3,7 @@
 #include <backends/imgui_impl_sdl3.h>
 #include <events.hpp>
 #include <imgui_internal.h>
-#include <Tracy/Tracy.hpp>
+#include <tracy/Tracy.hpp>
 
 #include <iostream>
 #include <ostream>

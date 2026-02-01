@@ -63,9 +63,11 @@ foreach (SHADER IN LISTS SHADERS)
     collect_shader_dependencies("${SHADER}" SHADER_DEPENDENCIES)
 
     message(STATUS "Dependencies of ${SHADER}: ${SHADER_DEPENDENCIES}")
-    set(SHADER_BIN_OUTPUT "${PROJECT_SOURCE_DIR}/bin/${FILENAME}.spv")
+    set(SHADER_BIN_FOLDER "${PROJECT_SOURCE_DIR}/bin")
+    set(SHADER_BIN_OUTPUT "${SHADER_BIN_FOLDER}/${FILENAME}.spv")
     add_custom_command(
             OUTPUT "${SHADER_BIN_OUTPUT}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_BIN_FOLDER}
             COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER}" -o "${SHADER_BIN_OUTPUT}" --target-env vulkan1.3
             DEPENDS ${SHADER_DEPENDENCIES}
             COMMENT "Compiling shader '${FILENAME}' to '${SHADER_BIN_OUTPUT}'"

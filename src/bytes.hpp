@@ -3,7 +3,7 @@
 #include <types.hpp>
 
 #include <assert2.hpp>
-#include <Tracy/Tracy.hpp>
+#include <tracy/Tracy.hpp>
 
 #include <memory>
 

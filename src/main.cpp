@@ -26,7 +26,7 @@
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 #include <scene/scene.hpp>
-#include <Tracy/Tracy.hpp>
+#include <tracy/Tracy.hpp>
 #include <window.hpp>
 
 #include <vector>

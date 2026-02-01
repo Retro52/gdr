@@ -5,7 +5,7 @@
 #include <bytes.hpp>
 #include <fs/path.hpp>
 #include <result.hpp>
-#include <Tracy/Tracy.hpp>
+#include <tracy/Tracy.hpp>
 
 #include <fstream>
 

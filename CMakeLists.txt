@@ -40,6 +40,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         volk::volk
         assimp::assimp
         Tracy::TracyClient
+        SPIRV-Headers::SPIRV-Headers
         GPUOpen::VulkanMemoryAllocator
 
         imgui

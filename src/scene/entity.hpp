@@ -2,7 +2,7 @@
 
 #include <detail.hpp>
 #include <entt/entt.hpp>
-#include <Tracy/Tracy.hpp>
+#include <tracy/Tracy.hpp>
 
 class entity
 {

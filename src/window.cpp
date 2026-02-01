@@ -1,5 +1,5 @@
 #include <render/static_model.hpp>
-#include <Tracy/Tracy.hpp>
+#include <tracy/Tracy.hpp>
 #include <window.hpp>
 
 window::window(std::string_view title, ivec2 size, bool fullscreen)
@@ -34,22 +34,23 @@ window::~window()
     native handle                = {.window = m_window};
     const SDL_PropertiesID props = SDL_GetWindowProperties(m_window);
 
-#ifdef SDL_PLATFORM_WINDOWS
+#if defined(SDL_PLATFORM_WINDOWS)
     handle.type         = driver_type::windows;
     handle.windows.hwnd = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
 #elif defined(SDL_PLATFORM_LINUX)
-    handle.wayland_surface = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, nullptr);
-    if (handle.wayland_surface)
+    handle.wayland.surface = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, nullptr);
+    if (handle.wayland.surface)
     {
         handle.type            = driver_type::wayland;
-        handle.wayland_display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, nullptr);
+        handle.wayland.display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, nullptr);
     }
     else
     {
         // Fall back to X11
-        handle.type        = driver_type::x11;
-        handle.x11_window  = (void*)(uintptr_t)SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
-        handle.x11_display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, nullptr);
+        handle.type       = driver_type::x11;
+        handle.x11.window = reinterpret_cast<void*>(
+            static_cast<u64>(SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0)));
+        handle.x11.display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, nullptr);
     }
 #elif defined(SDL_PLATFORM_APPLE)
     handle.type             = driver_type::metal;

@@ -1,6 +1,6 @@
 #include <render/platform/vk/vk_command_buffer.hpp>
 #include <render/platform/vk/vk_error.hpp>
-#include <Tracy/Tracy.hpp>
+#include <tracy/Tracy.hpp>
 
 result<render::vk_command_buffer> render::create_command_buffer(VkDevice device, u32 queue_family,
                                                                 VkCommandPoolCreateFlags extra_flags)

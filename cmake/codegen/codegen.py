@@ -674,6 +674,7 @@ def main():
     if not structs:
         if args.verbose:
             print("Warning: No @imgui annotated structs found!", file=sys.stderr)
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         with open(args.output, "w") as f:
             f.write(f"#pragma once\n// no annotated data found for {args.input}\n")
             return

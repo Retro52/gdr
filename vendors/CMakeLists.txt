@@ -5,6 +5,7 @@ add_subdirectory(entt)
 add_subdirectory(json)
 add_subdirectory(assimp)
 add_subdirectory(tinyxml2)
+add_subdirectory(spirv-headers)
 add_subdirectory(meshoptimizer)
 
 set(TRACY_ENABLE ON)
@@ -29,15 +30,14 @@ endif ()
 add_subdirectory(volk)
 
 file(GLOB IMGUI_SOURCES "imgui/*.cpp" "imgui/*.c")
-file(GLOB IMGUIZMO_SOURCES "imguizmo/*.cpp" "imguizmo/*.c")
 
 list(APPEND IMGUI_SOURCES "imgui/misc/cpp/imgui_stdlib.cpp")
 list(APPEND IMGUI_SOURCES "imgui/backends/imgui_impl_sdl3.cpp")
 list(APPEND IMGUI_SOURCES "imgui/backends/imgui_impl_vulkan.cpp")
 
-add_library(imgui STATIC ${IMGUI_SOURCES} ${IMGUIZMO_SOURCES})
+add_library(imgui STATIC ${IMGUI_SOURCES})
 
-target_include_directories(imgui PUBLIC imgui imguizmo)
+target_include_directories(imgui PUBLIC imgui)
 target_compile_definitions(imgui PUBLIC IMGUI_IMPL_VULKAN_USE_VOLK)
 
 target_link_libraries(imgui PUBLIC SDL3::SDL3 volk::volk)

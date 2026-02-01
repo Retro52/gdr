@@ -1,6 +1,6 @@
 #include <render/platform/vk/vk_buffer.hpp>
 #include <render/platform/vk/vk_error.hpp>
-#include <Tracy/Tracy.hpp>
+#include <tracy/Tracy.hpp>
 
 void render::destroy_buffer(VmaAllocator allocator, vk_buffer& buffer)
 {

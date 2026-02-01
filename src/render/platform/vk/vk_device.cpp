@@ -3,7 +3,7 @@
 #include <cpp/containers/stack_string.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
-#include <Tracy/Tracy.hpp>
+#include <tracy/Tracy.hpp>
 
 #include <algorithm>
 #include <iostream>
@@ -30,7 +30,7 @@ bool inst_ext_available(const char* name)
     }
     for (auto& p : props)
     {
-        if (std::strcmp(p.extensionName, name) == 0)
+        if (cpp::cx_streq(p.extensionName, name))
         {
             return true;
         }
@@ -51,7 +51,7 @@ bool layer_available(const char* name)
 
     for (auto& p : props)
     {
-        if (std::strcmp(p.layerName, name) == 0)
+        if (cpp::cx_streq(p.layerName, name))
         {
             return true;
         }

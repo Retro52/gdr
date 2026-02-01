@@ -3,7 +3,7 @@ function(create_venv)
     if (WIN32)
         set(VENV_Python3_EXECUTABLE "${CV_ARGS_PATH}/Scripts/python.exe")
     else ()
-        set(VENV_Python3_EXECUTABLE "${CV_ARGS_PATH}/Scripts/python")
+        set(VENV_Python3_EXECUTABLE "${CV_ARGS_PATH}/bin/python")
     endif ()
 
     if (EXISTS ${VENV_Python3_EXECUTABLE})
@@ -13,7 +13,7 @@ function(create_venv)
         return()
     endif ()
 
-    find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
     set(SYSTEM_Python3_EXECUTABLE "${Python3_EXECUTABLE}")
     message(STATUS "create_venv: found system python at ${SYSTEM_Python3_EXECUTABLE}")
 

@@ -2,7 +2,7 @@
 #include <meshoptimizer.h>
 #include <render/sm_cache.hpp>
 #include <render/static_model.hpp>
-#include <Tracy/Tracy.hpp>
+#include <tracy/Tracy.hpp>
 
 #include <stack>
 
