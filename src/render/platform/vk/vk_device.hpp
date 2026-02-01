@@ -92,9 +92,6 @@ namespace render
         VkImage image;
         VkImageView image_view;
         VkSemaphore release_semaphore;
-
-        vk_image depth_image;
-        VkImageView depth_image_view;
     };
 
     struct swapchain

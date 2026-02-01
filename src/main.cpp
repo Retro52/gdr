@@ -92,9 +92,38 @@ struct comp_buf_pc
     }
 };
 
+struct depth_image_data
+{
+    VkImageView view {VK_NULL_HANDLE};
+    render::vk_image image;
+};
+
 f64 bytes_to_mb(u64 bytes)
 {
     return static_cast<f64>(bytes) / (1024.0 * 1024);
+}
+
+depth_image_data create_depth_image(const ivec2& size, const VkFormat format, VkDevice device, VmaAllocator allocator)
+{
+    const VkImageCreateInfo image_create_info {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = format,
+        .extent        = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    depth_image_data depth_image;
+    depth_image.image = *render::create_image(image_create_info, allocator);
+    depth_image.view  = *render::create_image_view(device, depth_image.image.image, format, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    return depth_image;
 }
 
 cpp::stack_string format_big_number(u64 number)
@@ -120,14 +149,14 @@ void draw_shared_buffer_stats(const char* label, const render::vk_shared_buffer&
                        static_cast<f64>(buffer.offset) * 100.0 / buffer.size);
 }
 
-f32 get_random_f32(f32 min, f32 max)
+f32 get_random_f32(const f32 min, const f32 max)
 {
     return min + (static_cast<f32>(rand()) / RAND_MAX) * (max - min);
 }
 
-i32 get_random_i32(i32 min, i32 max)
+i32 get_random_i32(const i32 min, const i32 max)
 {
-    return min + static_cast<int>(get_random_f32(0.0F, 1.0F) * (max - min));
+    return min + static_cast<int>(get_random_f32(0.0F, 1.0F) * static_cast<f32>(max - min));
 }
 
 u64 populate_scene(const u32 draw_count, const char* models[], u32 models_count, scene& scene,
@@ -193,9 +222,9 @@ void upload_draw_data(const render::vk_buffer_transfer& transfer, const render::
     auto&& view              = scene.get_view<transform_component, static_model_component>();
     const u64 view_size_hint = view.size_hint();
 
-    transform_component* transforms = static_cast<transform_component*>(transfer.mapped);
-    static_model* static_models     = reinterpret_cast<static_model*>(static_cast<u8*>(transfer.mapped)
-                                                                  + sizeof(transform_component) * view_size_hint);
+    auto* transforms    = static_cast<transform_component*>(transfer.mapped);
+    auto* static_models = reinterpret_cast<static_model*>(static_cast<u8*>(transfer.mapped)
+                                                          + sizeof(transform_component) * view_size_hint);
 
     u32 index = 0;
     view.each(
@@ -242,6 +271,10 @@ int main(int argc, char* argv[])
             .device_features = features_table,
         },
         client_window);
+    depth_image_data depth_image = create_depth_image(client_window.get_size_in_px(),
+                                                      renderer.get_swapchain().depth_format,
+                                                      renderer.get_context().device,
+                                                      renderer.get_context().allocator);
 
     bool exit = false;
     bool mesh_shading_supported =
@@ -268,14 +301,28 @@ int main(int argc, char* argv[])
         },
         &exit);
 
+    struct resize_context
+    {
+        render::vk_renderer& renderer;
+        depth_image_data& depth_image;
+    } resize_ctx(renderer, depth_image);
+
     client_events.add_watcher(
         event_type::window_size_changed,
         +[](const event_payload& payload, void* user_data)
         {
-            auto& renderer = *static_cast<render::vk_renderer*>(user_data);
-            renderer.resize_swapchain(payload.window.size_px);
+            auto& ctx = *static_cast<resize_context*>(user_data);
+            ctx.renderer.resize_swapchain(payload.window.size_px);
+
+            render::destroy_image(ctx.renderer.get_context().allocator, ctx.depth_image.image);
+            vkDestroyImageView(ctx.renderer.get_context().device, ctx.depth_image.view, nullptr);
+
+            ctx.depth_image = create_depth_image(payload.window.size_px,
+                                                 ctx.renderer.get_swapchain().depth_format,
+                                                 ctx.renderer.get_context().device,
+                                                 ctx.renderer.get_context().allocator);
         },
-        &renderer);
+        &resize_ctx);
 
     render::vk_shader indexed_shaders[] = {
         *render::vk_shader::load(renderer, "../shaders/bin/mesh.vert.spv"),
@@ -456,7 +503,7 @@ int main(int argc, char* argv[])
 
                 VkRenderingAttachmentInfo depth_attachment_info {
                     .sType              = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                    .imageView          = renderer.get_frame_swapchain_image().depth_image_view,
+                    .imageView          = depth_image.view,
                     .imageLayout        = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
                     .resolveMode        = VK_RESOLVE_MODE_NONE,
                     .resolveImageView   = VK_NULL_HANDLE,
@@ -550,7 +597,7 @@ int main(int argc, char* argv[])
                                          VK_IMAGE_LAYOUT_GENERAL);
 
                 render::transition_image(buffer,
-                                         renderer.get_frame_swapchain_image().depth_image.image,
+                                         depth_image.image.image,
                                          VK_IMAGE_LAYOUT_UNDEFINED,
                                          VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
@@ -659,11 +706,12 @@ int main(int argc, char* argv[])
                         static int img_in_line = 2;
                         ImGui::SliderInt("Images in line", &img_in_line, 1, 2);
 
-                        const auto size_x = ImGui::GetContentRegionAvail().x / img_in_line;
-                        const auto size_y = (ImGui::GetContentRegionAvail().x / img_in_line) / camera_data.aspect_ratio;
+                        const auto size_x = ImGui::GetContentRegionAvail().x / static_cast<f32>(img_in_line);
+                        const auto size_y = (ImGui::GetContentRegionAvail().x / static_cast<f32>(img_in_line))
+                                          / camera_data.aspect_ratio;
 
-                        editor.depth_image(renderer.get_frame_swapchain_image().depth_image.image,
-                                           renderer.get_frame_swapchain_image().depth_image_view,
+                        editor.depth_image(depth_image.image.image,
+                                           depth_image.view,
                                            VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
                                            {size_x, size_y});
                         if (img_in_line > 1)
