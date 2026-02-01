@@ -110,14 +110,14 @@ void imgui_layer::begin_frame(const render::vk_renderer& renderer)
     ImGui::NewFrame();
 
     VkRenderingAttachmentInfo color_attachment_info {
-        .sType              = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView          = renderer.get_frame_swapchain_image().image_view,
-        .imageLayout        = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
-        .loadOp             = VK_ATTACHMENT_LOAD_OP_LOAD,
-        .storeOp            = VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue         = {
-                               .color = {0.0F, 0.0F, 0.0F, 1.0F},
-                               }
+        .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView   = renderer.get_frame_swapchain_image().image_view,
+        .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+        .loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue  = {
+                        .color = {0.0F, 0.0F, 0.0F, 1.0F},
+                        }
     };
 
     const VkRenderingInfo rendering_info {.sType                = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
@@ -174,18 +174,18 @@ bool imgui_layer::allocate_region(u32 w, u32 h, VkOffset2D& out_offset)
     return true;
 }
 
-void imgui_layer::image(VkImage image, VkImageView view, VkImageLayout src_layout, ImVec2 size)
+void imgui_layer::image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size)
 {
-    image_impl(image, view, size, src_layout, VK_IMAGE_ASPECT_COLOR_BIT);
+    image_impl(image, view, size, {uv.x, uv.y}, {uv.z, uv.w}, src_layout, VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
-void imgui_layer::depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, ImVec2 size)
+void imgui_layer::depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size)
 {
-    image_impl(image, view, size, src_layout, VK_IMAGE_ASPECT_DEPTH_BIT);
+    image_impl(image, view, size, {uv.x, uv.y}, {uv.z, uv.w}, src_layout, VK_IMAGE_ASPECT_DEPTH_BIT);
 }
 
-void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, VkImageLayout src_layout,
-                             VkImageAspectFlags aspect)
+void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec2 uv0, ImVec2 uv1,
+                             VkImageLayout src_layout, VkImageAspectFlags aspect)
 {
     VkOffset2D offset;
     if (!allocate_region(static_cast<u32>(size.x), static_cast<u32>(size.y), offset))
@@ -203,8 +203,13 @@ void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, VkIma
         .aspect     = aspect,
     });
 
-    const ImVec2 uv0 {static_cast<f32>(offset.x) / kAtlasWidth, static_cast<f32>(offset.y) / kAtlasHeight};
-    const ImVec2 uv1 {(offset.x + size.x) / kAtlasWidth, (offset.y + size.y) / kAtlasHeight};
+    ImVec2 atlas_uv0 {static_cast<f32>(offset.x) / kAtlasWidth, static_cast<f32>(offset.y) / kAtlasHeight};
+    ImVec2 atlas_uv1 {(offset.x + size.x) / kAtlasWidth, (offset.y + size.y) / kAtlasHeight};
+
+    uv0.x = std::lerp(atlas_uv0.x, atlas_uv1.x, uv0.x);
+    uv0.y = std::lerp(atlas_uv0.y, atlas_uv1.y, uv0.y);
+    uv1.x = std::lerp(atlas_uv0.x, atlas_uv1.x, uv1.x);
+    uv1.y = std::lerp(atlas_uv0.y, atlas_uv1.y, uv1.y);
 
     ImGui::Image(m_atlas_data.imgui_descriptor, size, uv0, uv1);
 }

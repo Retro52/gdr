@@ -824,14 +824,18 @@ int main(int argc, char* argv[])
                         const auto size_y = (ImGui::GetContentRegionAvail().x / static_cast<f32>(img_in_line))
                                           / camera_data.aspect_ratio;
 
-                        editor.depth_image(
-                            depth_image.image.image, depth_image.view, VK_IMAGE_LAYOUT_GENERAL, {size_x, size_y});
+                        editor.depth_image(depth_image.image.image,
+                                           depth_image.view,
+                                           VK_IMAGE_LAYOUT_GENERAL,
+                                           {0, 1, 1, 0},
+                                           {size_x, size_y});
                         if (img_in_line > 1)
                             ImGui::SameLine();
 
                         editor.image(renderer.get_frame_swapchain_image().image,
                                      renderer.get_frame_swapchain_image().image_view,
                                      VK_IMAGE_LAYOUT_GENERAL,
+                                     {0, 1, 1, 0},
                                      {size_x, size_y});
                     }
 
@@ -848,6 +852,7 @@ int main(int argc, char* argv[])
                         editor.image(depth_pyramid.image.image,
                                      depth_pyramid.views[idx],
                                      VK_IMAGE_LAYOUT_GENERAL,
+                                     {0, 1, 1, 0},
                                      {size_x, size_y});
                     }
 

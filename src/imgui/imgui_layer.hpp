@@ -15,8 +15,8 @@ public:
 
     void end_frame(const render::vk_renderer& renderer);
 
-    void image(VkImage image, VkImageView view, VkImageLayout src_layout, ImVec2 size = {256, 256});
-    void depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, ImVec2 size = {256, 256});
+    void image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv = {0, 0, 1, 1}, ImVec2 size = {256, 256});
+    void depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv = {0, 0, 1, 1}, ImVec2 size = {256, 256});
 
 private:
     struct blit_request
@@ -52,7 +52,8 @@ private:
 
     bool allocate_region(u32 w, u32 h, VkOffset2D& out_offset);
 
-    void image_impl(VkImage image, VkImageView view, ImVec2 size, VkImageLayout src_layout, VkImageAspectFlags aspect);
+    void image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec2 uv0, ImVec2 uv1, VkImageLayout src_layout,
+                    VkImageAspectFlags aspect);
 
 private:
     constexpr static u32 kAtlasWidth {4096};
