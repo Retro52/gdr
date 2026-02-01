@@ -12,17 +12,14 @@ layout (binding = 1, r32f) uniform writeonly image2D output_depth;
 
 layout (push_constant) uniform block
 {
-    vec2 input_image_size;
+    vec2 output_image_size;
 };
 
 void main()
 {
     uvec2 pos = gl_GlobalInvocationID.xy;
-    vec4 result = vec4(1.0);
-    result = min(result, texture(input_depth, ((pos << 1)) / input_image_size));
-    result = min(result, texture(input_depth, ((pos << 1) + uvec2(1, 0)) / input_image_size));
-    result = min(result, texture(input_depth, ((pos << 1) + uvec2(0, 1)) / input_image_size));
-    result = min(result, texture(input_depth, ((pos << 1) + uvec2(1, 1)) / input_image_size));
+    vec4 result = textureGather(input_depth, (vec2(pos) + vec2(0.5)) / output_image_size);
+    float result_min = min(result.x, min(result.y, min(result.z, result.w)));
 
-    imageStore(output_depth, ivec2(pos), result);
+    imageStore(output_depth, ivec2(pos), vec4(result_min));
 }

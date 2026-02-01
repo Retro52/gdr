@@ -103,6 +103,7 @@ struct depth_pyramid_data
     VkImageView views[12] {};
     VkSampler sampler;
     render::vk_image image;
+    ivec2 base_size;
     u32 pyramid_count {0};
 };
 
@@ -149,8 +150,12 @@ void destroy_depth_pyramid(const render::vk_renderer& renderer, depth_pyramid_da
 depth_pyramid_data create_depth_pyramid(const ivec2& size, const VkFormat format, VkDevice device,
                                         VmaAllocator allocator)
 {
-    depth_pyramid_data depth_pyramid {.pyramid_count = 1};
-    ivec2 size_cpy = size;
+    depth_pyramid_data depth_pyramid {
+        .base_size     = {1 << static_cast<i32>(std::log2(size.x)), 1 << static_cast<i32>(std::log2(size.y))},
+        .pyramid_count = 1,
+    };
+
+    ivec2 size_cpy = depth_pyramid.base_size;
     while (size_cpy.x > 1 || size_cpy.y > 1)
     {
         size_cpy /= 2;
@@ -164,7 +169,7 @@ depth_pyramid_data create_depth_pyramid(const ivec2& size, const VkFormat format
         .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType     = VK_IMAGE_TYPE_2D,
         .format        = format,
-        .extent        = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
+        .extent        = {static_cast<u32>(depth_pyramid.base_size.x), static_cast<u32>(depth_pyramid.base_size.y), 1},
         .mipLevels     = depth_pyramid.pyramid_count,
         .arrayLayers   = 1,
         .samples       = VK_SAMPLE_COUNT_1_BIT,
@@ -345,7 +350,7 @@ int main(int argc, char* argv[])
                                                       renderer.get_context().device,
                                                       renderer.get_context().allocator);
 
-    depth_pyramid_data depth_pyramid = create_depth_pyramid(client_window.get_size_in_px() / 2,
+    depth_pyramid_data depth_pyramid = create_depth_pyramid(client_window.get_size_in_px(),
                                                             VK_FORMAT_R32_SFLOAT,
                                                             renderer.get_context().device,
                                                             renderer.get_context().allocator);
@@ -398,7 +403,7 @@ int main(int argc, char* argv[])
                                                  ctx.renderer.get_context().allocator);
 
             destroy_depth_pyramid(ctx.renderer, ctx.depth_pyramid);
-            ctx.depth_pyramid = create_depth_pyramid(payload.window.size_px / 2,
+            ctx.depth_pyramid = create_depth_pyramid(payload.window.size_px,
                                                      VK_FORMAT_R32_SFLOAT,
                                                      ctx.renderer.get_context().device,
                                                      ctx.renderer.get_context().allocator);
@@ -768,11 +773,10 @@ int main(int argc, char* argv[])
 
                         depth_reduce_pipeline.push_descriptor_set(buffer, cull_pass_bindings);
 
-                        const vec2 in_size  = client_window.get_size_in_px() >> i;
-                        const vec2 out_size = client_window.get_size_in_px() >> (i + 1);
-                        depth_reduce_pipeline.push_constant(buffer, in_size);
+                        const ivec2 out_size = glm::max(depth_pyramid.base_size >> i, ivec2(1));
+                        depth_reduce_pipeline.push_constant(buffer, vec2(out_size));
 
-                        vkCmdDispatch(buffer, (ivec2(out_size).x + 31) / 32, (ivec2(out_size).y + 31) / 32, 1);
+                        vkCmdDispatch(buffer, (out_size.x + 31) / 32, (out_size.y + 31) / 32, 1);
                         render::cmd_stage_barrier(buffer,
                                                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
