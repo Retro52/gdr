@@ -67,8 +67,8 @@ imgui_layer::imgui_layer(const window& window, const render::vk_renderer& render
 
     VkSamplerCreateInfo sampler_info {
         .sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter    = VK_FILTER_LINEAR,
-        .minFilter    = VK_FILTER_LINEAR,
+        .magFilter    = VK_FILTER_NEAREST,
+        .minFilter    = VK_FILTER_NEAREST,
         .mipmapMode   = VK_SAMPLER_MIPMAP_MODE_NEAREST,
         .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
         .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -101,19 +101,48 @@ imgui_layer::~imgui_layer()
     ImGui::DestroyContext();
 }
 
-void imgui_layer::begin_frame()
+void imgui_layer::begin_frame(const render::vk_renderer& renderer)
 {
     m_atlas_data.reset_cursor();
 
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
+
+    VkRenderingAttachmentInfo color_attachment_info {
+        .sType              = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView          = renderer.get_frame_swapchain_image().image_view,
+        .imageLayout        = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+        .loadOp             = VK_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp            = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue         = {
+                               .color = {0.0F, 0.0F, 0.0F, 1.0F},
+                               }
+    };
+
+    const VkRenderingInfo rendering_info {.sType                = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
+                                          .renderArea           = renderer.get_scissor(),
+                                          .layerCount           = 1,
+                                          .colorAttachmentCount = 1,
+                                          .pColorAttachments    = &color_attachment_info};
+
+    renderer.submit(
+        [&](VkCommandBuffer cmd)
+        {
+            vkCmdBeginRendering(cmd, &rendering_info);
+        });
 }
 
-void imgui_layer::end_frame(const VkCommandBuffer cmd)
+void imgui_layer::end_frame(const render::vk_renderer& renderer)
 {
     ImGui::Render();
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+    renderer.submit(
+        [&, this](VkCommandBuffer cmd)
+        {
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+            vkCmdEndRendering(cmd);
+            this->flush_pending(cmd);
+        });
 
     if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
     {
@@ -201,7 +230,7 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
                 .oldLayout        = req.src_layout,
                 .newLayout        = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                 .image            = req.img,
-                .subresourceRange = {req.aspect, 0, 1, 0, 1},
+                .subresourceRange = {req.aspect, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
         };
     }
 
@@ -278,7 +307,7 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
                 .oldLayout        = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                 .newLayout        = req.src_layout,
                 .image            = req.img,
-                .subresourceRange = {req.aspect, 0, 1, 0, 1},
+                .subresourceRange = {req.aspect, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
         };
     }
 

@@ -5,10 +5,15 @@
 
 VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspect_flag)
 {
+    return render::image_subresource_range(aspect_flag, 0, VK_REMAINING_MIP_LEVELS);
+}
+
+VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspect_flag, u32 mip_level, u32 levels_count)
+{
     return VkImageSubresourceRange {
         .aspectMask     = aspect_flag,
-        .baseMipLevel   = 0,
-        .levelCount     = VK_REMAINING_MIP_LEVELS,
+        .baseMipLevel   = mip_level,
+        .levelCount     = levels_count,
         .baseArrayLayer = 0,
         .layerCount     = VK_REMAINING_ARRAY_LAYERS,
     };
@@ -21,6 +26,12 @@ void render::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout 
                                              ? VK_IMAGE_ASPECT_DEPTH_BIT
                                              : VK_IMAGE_ASPECT_COLOR_BIT;
 
+    return transition_image(cmd, image, current_layout, new_layout, aspect_flag);
+}
+
+void render::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout,
+                              VkImageLayout new_layout, VkImageAspectFlags aspect_flags)
+{
     const VkImageMemoryBarrier2 image_barrier {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
         .pNext            = nullptr,
@@ -31,7 +42,7 @@ void render::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout 
         .oldLayout        = current_layout,
         .newLayout        = new_layout,
         .image            = image,
-        .subresourceRange = image_subresource_range(aspect_flag),
+        .subresourceRange = image_subresource_range(aspect_flags),
     };
 
     const VkDependencyInfo dependency_info {
@@ -62,15 +73,23 @@ result<render::vk_image> render::create_image(const VkImageCreateInfo& image_cre
 result<VkImageView> render::create_image_view(VkDevice device, VkImage image, VkFormat format,
                                               VkImageAspectFlags aspect_flags)
 {
-    const VkImageViewCreateInfo image_view_create_info {.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                                                        .pNext            = nullptr,
-                                                        .image            = image,
-                                                        .viewType         = VK_IMAGE_VIEW_TYPE_2D,
-                                                        .format           = format,
-                                                        .subresourceRange = image_subresource_range(aspect_flags)};
+    return render::create_image_view(device, image, format, aspect_flags, 0, VK_REMAINING_MIP_LEVELS);
+}
+
+result<VkImageView> render::create_image_view(VkDevice device, VkImage image, VkFormat format,
+                                              VkImageAspectFlags aspect_flags, u32 mip_level, u32 levels_count)
+{
+    const VkImageViewCreateInfo image_view_create_info {
+        .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext            = nullptr,
+        .image            = image,
+        .viewType         = VK_IMAGE_VIEW_TYPE_2D,
+        .format           = format,
+        .subresourceRange = image_subresource_range(aspect_flags, mip_level, levels_count)};
 
     VkImageView view;
     VK_RETURN_ON_FAIL(vkCreateImageView(device, &image_view_create_info, nullptr, &view));
 
     return view;
 }
+

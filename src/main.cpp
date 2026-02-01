@@ -98,6 +98,14 @@ struct depth_image_data
     render::vk_image image;
 };
 
+struct depth_pyramid_data
+{
+    VkImageView views[12] {};
+    VkSampler sampler;
+    render::vk_image image;
+    u32 pyramid_count {0};
+};
+
 f64 bytes_to_mb(u64 bytes)
 {
     return static_cast<f64>(bytes) / (1024.0 * 1024);
@@ -124,6 +132,67 @@ depth_image_data create_depth_image(const ivec2& size, const VkFormat format, Vk
     depth_image.view  = *render::create_image_view(device, depth_image.image.image, format, VK_IMAGE_ASPECT_DEPTH_BIT);
 
     return depth_image;
+}
+
+void destroy_depth_pyramid(const render::vk_renderer& renderer, depth_pyramid_data& pyramid)
+{
+    for (u32 i = 0; i < pyramid.pyramid_count; ++i)
+    {
+        vkDestroyImageView(renderer.get_context().device, pyramid.views[i], nullptr);
+    }
+
+    pyramid.pyramid_count = 0;
+    render::destroy_image(renderer.get_context().allocator, pyramid.image);
+    vkDestroySampler(renderer.get_context().device, pyramid.sampler, nullptr);
+}
+
+depth_pyramid_data create_depth_pyramid(const ivec2& size, const VkFormat format, VkDevice device,
+                                        VmaAllocator allocator)
+{
+    depth_pyramid_data depth_pyramid {.pyramid_count = 1};
+    ivec2 size_cpy = size;
+    while (size_cpy.x > 1 || size_cpy.y > 1)
+    {
+        size_cpy /= 2;
+        ++depth_pyramid.pyramid_count;
+    }
+
+    depth_pyramid.pyramid_count =
+        std::min(depth_pyramid.pyramid_count, static_cast<u32>(COUNT_OF(depth_pyramid.views)));
+
+    const VkImageCreateInfo image_create_info {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = format,
+        .extent        = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
+        .mipLevels     = depth_pyramid.pyramid_count,
+        .arrayLayers   = 1,
+        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    depth_pyramid.image = *render::create_image(image_create_info, allocator);
+    for (u32 i = 0; i < depth_pyramid.pyramid_count; ++i)
+    {
+        depth_pyramid.views[i] =
+            *render::create_image_view(device, depth_pyramid.image.image, format, VK_IMAGE_ASPECT_COLOR_BIT, i, 1);
+    }
+
+    constexpr VkSamplerCreateInfo sampler_info {
+        .sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter    = VK_FILTER_NEAREST,
+        .minFilter    = VK_FILTER_NEAREST,
+        .mipmapMode   = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+    };
+
+    vkCreateSampler(device, &sampler_info, nullptr, &depth_pyramid.sampler);
+    return depth_pyramid;
 }
 
 cpp::stack_string format_big_number(u64 number)
@@ -276,6 +345,11 @@ int main(int argc, char* argv[])
                                                       renderer.get_context().device,
                                                       renderer.get_context().allocator);
 
+    depth_pyramid_data depth_pyramid = create_depth_pyramid(client_window.get_size_in_px() / 2,
+                                                            VK_FORMAT_R32_SFLOAT,
+                                                            renderer.get_context().device,
+                                                            renderer.get_context().allocator);
+
     bool exit = false;
     bool mesh_shading_supported =
         renderer.get_context().enabled_device_features.supported(render::rendering_features_table::eMeshShading);
@@ -305,7 +379,8 @@ int main(int argc, char* argv[])
     {
         render::vk_renderer& renderer;
         depth_image_data& depth_image;
-    } resize_ctx(renderer, depth_image);
+        depth_pyramid_data& depth_pyramid;
+    } resize_ctx(renderer, depth_image, depth_pyramid);
 
     client_events.add_watcher(
         event_type::window_size_changed,
@@ -321,6 +396,12 @@ int main(int argc, char* argv[])
                                                  ctx.renderer.get_swapchain().depth_format,
                                                  ctx.renderer.get_context().device,
                                                  ctx.renderer.get_context().allocator);
+
+            destroy_depth_pyramid(ctx.renderer, ctx.depth_pyramid);
+            ctx.depth_pyramid = create_depth_pyramid(payload.window.size_px / 2,
+                                                     VK_FORMAT_R32_SFLOAT,
+                                                     ctx.renderer.get_context().device,
+                                                     ctx.renderer.get_context().allocator);
         },
         &resize_ctx);
 
@@ -340,6 +421,9 @@ int main(int argc, char* argv[])
 
     const auto indexed_cull_pipeline = *render::vk_pipeline::create_compute(
         renderer, *render::vk_shader::load(renderer, "../shaders/bin/cull_mesh.comp.spv"));
+
+    const auto depth_reduce_pipeline = *render::vk_pipeline::create_compute(
+        renderer, *render::vk_shader::load(renderer, "../shaders/bin/depth_reduce.comp.spv"));
 
     render::vk_pipeline meshlets_cull_pipeline;
     render::vk_pipeline meshlets_render_pipeline;
@@ -488,25 +572,20 @@ int main(int argc, char* argv[])
                     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = 0};
 
                 VkRenderingAttachmentInfo color_attachment_info {
-                    .sType              = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                    .imageView          = renderer.get_frame_swapchain_image().image_view,
-                    .imageLayout        = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
-                    .resolveMode        = VK_RESOLVE_MODE_NONE,
-                    .resolveImageView   = VK_NULL_HANDLE,
-                    .resolveImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                    .loadOp             = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                    .storeOp            = VK_ATTACHMENT_STORE_OP_STORE,
-                    .clearValue         = {
-                                           .color = {0.0F, 0.0F, 0.0F, 1.0F},
-                                           }
+                    .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                    .imageView   = renderer.get_frame_swapchain_image().image_view,
+                    .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+                    .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
+                    .clearValue  = {
+                                    .color = {0.0F, 0.0F, 0.0F, 1.0F},
+                                    }
                 };
 
                 VkRenderingAttachmentInfo depth_attachment_info {
                     .sType              = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
                     .imageView          = depth_image.view,
-                    .imageLayout        = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
-                    .resolveMode        = VK_RESOLVE_MODE_NONE,
-                    .resolveImageView   = VK_NULL_HANDLE,
+                    .imageLayout        = VK_IMAGE_LAYOUT_GENERAL,
                     .resolveImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                     .loadOp             = VK_ATTACHMENT_LOAD_OP_CLEAR,
                     .storeOp            = VK_ATTACHMENT_STORE_OP_STORE,
@@ -599,7 +678,8 @@ int main(int argc, char* argv[])
                 render::transition_image(buffer,
                                          depth_image.image.image,
                                          VK_IMAGE_LAYOUT_UNDEFINED,
-                                         VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+                                         VK_IMAGE_LAYOUT_GENERAL,
+                                         VK_IMAGE_ASPECT_DEPTH_BIT);
 
                 vkCmdBeginRendering(buffer, &rendering_info);
 
@@ -666,13 +746,47 @@ int main(int argc, char* argv[])
                 {
                     frustum_renderer.draw(buffer, camera_proj_view, cull_matrices.view, cull_matrices.projection);
                 }
+                vkCmdEndRendering(buffer);
+
+                if (!freeze_camera_cull_dir)
+                {
+                    TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "depth reduce"));
+
+                    render::transition_image(
+                        buffer, depth_pyramid.image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+                    depth_reduce_pipeline.bind(buffer);
+                    for (i32 i = 0; i < depth_pyramid.pyramid_count; ++i)
+                    {
+                        const render::vk_descriptor_info cull_pass_bindings[] = {
+                            render::vk_descriptor_info(depth_pyramid.sampler,
+                                                       i == 0 ? depth_image.view : depth_pyramid.views[i - 1],
+                                                       VK_IMAGE_LAYOUT_GENERAL),
+                            render::vk_descriptor_info(
+                                depth_pyramid.sampler, depth_pyramid.views[i], VK_IMAGE_LAYOUT_GENERAL),
+                        };
+
+                        depth_reduce_pipeline.push_descriptor_set(buffer, cull_pass_bindings);
+
+                        const vec2 in_size  = client_window.get_size_in_px() >> i;
+                        const vec2 out_size = client_window.get_size_in_px() >> (i + 1);
+                        depth_reduce_pipeline.push_constant(buffer, in_size);
+
+                        vkCmdDispatch(buffer, (ivec2(out_size).x + 31) / 32, (ivec2(out_size).y + 31) / 32, 1);
+                        render::cmd_stage_barrier(buffer,
+                                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                                  VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                    }
+                }
 
 #if !NO_EDITOR
                 {
                     ZoneScopedN("main.draw.editor");
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "editor"));
 
-                    editor.begin_frame();
+                    editor.begin_frame(renderer);
 
                     ImGui::SeparatorText("camera controller");
                     codegen::draw(controller);
@@ -701,7 +815,7 @@ int main(int argc, char* argv[])
                     ImGui::Checkbox("Enable LODs", &enable_lods);
                     ImGui::Checkbox("Freeze culling data", &freeze_camera_cull_dir);
 
-                    if (ImGui::CollapsingHeader("Color targets", ImGuiTreeNodeFlags_DefaultOpen))
+                    if (ImGui::CollapsingHeader("Render targets", ImGuiTreeNodeFlags_DefaultOpen))
                     {
                         static int img_in_line = 2;
                         ImGui::SliderInt("Images in line", &img_in_line, 1, 2);
@@ -710,10 +824,8 @@ int main(int argc, char* argv[])
                         const auto size_y = (ImGui::GetContentRegionAvail().x / static_cast<f32>(img_in_line))
                                           / camera_data.aspect_ratio;
 
-                        editor.depth_image(depth_image.image.image,
-                                           depth_image.view,
-                                           VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-                                           {size_x, size_y});
+                        editor.depth_image(
+                            depth_image.image.image, depth_image.view, VK_IMAGE_LAYOUT_GENERAL, {size_x, size_y});
                         if (img_in_line > 1)
                             ImGui::SameLine();
 
@@ -723,19 +835,29 @@ int main(int argc, char* argv[])
                                      {size_x, size_y});
                     }
 
+                    if (ImGui::CollapsingHeader("Depth pyramid", ImGuiTreeNodeFlags_DefaultOpen))
+                    {
+                        static int idx = 0;
+                        idx            = std::min(idx, static_cast<int>(depth_pyramid.pyramid_count) - 1);
+
+                        ImGui::SliderInt("Index", &idx, 0, static_cast<int>(depth_pyramid.pyramid_count) - 1);
+
+                        const auto size_x = ImGui::GetContentRegionAvail().x;
+                        const auto size_y = ImGui::GetContentRegionAvail().x / camera_data.aspect_ratio;
+
+                        editor.image(depth_pyramid.image.image,
+                                     depth_pyramid.views[idx],
+                                     VK_IMAGE_LAYOUT_GENERAL,
+                                     {size_x, size_y});
+                    }
+
                     if (ImGui::CollapsingHeader("Camera data", ImGuiTreeNodeFlags_DefaultOpen))
                     {
                         codegen::draw(camera_data);
                         codegen::draw(camera_transform);
                     }
-                    editor.end_frame(buffer);
+                    editor.end_frame(renderer);
                 }
-#endif
-
-                vkCmdEndRendering(buffer);
-
-#if !NO_EDITOR
-                editor.flush_pending(buffer);
 #endif
 
                 render::transition_image(buffer,

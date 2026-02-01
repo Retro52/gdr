@@ -11,11 +11,9 @@ public:
 
     ~imgui_layer();
 
-    void begin_frame();
+    void begin_frame(const render::vk_renderer& renderer);
 
-    void end_frame(VkCommandBuffer cmd);
-
-    void flush_pending(VkCommandBuffer cmd);
+    void end_frame(const render::vk_renderer& renderer);
 
     void image(VkImage image, VkImageView view, VkImageLayout src_layout, ImVec2 size = {256, 256});
     void depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, ImVec2 size = {256, 256});
@@ -49,6 +47,8 @@ private:
             cursor_row = 0;
         }
     };
+
+    void flush_pending(VkCommandBuffer cmd);
 
     bool allocate_region(u32 w, u32 h, VkOffset2D& out_offset);
 
