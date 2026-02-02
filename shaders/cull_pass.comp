@@ -1,3 +1,4 @@
+// FIXME: this is a stupid copy of the meshlets shader to avoid code duplication. Remove the duplication
 #version 460
 
 #extension GL_GOOGLE_include_directive: require
@@ -22,19 +23,20 @@ layout (binding = 2) buffer MeshesDrawCommandsCount
     uint draw_commands_count;
 };
 
-layout (binding = 3) writeonly buffer DrawMeshIndirects
+layout (binding = 3) buffer MeshVisibilityBuffer
 {
-    DrawMeshIndirect draw_indirect_cmds[];
+    uint mesh_visibility_buffer[];
 };
 
-layout (push_constant) uniform constants
+layout (binding = 4) writeonly buffer DrawIndexedIndirects
 {
-    vec4 frustum[6];
-    vec3 camera_pos;
-    uint draw_count;
-    uint enable_culling;
-    uint enable_lods;
-} pc;
+    DrawIndexedIndirect draw_indirect_cmds[];
+};
+
+layout (push_constant) uniform block
+{
+    CullPassPushConstants pc;
+};
 
 void main()
 {
@@ -60,12 +62,13 @@ void main()
 
             uint dci = atomicAdd(draw_commands_count, 1);
 
-            draw_indirect_cmds[dci].group_size[0] = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
-            draw_indirect_cmds[dci].group_size[1] = 1;
-            draw_indirect_cmds[dci].group_size[2] = 1;
+            draw_indirect_cmds[dci].instance_count = 1;
+            draw_indirect_cmds[dci].first_instance = 0;
+            draw_indirect_cmds[dci].vertex_offset = int(meshes_data[idx].base_vertex);
 
             draw_indirect_cmds[dci].mesh_id = idx;
-            draw_indirect_cmds[dci].base_meshlet = selected_lod.base_meshlet;
+            draw_indirect_cmds[dci].first_index = selected_lod.base_index;
+            draw_indirect_cmds[dci].index_count = selected_lod.indices_count;
         }
     }
 }

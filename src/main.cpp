@@ -665,7 +665,7 @@ int main(int argc, char* argv[])
                                                          .enable_lod     = enable_lods}
                                                 .build_frustum(cull_matrices.projection, cull_matrices.view));
 
-                    vkCmdDispatch(buffer, (kRepeatDraws + 31) / 32, 1, 1);
+                    cull_pass.dispatch(buffer, kRepeatDraws, 1, 1);
 
                     render::cmd_stage_barrier(
                         buffer,
@@ -775,8 +775,8 @@ int main(int argc, char* argv[])
 
                         const ivec2 out_size = glm::max(depth_pyramid.base_size >> i, ivec2(1));
                         depth_reduce_pipeline.push_constant(buffer, vec2(out_size));
+                        depth_reduce_pipeline.dispatch(buffer, out_size.x, out_size.y, 1);
 
-                        vkCmdDispatch(buffer, (out_size.x + 31) / 32, (out_size.y + 31) / 32, 1);
                         render::cmd_stage_barrier(buffer,
                                                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
