@@ -1,4 +1,3 @@
-// FIXME: this is a stupid copy of the meshlets shader to avoid code duplication. Remove the duplication
 #version 460
 
 #extension GL_GOOGLE_include_directive: require
@@ -23,15 +22,17 @@ layout (binding = 2) buffer MeshesDrawCommandsCount
     uint draw_commands_count;
 };
 
-layout (binding = 3) buffer MeshVisibilityBuffer
+#ifdef FOR_MESH_PIPELINE
+layout (binding = 4) writeonly buffer DrawMeshIndirects
 {
-    uint mesh_visibility_buffer[];
+    DrawMeshIndirect draw_indirect_cmds[];
 };
-
+#else
 layout (binding = 4) writeonly buffer DrawIndexedIndirects
 {
     DrawIndexedIndirect draw_indirect_cmds[];
 };
+#endif
 
 layout (push_constant) uniform block
 {
@@ -62,6 +63,14 @@ void main()
 
             uint dci = atomicAdd(draw_commands_count, 1);
 
+            #ifdef FOR_MESH_PIPELINE
+            draw_indirect_cmds[dci].group_size[0] = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
+            draw_indirect_cmds[dci].group_size[1] = 1;
+            draw_indirect_cmds[dci].group_size[2] = 1;
+
+            draw_indirect_cmds[dci].mesh_id = idx;
+            draw_indirect_cmds[dci].base_meshlet = selected_lod.base_meshlet;
+            #else
             draw_indirect_cmds[dci].instance_count = 1;
             draw_indirect_cmds[dci].first_instance = 0;
             draw_indirect_cmds[dci].vertex_offset = int(meshes_data[idx].base_vertex);
@@ -69,6 +78,7 @@ void main()
             draw_indirect_cmds[dci].mesh_id = idx;
             draw_indirect_cmds[dci].first_index = selected_lod.base_index;
             draw_indirect_cmds[dci].index_count = selected_lod.indices_count;
+            #endif
         }
     }
 }

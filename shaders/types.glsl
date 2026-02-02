@@ -54,6 +54,16 @@ struct MeshTransform
     vec4 rotation_quat; // quaternion representing object position
 };
 
+// TODO: pack
+struct CullPassPushConstants
+{
+    vec4 frustum[6];
+    vec3 camera_pos;
+    uint draw_count;
+    uint enable_culling;
+    uint enable_lods;
+};
+
 struct DrawMeshIndirect
 {
     uint group_size[3];
