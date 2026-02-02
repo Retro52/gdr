@@ -279,7 +279,7 @@ u64 populate_scene(const u32 draw_count, const char* models[], u32 models_count,
                                    get_random_f32(-kDensityInverse, kDensityInverse),
                                    get_random_f32(-kDensityInverse, kDensityInverse));
 
-        transform.uniform_scale = get_random_f32(0.75F, 1.25F);
+        transform.uniform_scale = get_random_f32(0.75F, 10.0F);
         transform.rotation =
             glm::quat(vec3(get_random_f32(-180, 180), get_random_f32(-180, 180), get_random_f32(-180, 180)));
 #endif
