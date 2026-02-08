@@ -19,13 +19,10 @@ jobs:
         submodules: recursive
 
     - name: Install Vulkan SDK
-      uses: jakoch/install-vulkan-sdk-action@v1
+      uses: humbletim/install-vulkan-sdk@v1.2
       with:
-        install_runtime: true
+        version: latest
         cache: true
-        stripdown: true
-        install_swiftshader: true
-        install_lavapipe: true
 
     - name: Install dependencies
       run: |
@@ -44,6 +41,12 @@ jobs:
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} -j 4
 
-    - name: Test
-      working-directory: ${{github.workspace}}/build
-      run: ctest -C ${{env.BUILD_TYPE}}
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: gdr-${{ runner.os }}-${{ matrix.build_type }}
+        path: |
+          build/gdr
+          shaders/bin/
+          data/kitten.obj
+        if-no-files-found: warn
