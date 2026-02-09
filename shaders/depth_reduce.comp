@@ -1,0 +1,23 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive: require
+
+#include "types.glsl"
+#include "common.glsl"
+
+layout (local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
+
+layout (binding = 0) uniform sampler2D input_depth;
+layout (binding = 1, r32f) uniform writeonly image2D output_depth;
+
+layout (push_constant) uniform block
+{
+    vec2 output_image_size;
+};
+
+void main()
+{
+    uvec2 pos = gl_GlobalInvocationID.xy;
+    float result = texture(input_depth, (vec2(pos) + vec2(0.5)) / output_image_size).r;
+    imageStore(output_depth, ivec2(pos), vec4(result));
+}

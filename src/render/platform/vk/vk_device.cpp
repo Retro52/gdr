@@ -359,6 +359,7 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
 
     features_table.set_supported(rendering_features_table::eDynamicRender, vk13_features.dynamicRendering);
     features_table.set_supported(rendering_features_table::eSynchronization2, vk13_features.synchronization2);
+    features_table.set_supported(rendering_features_table::eSamplerMinMax, vk12_features.samplerFilterMinmax);
 
     features_table.set_supported(rendering_features_table::e8BitIntegers, vk12_features.storageBuffer8BitAccess);
     features_table.set_supported(rendering_features_table::eMeshShading,
@@ -518,6 +519,7 @@ VkResult create_vulkan_device(const rendering_features_table& rendering_features
         .pNext                   = &vk13_features,
         .drawIndirectCount       = rendering_features.wanted(rendering_features_table::eDrawIndirect),
         .storageBuffer8BitAccess = rendering_features.wanted(rendering_features_table::e8BitIntegers),
+        .samplerFilterMinmax     = rendering_features.wanted(rendering_features_table::eSamplerMinMax),
     };
 
     VkPhysicalDeviceVulkan11Features vk11_features {
@@ -756,9 +758,6 @@ void render::destroy_swapchain(const context& vk_context, swapchain& swapchain)
     {
         for (auto& img : swapchain.images)
         {
-            vkDestroyImageView(vk_context.device, img.depth_image_view, nullptr);
-            destroy_image(vk_context.allocator, img.depth_image);
-
             vkDestroyImageView(vk_context.device, img.image_view, nullptr);
             vkDestroySemaphore(vk_context.device, img.release_semaphore, nullptr);
         }
@@ -820,7 +819,7 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
     std::vector<VkImage> imgs(img_count);
     vkGetSwapchainImagesKHR(vk_context.device, sc_data.vk_swapchain, &img_count, imgs.data());
 
-    const auto depth_format = sc_data.depth_format = choose_depth_format(vk_context.physical_device);
+    sc_data.depth_format = choose_depth_format(vk_context.physical_device);
     for (u32 i = 0; i < img_count; i++)
     {
         VkImageViewCreateInfo image_view_create_info {
@@ -851,38 +850,6 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
         VK_ASSERT_ON_FAIL(
             vkCreateSemaphore(vk_context.device, &semaphore_create_info, nullptr, &sc_image.release_semaphore));
 
-        // TODO: move out, so we create depth attachment ourselves
-        const VkImageCreateInfo image_create_info {
-            .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .imageType     = VK_IMAGE_TYPE_2D,
-            .format        = sc_data.depth_format,
-            .extent        = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
-            .mipLevels     = 1,
-            .arrayLayers   = 1,
-            .samples       = VK_SAMPLE_COUNT_1_BIT,
-            .tiling        = VK_IMAGE_TILING_OPTIMAL,
-            .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        };
-
-        const auto depth_img = create_image(image_create_info, vk_context.allocator);
-        if (!depth_img)
-        {
-            return depth_img.message;
-        }
-
-        sc_image.depth_image = *depth_img;
-
-        constexpr auto kDAspect = VK_IMAGE_ASPECT_DEPTH_BIT;
-        const auto depth_img_view =
-            create_image_view(vk_context.device, sc_image.depth_image.image, depth_format, kDAspect);
-        if (!depth_img_view)
-        {
-            return depth_img.message;
-        }
-
-        sc_image.depth_image_view = *depth_img_view;
         sc_data.images.emplace_back(sc_image);
     }
 

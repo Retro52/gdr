@@ -20,13 +20,9 @@ layout (binding = 2) readonly buffer DrawIndexedIndirects
     DrawIndexedIndirect draw_cmds[];
 };
 
-// FIXME: most of this data is temporary and may exceed the hardware limits
-// TODO: move out to the separate buffer
 layout (push_constant) uniform constants
 {
     mat4 vp;
-    mat4 view;
-    uint padding;
 } pc;
 
 out VS_OUT {

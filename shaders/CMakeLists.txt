@@ -39,38 +39,47 @@ function(collect_shader_dependencies SHADER_FILE OUT_DEPENDENCIES)
     set(${OUT_DEPENDENCIES} ${RESULT} PARENT_SCOPE)
 endfunction()
 
+function(parse_shader_config SHADER_CONFIG)
+    string(REGEX MATCH "^[^ ]+" SHADER "${SHADER_CONFIG}")
+
+    string(REGEX MATCH "-o +([^ ]+)" _MATCH "${SHADER_CONFIG}")
+    set(SHADER_BIN "${CMAKE_MATCH_1}")
+    if(NOT SHADER_BIN)
+        set(SHADER_BIN "${SHADER}.spv")
+    endif()
+
+    string(REGEX MATCH "-d +([^-|^\n]+)" _MATCH "${SHADER_CONFIG}")
+    if(CMAKE_MATCH_1)
+        string(STRIP "${CMAKE_MATCH_1}" CMAKE_MATCH_1)
+        string(REPLACE " " ";-D" SHADER_DEF "-D${CMAKE_MATCH_1}")
+    endif()
+
+    set(SHADER     ${SHADER}     PARENT_SCOPE)
+    set(SHADER_BIN ${SHADER_BIN} PARENT_SCOPE)
+    set(SHADER_DEF ${SHADER_DEF} PARENT_SCOPE)
+endfunction()
 
 find_package(Vulkan REQUIRED COMPONENTS glslc glslangValidator)
 
-file(GLOB SHADERS
-        ${PROJECT_SOURCE_DIR}/*.vert
-        ${PROJECT_SOURCE_DIR}/*.frag
-        ${PROJECT_SOURCE_DIR}/*.comp
-        ${PROJECT_SOURCE_DIR}/*.geom
-        ${PROJECT_SOURCE_DIR}/*.tesc
-        ${PROJECT_SOURCE_DIR}/*.tese
-        ${PROJECT_SOURCE_DIR}/*.mesh
-        ${PROJECT_SOURCE_DIR}/*.task
-        ${PROJECT_SOURCE_DIR}/*.rgen
-        ${PROJECT_SOURCE_DIR}/*.rchit
-        ${PROJECT_SOURCE_DIR}/*.rmiss
-)
+file(READ "${PROJECT_SOURCE_DIR}/shaders.cfg" SHADERS_CONFIG)
 
-foreach (SHADER IN LISTS SHADERS)
-    get_filename_component(FILENAME "${SHADER}" NAME)
-    get_filename_component(SHADER_DIRECTORY "${SHADER}" DIRECTORY)
+string(STRIP "${SHADERS_CONFIG}" SHADERS_CONFIG)
+string(REPLACE "\n" ";" SHADERS_CONFIG "${SHADERS_CONFIG}")
 
+foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
+    parse_shader_config("${SHADER_CONFIG}")
     collect_shader_dependencies("${SHADER}" SHADER_DEPENDENCIES)
 
-    message(STATUS "Dependencies of ${SHADER}: ${SHADER_DEPENDENCIES}")
     set(SHADER_BIN_FOLDER "${PROJECT_SOURCE_DIR}/bin")
-    set(SHADER_BIN_OUTPUT "${SHADER_BIN_FOLDER}/${FILENAME}.spv")
+    set(SHADER_INPUT_PATH "${PROJECT_SOURCE_DIR}/${SHADER}")
+    set(SHADER_BIN_OUTPUT "${SHADER_BIN_FOLDER}/${SHADER_BIN}")
+
     add_custom_command(
             OUTPUT "${SHADER_BIN_OUTPUT}"
             COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_BIN_FOLDER}
-            COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER}" -o "${SHADER_BIN_OUTPUT}" --target-env vulkan1.3
+            COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER_INPUT_PATH}" -o "${SHADER_BIN_OUTPUT}" --target-env vulkan1.3 ${SHADER_DEF}
             DEPENDS ${SHADER_DEPENDENCIES}
-            COMMENT "Compiling shader '${FILENAME}' to '${SHADER_BIN_OUTPUT}'"
+            COMMENT "Compiling shader '${SHADER}' to '${SHADER_BIN_OUTPUT}'"
     )
     list(APPEND SPV_SHADERS "${SHADER_BIN_OUTPUT}")
 endforeach ()

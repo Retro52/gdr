@@ -129,7 +129,7 @@ namespace
 
             for (u32 i = meshlets_count; i < meshlets.size(); i++)
             {
-                meshlets[i].vertices_count = 0;
+                meshlets[i].vertices_count  = 0;
                 meshlets[i].triangles_count = 0;
             }
 
@@ -228,7 +228,8 @@ result<std::vector<static_model>> static_model::load(const fs::path& path,
                                                                          &lod_error);
 
                 assert2(indices_count <= indices_work_copy.size());
-                if (indices_count == indices_work_copy.size() || indices_count == 0)
+                if (indices_count == indices_work_copy.size() || indices_count == 0
+                    || indices_count > (indices_work_copy.size() * 4 / 5))
                 {
                     break;
                 }

@@ -45,6 +45,7 @@ namespace render
         struct shader_meta
         {
             VkDescriptorType bindings[32];
+            u32 work_group_size[3];
             u32 bindings_count {0};
             u32 push_constant_struct_size {0};
             VkShaderStageFlagBits stage {VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM};
@@ -74,7 +75,8 @@ namespace render
 
         VkPipelineBindPoint m_pipeline_bind_point {VK_PIPELINE_BIND_POINT_GRAPHICS};
         VkShaderStageFlags m_push_constant_stages {VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM};
-        DEBUG_ONLY(u32 m_push_constants_max_size);
+        u32 m_push_constants_max_size;
+        u32 work_group_size[3] {};
 
         static result<vk_pipeline> create_compute(const vk_renderer& renderer, const vk_shader& shader);
 
@@ -87,6 +89,8 @@ namespace render
         void push_constant(VkCommandBuffer command_buffer, u32 size, const void* data) const;
 
         void push_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_info* updates) const;
+
+        void dispatch(VkCommandBuffer command_buffer, u32 global_x, u32 global_y, u32 global_z) const;
 
         template<typename T>
         void push_constant(VkCommandBuffer command_buffer, T&& data) const

@@ -6,6 +6,15 @@ namespace shader_constants
     using uint = unsigned int;
 #endif
 
+#define VISUALIZE_MESHLETS          0
+#define VISUALIZE_MESHLET_TRIANGLES 0
+
+    const uint kLodFlagBit            = 1;
+    const uint kFrustumCullBit        = 2;
+    const uint kOcclusionCullBit      = 3;
+    const uint kMeshletConeCullBit    = 4;
+    const uint kMeshletFrustumCullBit = 5;
+
     const uint kMaxVerticesPerMeshlet  = 64;
     const uint kMaxTrianglesPerMeshlet = 94;
     const uint kMaxIndicesPerMeshlet   = kMaxTrianglesPerMeshlet * 3;
@@ -18,8 +27,3 @@ namespace shader_constants
 #ifdef __cplusplus
 }
 #endif
-
-#define USE_CONE_CULLING 1
-
-#define VISUALIZE_MESHLETS          0
-#define VISUALIZE_MESHLET_TRIANGLES 0

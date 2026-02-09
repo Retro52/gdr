@@ -1,6 +1,8 @@
 #include <assert2.hpp>
 #include <render/platform/vk/vk_buffer_transfer.hpp>
 
+#include <cstring>
+
 result<render::vk_buffer_transfer> render::create_buffer_transfer(VkDevice device, VmaAllocator allocator,
                                                                   const queue_data& queue, u64 staging_memory_size)
 {
@@ -40,8 +42,8 @@ void render::submit_transfer(const vk_buffer_transfer& transfer, const vk_buffer
 {
     ZoneScoped;
 
-    assert2(region.dstOffset + region.size < dst.size);
-    assert2(region.srcOffset + region.size < transfer.staging_buffer.size);
+    assert2(region.dstOffset + region.size <= dst.size);
+    assert2(region.srcOffset + region.size <= transfer.staging_buffer.size);
 
     VkCommandBufferBeginInfo begin_info {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -62,12 +64,26 @@ void render::submit_transfer(const vk_buffer_transfer& transfer, const vk_buffer
     vkQueueWaitIdle(transfer.queue.queue);
 }
 
+void render::fill_buffer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* value_ptr, u64 value_size,
+                         const VkBufferCopy& region)
+{
+    assert2((region.size % value_size) == 0);
+    const u64 count = region.size / value_size;
+
+    for (u32 i = 0; i < count; i++)
+    {
+        std::memcpy(static_cast<u8*>(transfer.mapped) + region.srcOffset + value_size * i, value_ptr, value_size);
+    }
+    submit_transfer(transfer, dst, region);
+}
+
 void render::upload_data(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* data,
                          const VkBufferCopy& region)
 {
     ZoneScoped;
 
     assert2(data != nullptr);
+    assert2(region.size <= transfer.staging_buffer.size - region.srcOffset);
     std::copy_n(data, region.size, (static_cast<u8*>(transfer.mapped)) + region.srcOffset);
     submit_transfer(transfer, dst, region);
 }
