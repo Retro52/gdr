@@ -22,12 +22,12 @@ layout (binding = 2) buffer MeshesDrawCommandsCount
     uint draw_commands_count;
 };
 
-layout (binding = 3) buffer MeshVisibilityBuffer
+layout (binding = 3) readonly buffer MeshVisibilityBuffer
 {
     uint mesh_visibility_buffer[];
 };
 
-layout (binding = 4) buffer FrameCullDataBuffer
+layout (binding = 4) readonly buffer FrameCullDataBuffer
 {
     FrameCullData frame_cull;
 };
@@ -51,7 +51,7 @@ void main()
 
     uint idx = mi * gl_WorkGroupSize.x + ti;
 
-    if (idx >= frame_cull.draw_count || mesh_visibility_buffer[idx] == 0)
+    if (idx >= frame_cull.draw_count || get_bit(mesh_visibility_buffer[idx >> 5], idx & 31u) == 0)
     {
         return;
     }

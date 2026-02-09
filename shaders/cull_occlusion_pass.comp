@@ -28,7 +28,7 @@ layout (binding = 3) buffer MeshVisibilityBuffer
     uint mesh_visibility_buffer[];
 };
 
-layout (binding = 4) buffer FrameCullDataBuffer
+layout (binding = 4) readonly buffer FrameCullDataBuffer
 {
     FrameCullData frame_cull;
 };
@@ -82,7 +82,7 @@ void main()
         visible = visible && spr_depth >= pmd_depth;
     }
 
-    if (visible && mesh_visibility_buffer[idx] == 0)
+    if (visible && get_bit(mesh_visibility_buffer[idx >> 5], idx & 31u) == 0)
     {
         const float kLODFactor = 10.0F;
         uint lod_base = min(meshes_data[idx].lod_count - 1, max(0, uint(floor(log2((length(-center) + kLODFactor) / kLODFactor)))));
@@ -109,5 +109,8 @@ void main()
         #endif
     }
 
-    mesh_visibility_buffer[idx] = int(visible);
+    if (visible)
+        atomicOr(mesh_visibility_buffer[idx >> 5], 1u << (idx & 31u));
+    else
+        atomicAnd(mesh_visibility_buffer[idx >> 5], ~(1u << (idx & 31u)));
 }
