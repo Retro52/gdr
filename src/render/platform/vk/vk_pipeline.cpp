@@ -7,6 +7,7 @@
 #include <tracy/Tracy.hpp>
 
 #include <iostream>
+#include <stack>
 
 using namespace render;
 
@@ -174,6 +175,11 @@ namespace
         // vkDestroyDescriptorSetLayout(device, desc_set_layout, nullptr);
         return vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, layout);
     }
+
+    u32 align_wg(u32 global, u32 local)
+    {
+        return (global + local - 1) / local;
+    }
 }
 
 result<vk_shader> vk_shader::load(const vk_renderer& renderer, const fs::path& path)
@@ -225,6 +231,9 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     std::unordered_map<u32, spv_struct> structs;
     std::unordered_map<u32, spv_push_desc> push_descriptors;
 
+    u32 work_group_size[3] {};
+    const spv_id* work_group_size_ids[3] {};
+
     auto save_if_push_constant = [&](u32 storage_class, spv_id* self)
     {
         if (static_cast<SpvStorageClass>(storage_class) == SpvStorageClassPushConstant)
@@ -234,12 +243,34 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
         }
     };
 
-    auto get_spv_struct_size_bytes = [](const spv_struct* target)
+    auto get_spv_id_size_bytes = [&](const spv_id* declaration)
     {
         u32 size = 0;
-        for (const auto& member : target->children)
+        std::stack<const spv_id*> to_process;
+        to_process.push(declaration);
+
+        while (!to_process.empty())
         {
-            size += member ? member->size : 0;
+            const spv_id* variable = to_process.top();
+            to_process.pop();
+
+            if (!variable)
+            {
+                continue;
+            }
+
+            if (variable->op_code != SpvOpTypeStruct)
+            {
+                size += variable->size;
+                continue;
+            }
+
+            // If it was a struct => push all of it's members on stack to process
+            auto& var_struct = structs[variable->name];
+            for (const spv_id* member : var_struct.children)
+            {
+                to_process.push(member);
+            }
         }
 
         assert2(size % 8 == 0);
@@ -254,6 +285,23 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
         }
 
         return id;
+    };
+
+    auto try_parse_local_size = [&](const u32* inst, const std::vector<spv_id>& spv_ids, const bool force_ids)
+    {
+        switch (force_ids ? SpvExecutionModeLocalSizeId : static_cast<SpvExecutionMode>(inst[2]))
+        {
+        case SpvExecutionModeLocalSize :
+            cpp::cx_copy_n(work_group_size, &inst[3], 3);
+            break;
+        case SpvExecutionModeLocalSizeId :
+            work_group_size_ids[0] = &spv_ids[inst[3]];
+            work_group_size_ids[1] = &spv_ids[inst[4]];
+            work_group_size_ids[2] = &spv_ids[inst[5]];
+            break;
+        default :
+            break;
+        }
     };
 
     shader_meta result {};
@@ -307,6 +355,14 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
             break;
         case SpvOpEntryPoint :
             result.stage = get_shader_stage(inst[1]);
+            break;
+        case SpvOpExecutionModeId :
+            assert2(op_word_count > 2);
+            try_parse_local_size(inst, spv_ids, true);
+            break;
+        case SpvOpExecutionMode :
+            assert2(op_word_count > 2);
+            try_parse_local_size(inst, spv_ids, false);
             break;
         case SpvOpTypeBool :
             spv_ids[inst[1]].name    = inst[1];
@@ -385,9 +441,17 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     if (push_constant_variable)
     {
         const spv_id* declaration        = get_spv_id_root(push_constant_variable);
-        result.push_constant_struct_size = declaration->op_code == SpvOpTypeStruct
-                                             ? get_spv_struct_size_bytes(&structs[declaration->name])
-                                             : declaration->size;
+        result.push_constant_struct_size = get_spv_id_size_bytes(declaration);
+    }
+
+    if (work_group_size[0] > 0 || work_group_size_ids[0] != nullptr)
+    {
+        result.work_group_size[0] =
+            work_group_size_ids[0] == nullptr ? work_group_size[0] : work_group_size_ids[0]->constant;
+        result.work_group_size[1] =
+            work_group_size_ids[1] == nullptr ? work_group_size[1] : work_group_size_ids[1]->constant;
+        result.work_group_size[2] =
+            work_group_size_ids[2] == nullptr ? work_group_size[2] : work_group_size_ids[2]->constant;
     }
 
     if (result.push_constant_struct_size > 128)
@@ -426,12 +490,15 @@ result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, con
     VK_RETURN_ON_FAIL(
         vkCreateComputePipelines(renderer.get_context().device, VK_NULL_HANDLE, 1, &create_info, nullptr, &pipeline));
 
-    return vk_pipeline {pipeline,
-                        pipeline_layout,
-                        update_template,
-                        VK_PIPELINE_BIND_POINT_COMPUTE,
-                        VK_SHADER_STAGE_COMPUTE_BIT,
-                        DEBUG_ONLY(pc_range.size)};
+    return vk_pipeline {
+        pipeline,
+        pipeline_layout,
+        update_template,
+        VK_PIPELINE_BIND_POINT_COMPUTE,
+        VK_SHADER_STAGE_COMPUTE_BIT,
+        pc_range.size,
+        {shader.meta.work_group_size[0], shader.meta.work_group_size[1], shader.meta.work_group_size[2]}
+    };
 }
 
 result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
@@ -577,12 +644,29 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
                                              shaders_count,
                                              &update_template));
 
-    return vk_pipeline {vk_handle,
-                        pipeline_layout,
-                        update_template,
-                        VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        push_constant_range.stageFlags,
-                        DEBUG_ONLY(push_constant_range.size)};
+    u32 work_group_size[3] {};
+    for (u32 i = 0; i < shaders_count; ++i)
+    {
+        auto& meta = shaders[i].meta;
+        if (meta.stage == VK_SHADER_STAGE_MESH_BIT_EXT && !work_group_size[0])
+        {
+            cpp::cx_copy_n(work_group_size, meta.work_group_size, 3);
+        }
+        else if (meta.stage == VK_SHADER_STAGE_TASK_BIT_EXT)
+        {
+            cpp::cx_copy_n(work_group_size, meta.work_group_size, 3);
+        }
+    }
+
+    return vk_pipeline {
+        vk_handle,
+        pipeline_layout,
+        update_template,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        push_constant_range.stageFlags,
+        push_constant_range.size,
+        {work_group_size[0], work_group_size[1], work_group_size[2]}
+    };
 }
 
 void vk_pipeline::bind(VkCommandBuffer command_buffer) const
@@ -599,4 +683,12 @@ void vk_pipeline::push_constant(VkCommandBuffer command_buffer, u32 size, const 
 void vk_pipeline::push_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_info* updates) const
 {
     vkCmdPushDescriptorSetWithTemplateKHR(command_buffer, m_descriptor_update_template, m_pipeline_layout, 0, updates);
+}
+
+void vk_pipeline::dispatch(VkCommandBuffer command_buffer, u32 global_x, u32 global_y, u32 global_z) const
+{
+    vkCmdDispatch(command_buffer,
+                  align_wg(global_x, work_group_size[0]),
+                  align_wg(global_y, work_group_size[1]),
+                  align_wg(global_z, work_group_size[2]));
 }

@@ -3,10 +3,12 @@ add_subdirectory(vma)
 add_subdirectory(sdl3)
 add_subdirectory(entt)
 add_subdirectory(json)
-add_subdirectory(assimp)
 add_subdirectory(tinyxml2)
 add_subdirectory(spirv-headers)
 add_subdirectory(meshoptimizer)
+
+set(ASSIMP_BUILD_TESTS OFF)
+add_subdirectory(assimp)
 
 set(TRACY_ENABLE ON)
 set(TRACY_ON_DEMAND ON)

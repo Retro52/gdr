@@ -16,12 +16,12 @@ void main()
 
     if (is_depth == 1)
     {
-        float d = sampled.r;
-        const float kContrast = 20.0F;
-        out_color = vec4(d * kContrast * kContrast, d * kContrast, d, 1.0);
+        const float kContrast = 1000.0F;
+        out_color = sampled * kContrast;
     }
     else
     {
-        out_color = sampled;
+        const float kContrast = 1000.0F;
+        out_color = sampled * kContrast;
     }
 }

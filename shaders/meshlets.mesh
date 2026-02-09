@@ -35,11 +35,9 @@ layout (binding = 4) readonly buffer MeshesTransforms
     MeshTransform meshes_transforms[];
 };
 
-// FIXME: most of this data is temporary
 layout (push_constant) uniform constants
 {
     mat4 vp;
-    mat4 view;
 } pc;
 
 out VS_OUT {

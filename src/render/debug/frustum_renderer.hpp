@@ -11,7 +11,6 @@ namespace render::debug
         struct frustum_pc_data
         {
             glm::mat4 renderer_vp;
-            glm::mat4 target_inv_vp;
         };
 
     public:
@@ -26,16 +25,17 @@ namespace render::debug
                 renderer, shaders, COUNT_OF(shaders), VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
         }
 
-        void draw(VkCommandBuffer cmd, const glm::mat4& camera_vp, const glm::mat4& target_view,
-                  const glm::mat4& target_proj) const
+        void draw(VkCommandBuffer cmd, const glm::mat4& camera_vp, const render::vk_mapped_buffer& cull_data) const
         {
             const frustum_pc_data pc {
-                .renderer_vp   = camera_vp,
-                .target_inv_vp = glm::inverse(target_proj * target_view),
+                .renderer_vp = camera_vp,
             };
 
             m_pipeline.bind(cmd);
             m_pipeline.push_constant(cmd, pc);
+
+            const render::vk_descriptor_info bindings[] = {cull_data.buffer};
+            m_pipeline.push_descriptor_set(cmd, bindings);
             vkCmdDraw(cmd, 24, 1, 0, 0);
         }
 

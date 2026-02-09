@@ -28,35 +28,29 @@ layout (binding = 5) readonly buffer DrawMeshIndirects
     DrawMeshIndirect draw_mesh_cmds[];
 };
 
-// FIXME: most of this data is temporary
+layout (binding = 6) buffer FrameCullDataBuffer
+{
+    FrameCullData frame_cull;
+};
+
 layout (push_constant) uniform constants
 {
     mat4 vp;
-    mat4 view;
-    uint use_culling; // TODO: use bit flags for debug only?
 } pc;
 
 shared uint meshlets_count;
 taskPayloadSharedEXT MeshletTask meshlet_task;
-
-bool should_cull(vec3 cone_axis, vec3 center, float radius, float cutoff)
-{
-    uint mesh_id = draw_mesh_cmds[gl_DrawID].mesh_id;
-    vec3 view_axis = (pc.view * vec4(quat_rotate_vec3(cone_axis, meshes_transforms[mesh_id].rotation_quat), 0.0F)).xyz;
-    vec3 view_center = (pc.view * vec4(transform_vec3(center, meshes_transforms[mesh_id].pos_and_scale, meshes_transforms[mesh_id].rotation_quat), 1.0F)).xyz;
-
-    return dot(view_center, view_axis) >= cutoff * length(view_center) + (radius * meshes_transforms[mesh_id].pos_and_scale.w);
-}
 
 void main()
 {
     uint meshlet_warp = gl_WorkGroupID.x;
     uint meshlet_id = draw_mesh_cmds[gl_DrawID].base_meshlet + meshlet_warp * kTaskWorkGroups + gl_LocalInvocationID.x;
 
-    meshlet_task.mesh_id = draw_mesh_cmds[gl_DrawID].mesh_id;
+    uint mesh_id = draw_mesh_cmds[gl_DrawID].mesh_id;
+
+    meshlet_task.mesh_id = mesh_id;
     meshlet_task.base_vertex = meshes_data[gl_DrawID].base_vertex;
 
-    #if USE_CONE_CULLING
     meshlets_count = 0;
     barrier();
 
@@ -72,10 +66,23 @@ void main()
     meshlets[meshlet_id].sphere_center[1],
     meshlets[meshlet_id].sphere_center[2]
     );
-    float sphere_radius = meshlets[meshlet_id].sphere_radius;
 
-    bool culled = ((pc.use_culling == 1) && should_cull(cull_cone_axis, sphere_center, sphere_radius, cull_cutoff));
-    if (!culled)
+    float sphere_radius = meshlets[meshlet_id].sphere_radius * meshes_transforms[mesh_id].pos_and_scale.w;
+
+    vec3 view_axis = (frame_cull.view * vec4(quat_rotate_vec3(cull_cone_axis, meshes_transforms[mesh_id].rotation_quat), 0.0F)).xyz;
+    vec3 view_center = (frame_cull.view * vec4(transform_vec3(sphere_center, meshes_transforms[mesh_id].pos_and_scale, meshes_transforms[mesh_id].rotation_quat), 1.0F)).xyz;
+
+    bool visible = true;
+    visible = get_bit(frame_cull.flags, kMeshletConeCullBit) == 0 || dot(view_center, view_axis) < cull_cutoff * length(view_center) + sphere_radius;
+
+    if (get_bit(frame_cull.flags, kMeshletFrustumCullBit) == 1)
+    {
+        visible = visible && view_center.z * frame_cull.frustum[1] - abs(view_center.x) * frame_cull.frustum[0] > -sphere_radius;
+        visible = visible && view_center.z * frame_cull.frustum[3] - abs(view_center.y) * frame_cull.frustum[2] > -sphere_radius;
+        visible = visible && view_center.z - sphere_radius < -frame_cull.frustum[4] && view_center.z + sphere_radius > -frame_cull.frustum[5];
+    }
+
+    if (visible)
     {
         uint idx = atomicAdd(meshlets_count, 1);
         meshlet_task.meshlet_ids[idx] = meshlet_id;
@@ -83,8 +90,4 @@ void main()
 
     barrier();
     EmitMeshTasksEXT(meshlets_count, 1, 1);
-    #else
-    meshlet_task.meshlet_ids[gl_LocalInvocationID.x] = meshlet_id;
-    EmitMeshTasksEXT(kTaskWorkGroups, 1, 1);
-    #endif
 }

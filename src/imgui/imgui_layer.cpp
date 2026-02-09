@@ -59,25 +59,16 @@ imgui_layer::imgui_layer(const window& window, const render::vk_renderer& render
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    m_atlas_data.atlas_image = *render::create_image(image_info, renderer.get_context().allocator);
-    m_atlas_data.atlas_view  = *render::create_image_view(renderer.get_context().device,
-                                                         m_atlas_data.atlas_image.image,
-                                                         VK_FORMAT_B8G8R8A8_SRGB,
-                                                         VK_IMAGE_ASPECT_COLOR_BIT);
+    m_atlas_data.atlas_image = *render::create_image(
+        renderer.get_context().device, image_info, VK_IMAGE_ASPECT_COLOR_BIT, renderer.get_context().allocator);
 
-    VkSamplerCreateInfo sampler_info {
-        .sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter    = VK_FILTER_LINEAR,
-        .minFilter    = VK_FILTER_LINEAR,
-        .mipmapMode   = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-        .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-    };
+    m_atlas_data.sampler = *render::create_sampler(renderer.get_context().device,
+                                                   VK_FILTER_NEAREST,
+                                                   VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                                                   VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
-    vkCreateSampler(context.device, &sampler_info, nullptr, &m_atlas_data.sampler);
     m_atlas_data.imgui_descriptor = ImGui_ImplVulkan_AddTexture(
-        m_atlas_data.sampler, m_atlas_data.atlas_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        m_atlas_data.sampler, m_atlas_data.atlas_image.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     render::vk_shader shaders[] = {
         *render::vk_shader::load(renderer, "../shaders/bin/imgui_blit.vert.spv"),
@@ -93,27 +84,61 @@ imgui_layer::~imgui_layer()
 
     ImGui_ImplVulkan_RemoveTexture(m_atlas_data.imgui_descriptor);
     vkDestroySampler(context.device, m_atlas_data.sampler, nullptr);
-    vkDestroyImageView(context.device, m_atlas_data.atlas_view, nullptr);
-    render::destroy_image(context.allocator, m_atlas_data.atlas_image);
+    render::destroy_image(context.device, context.allocator, m_atlas_data.atlas_image);
 
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
 }
 
-void imgui_layer::begin_frame()
+void imgui_layer::begin_frame(const render::vk_renderer& renderer)
 {
     m_atlas_data.reset_cursor();
 
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
+
+    VkRenderingAttachmentInfo color_attachment_info {
+        .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView   = renderer.get_frame_swapchain_image().image_view,
+        .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+        .loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue  = {
+                        .color = {0.0F, 0.0F, 0.0F, 1.0F},
+                        }
+    };
+
+    const VkRenderingInfo rendering_info {.sType                = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
+                                          .renderArea           = renderer.get_scissor(),
+                                          .layerCount           = 1,
+                                          .colorAttachmentCount = 1,
+                                          .pColorAttachments    = &color_attachment_info};
+
+    renderer.submit(
+        [&](VkCommandBuffer cmd)
+        {
+            vkCmdBeginRendering(cmd, &rendering_info);
+        });
 }
 
-void imgui_layer::end_frame(const VkCommandBuffer cmd)
+void imgui_layer::end_frame(const render::vk_renderer& renderer)
 {
+    if (ImGui::CollapsingHeader("pick into the atlas data"))
+    {
+        ImGui::Image(m_atlas_data.imgui_descriptor,
+                     {ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().x});
+    }
+
     ImGui::Render();
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+    renderer.submit(
+        [&, this](VkCommandBuffer cmd)
+        {
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+            vkCmdEndRendering(cmd);
+            this->flush_pending(cmd);
+        });
 
     if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
     {
@@ -145,18 +170,18 @@ bool imgui_layer::allocate_region(u32 w, u32 h, VkOffset2D& out_offset)
     return true;
 }
 
-void imgui_layer::image(VkImage image, VkImageView view, VkImageLayout src_layout, ImVec2 size)
+void imgui_layer::image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size)
 {
-    image_impl(image, view, size, src_layout, VK_IMAGE_ASPECT_COLOR_BIT);
+    image_impl(image, view, size, {uv.x, uv.y}, {uv.z, uv.w}, src_layout, VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
-void imgui_layer::depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, ImVec2 size)
+void imgui_layer::depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size)
 {
-    image_impl(image, view, size, src_layout, VK_IMAGE_ASPECT_DEPTH_BIT);
+    image_impl(image, view, size, {uv.x, uv.y}, {uv.z, uv.w}, src_layout, VK_IMAGE_ASPECT_DEPTH_BIT);
 }
 
-void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, VkImageLayout src_layout,
-                             VkImageAspectFlags aspect)
+void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec2 uv0, ImVec2 uv1,
+                             VkImageLayout src_layout, VkImageAspectFlags aspect)
 {
     VkOffset2D offset;
     if (!allocate_region(static_cast<u32>(size.x), static_cast<u32>(size.y), offset))
@@ -174,8 +199,13 @@ void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, VkIma
         .aspect     = aspect,
     });
 
-    const ImVec2 uv0 {static_cast<f32>(offset.x) / kAtlasWidth, static_cast<f32>(offset.y) / kAtlasHeight};
-    const ImVec2 uv1 {(offset.x + size.x) / kAtlasWidth, (offset.y + size.y) / kAtlasHeight};
+    ImVec2 atlas_uv0 {static_cast<f32>(offset.x) / kAtlasWidth, static_cast<f32>(offset.y) / kAtlasHeight};
+    ImVec2 atlas_uv1 {(offset.x + size.x) / kAtlasWidth, (offset.y + size.y) / kAtlasHeight};
+
+    uv0.x = std::lerp(atlas_uv0.x, atlas_uv1.x, uv0.x);
+    uv0.y = std::lerp(atlas_uv0.y, atlas_uv1.y, uv0.y);
+    uv1.x = std::lerp(atlas_uv0.x, atlas_uv1.x, uv1.x);
+    uv1.y = std::lerp(atlas_uv0.y, atlas_uv1.y, uv1.y);
 
     ImGui::Image(m_atlas_data.imgui_descriptor, size, uv0, uv1);
 }
@@ -201,7 +231,7 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
                 .oldLayout        = req.src_layout,
                 .newLayout        = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                 .image            = req.img,
-                .subresourceRange = {req.aspect, 0, 1, 0, 1},
+                .subresourceRange = {req.aspect, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
         };
     }
 
@@ -217,7 +247,7 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
 
     VkRenderingAttachmentInfo color_attachment {
         .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView   = m_atlas_data.atlas_view,
+        .imageView   = m_atlas_data.atlas_image.view,
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .loadOp      = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
         .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
@@ -278,7 +308,7 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
                 .oldLayout        = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                 .newLayout        = req.src_layout,
                 .image            = req.img,
-                .subresourceRange = {req.aspect, 0, 1, 0, 1},
+                .subresourceRange = {req.aspect, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
         };
     }
 

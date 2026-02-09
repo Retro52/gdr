@@ -1,8 +1,15 @@
 #version 450
 
+#extension GL_GOOGLE_include_directive: require
+#include "types.glsl"
+
 layout (push_constant) uniform pc {
     mat4 renderer_vp;
-    mat4 target_inv_vp;
+};
+
+layout (binding = 0) readonly buffer FrameCullDataBuffer
+{
+    FrameCullData frame_cull;
 };
 
 // NDC corners - reverse-Z: near=1, far=0
@@ -37,9 +44,18 @@ const int indices[24] = int[](
 
 void main()
 {
-    vec4 ndc = corners[indices[gl_VertexIndex]];
+    float far = frame_cull.frustum[5];
+    float near = frame_cull.frustum[4];
 
-    vec4 world = target_inv_vp * ndc;
+    mat4 proj = mat4(
+        frame_cull.p00, 0.0, 0.0, 0.0,
+        0.0, frame_cull.p11, 0.0, 0.0,
+        0.0, 0.0, near / (far - near), -1.0,
+        0.0, 0.0, (near * far) / (far - near), 0.0
+    );
+
+    vec4 ndc = corners[indices[gl_VertexIndex]];
+    vec4 world = inverse(proj * frame_cull.view) * ndc;
     world /= world.w;
 
     gl_Position = renderer_vp * world;

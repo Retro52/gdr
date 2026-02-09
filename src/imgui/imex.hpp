@@ -1,5 +1,7 @@
 #pragma once
 
+#include <types.hpp>
+
 #include <imgui.h>
 
 namespace ImGuiEx
@@ -29,4 +31,25 @@ namespace ImGuiEx
             ImGui::PopStyleColor();
         }
     };
+
+    template<typename T>
+    bool Bits(T& mask, const char* const names[], u32 count)
+        requires(std::is_integral_v<T>)
+    {
+        bool modified = false;
+
+        for (size_t i = 0; i < count; ++i)
+        {
+            const u32 bit_flag = 1u << i;
+            bool bit_value     = (mask & bit_flag) != 0;
+
+            if (ImGui::Checkbox(names[i], &bit_value))
+            {
+                mask     = bit_value ? mask | bit_flag : mask & ~bit_flag;
+                modified = true;
+            }
+        }
+
+        return modified;
+    }
 }

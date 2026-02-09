@@ -1,0 +1,97 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive: require
+
+#include "types.glsl"
+#include "common.glsl"
+
+layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+layout (binding = 0) readonly buffer MeshesData
+{
+    MeshData meshes_data[];
+};
+
+layout (binding = 1) readonly buffer MeshesTransforms
+{
+    MeshTransform meshes_transforms[];
+};
+
+layout (binding = 2) buffer MeshesDrawCommandsCount
+{
+    uint draw_commands_count;
+};
+
+layout (binding = 3) buffer MeshVisibilityBuffer
+{
+    uint mesh_visibility_buffer[];
+};
+
+layout (binding = 4) buffer FrameCullDataBuffer
+{
+    FrameCullData frame_cull;
+};
+
+#ifdef FOR_MESH_PIPELINE
+layout (binding = 5) writeonly buffer DrawMeshIndirects
+{
+    DrawMeshIndirect draw_indirect_cmds[];
+};
+#else
+layout (binding = 5) writeonly buffer DrawIndexedIndirects
+{
+    DrawIndexedIndirect draw_indirect_cmds[];
+};
+#endif
+
+void main()
+{
+    uint mi = gl_WorkGroupID.x;
+    uint ti = gl_LocalInvocationID.x;
+
+    uint idx = mi * gl_WorkGroupSize.x + ti;
+
+    if (idx >= frame_cull.draw_count || mesh_visibility_buffer[idx] == 0)
+    {
+        return;
+    }
+
+    // draw only last frame occluders
+    vec3 center = transform_vec3(vec3(meshes_data[idx].center[0], meshes_data[idx].center[1], meshes_data[idx].center[2]), meshes_transforms[idx].pos_and_scale, meshes_transforms[idx].rotation_quat);
+    center = vec3(frame_cull.view * vec4(center, 1.0F));
+
+    float radius = meshes_data[idx].radius * meshes_transforms[idx].pos_and_scale.w;
+
+    bool visible = true;
+    visible = visible && center.z * frame_cull.frustum[1] - abs(center.x) * frame_cull.frustum[0] > -radius;
+    visible = visible && center.z * frame_cull.frustum[3] - abs(center.y) * frame_cull.frustum[2] > -radius;
+    visible = visible && center.z - radius < -frame_cull.frustum[4] && center.z + radius > -frame_cull.frustum[5];
+    visible = visible || get_bit(frame_cull.flags, kFrustumCullBit) == 0;
+
+    if (visible)
+    {
+        const float kLODFactor = 10.0F;
+        uint lod_base = min(meshes_data[idx].lod_count - 1, max(0, uint(floor(log2((length(-center) + kLODFactor) / kLODFactor)))));
+        lod_base = get_bit(frame_cull.flags, kLodFlagBit) == 0 ? 0 : lod_base;
+        LODData selected_lod = meshes_data[idx].lod_array[lod_base];
+
+        uint dci = atomicAdd(draw_commands_count, 1);
+
+        #ifdef FOR_MESH_PIPELINE
+        draw_indirect_cmds[dci].group_size[0] = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
+        draw_indirect_cmds[dci].group_size[1] = 1;
+        draw_indirect_cmds[dci].group_size[2] = 1;
+
+        draw_indirect_cmds[dci].mesh_id = idx;
+        draw_indirect_cmds[dci].base_meshlet = selected_lod.base_meshlet;
+        #else
+        draw_indirect_cmds[dci].instance_count = 1;
+        draw_indirect_cmds[dci].first_instance = 0;
+        draw_indirect_cmds[dci].vertex_offset = int(meshes_data[idx].base_vertex);
+
+        draw_indirect_cmds[dci].mesh_id = idx;
+        draw_indirect_cmds[dci].first_index = selected_lod.base_index;
+        draw_indirect_cmds[dci].index_count = selected_lod.indices_count;
+        #endif
+    }
+}

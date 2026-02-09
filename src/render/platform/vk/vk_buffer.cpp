@@ -36,6 +36,35 @@ result<render::vk_buffer> render::create_buffer(const VkBufferCreateInfo& buffer
     return result;
 }
 
+result<render::vk_mapped_buffer> render::create_buffer_mapped(u64 size, VkBufferUsageFlags usage,
+                                                              VmaAllocator allocator,
+                                                              VmaAllocationCreateFlags allocation_flags)
+{
+    const VkBufferCreateInfo buffer_info {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size  = size,
+        .usage = usage,
+    };
+
+    return render::create_buffer_mapped(buffer_info, allocator, allocation_flags);
+}
+
+result<render::vk_mapped_buffer> render::create_buffer_mapped(const VkBufferCreateInfo& buffer_create_info,
+                                                              VmaAllocator allocator,
+                                                              VmaAllocationCreateFlags allocation_flags)
+{
+    const auto& buffer = render::create_buffer(buffer_create_info, allocator, allocation_flags);
+    if (!buffer)
+    {
+        return buffer.message;
+    }
+
+    vk_mapped_buffer result {.size = buffer->size, .buffer = buffer->buffer, .allocation = buffer->allocation};
+    vmaMapMemory(allocator, buffer->allocation, &result.mapped);
+
+    return result;
+}
+
 result<VkBufferView> render::create_buffer_view(VkDevice device, VkBuffer buffer, VkFormat format, u64 offset,
                                                 u64 range)
 {
