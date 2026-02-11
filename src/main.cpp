@@ -30,7 +30,6 @@
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
 
-#include <iostream>
 #include <vector>
 
 #define NO_EDITOR          0
@@ -113,6 +112,15 @@ struct depth_pyramid_data
     VkSampler sampler;
     ivec2 base_size;
     u32 pyramid_count {0};
+};
+
+struct pipeline_statistics_data
+{
+    u64 input_assembly_vertices {0};
+    u64 input_assembly_primitives {0};
+    u64 vertex_shader_invocations {0};
+    u64 triangles_count {0};
+    u64 fragment_shader_invocations {0};
 };
 
 void begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView depth, VkAttachmentLoadOp load_op,
@@ -594,7 +602,13 @@ int main(int argc, char* argv[])
     if (pipeline_stats_supported)
     {
         pipeline_statistics_query = *render::create_vk_pipeline_stat_query_pool(
-            renderer.get_context().device, kQueryPoolCount, VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT);
+            renderer.get_context().device,
+            kQueryPoolCount,
+            VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT
+                | VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT
+                | VK_QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT
+                | VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT
+                | VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT);
     }
 
     render::vk_buffer draw_count_buffer = *render::create_buffer(
@@ -635,11 +649,15 @@ int main(int argc, char* argv[])
         renderer.get_context().allocator,
         0);
 
-    render::vk_mapped_buffer frame_cull_data_buffer =
-        *render::create_buffer_mapped(sizeof(frame_cull_data),
-                                      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                      renderer.get_context().allocator,
-                                      VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+    render::vk_mapped_buffer frame_cull_data_buffers[3];
+    for (u32 i = 0; i < 3; i++)
+    {
+        frame_cull_data_buffers[i] =
+            *render::create_buffer_mapped(sizeof(frame_cull_data),
+                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                          renderer.get_context().allocator,
+                                          VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+    }
 
     gpu_profile_data profile_data;
     render_settings client_render_settings;
@@ -670,6 +688,10 @@ int main(int argc, char* argv[])
     camera_controller controller(client_events, camera);
 
     render::debug::frustum_renderer frustum_renderer(renderer);
+
+#if !NO_PERF_QUERY
+    pipeline_statistics_data frame_stats_data;
+#endif
 
     auto render_loop = [&]()
     {
@@ -708,6 +730,7 @@ int main(int argc, char* argv[])
 
                 vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool, 0);
 
+                auto& frame_cull_data_buffer = frame_cull_data_buffers[renderer.get_frame_index()];
                 if (!freeze_cull_data)
                 {
                     auto projection = client_render_settings.render_distance > 0
@@ -843,7 +866,7 @@ int main(int argc, char* argv[])
                 }
 
                 {
-                    TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "cull last frame occluders"));
+                    TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "cull new objects"));
 
                     reset_draw_count_buffer(buffer, draw_count_buffer);
                     const render::vk_descriptor_info cull_pass_bindings[] = {
@@ -873,7 +896,7 @@ int main(int argc, char* argv[])
                 }
 
                 {
-                    ZoneScopedN("draw last frame occluders");
+                    ZoneScopedN("draw new objects");
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "draw new objects"));
 
                     begin_rendering(buffer,
@@ -935,6 +958,17 @@ int main(int argc, char* argv[])
                     draw_shared_buffer_stats("Indices", geometry_pool.index);
                     draw_shared_buffer_stats("Meshlets", geometry_pool.meshlets);
                     draw_shared_buffer_stats("Meshlets payload", geometry_pool.meshlets_payload);
+
+                    ImGui::SeparatorText("Last frame pipeline stats");
+                    ImGui::Text("input_assembly_vertices: %s",
+                                format_big_number(frame_stats_data.input_assembly_vertices).c_str());
+                    ImGui::Text("input_assembly_primitives: %s",
+                                format_big_number(frame_stats_data.input_assembly_primitives).c_str());
+                    ImGui::Text("vertex_shader_invocations: %s",
+                                format_big_number(frame_stats_data.vertex_shader_invocations).c_str());
+                    ImGui::Text("triangles_count: %s", format_big_number(frame_stats_data.triangles_count).c_str());
+                    ImGui::Text("fragment_shader_invocations: %s",
+                                format_big_number(frame_stats_data.fragment_shader_invocations).c_str());
 
                     ImGui::SeparatorText("render controls");
 
@@ -1021,16 +1055,15 @@ int main(int argc, char* argv[])
                                                         sizeof(query_results[0]),
                                                         VK_QUERY_RESULT_64_BIT));
 
-                u64 scene_triangles = 0;
                 if (pipeline_statistics_query)
                 {
                     VK_ASSERT_ON_FAIL(vkGetQueryPoolResults(renderer.get_context().device,
                                                             pipeline_statistics_query,
                                                             0,
                                                             1,
-                                                            sizeof(scene_triangles),
-                                                            &scene_triangles,
-                                                            sizeof(scene_triangles),
+                                                            sizeof(frame_stats_data),
+                                                            &frame_stats_data,
+                                                            sizeof(u64),
                                                             VK_QUERY_RESULT_64_BIT));
                 }
 
@@ -1039,7 +1072,7 @@ int main(int argc, char* argv[])
 
                 profile_data.update(static_cast<f64>(query_results[0]) * props.limits.timestampPeriod * 1e-6,
                                     static_cast<f64>(query_results[1]) * props.limits.timestampPeriod * 1e-6,
-                                    scene_triangles,
+                                    frame_stats_data.triangles_count,
                                     scene_triangles_max);
 
                 const auto str = cpp::stack_string::make_formatted("CPU: %.3lfms; GPU: %.3lfms; Tris/s (B): %lf",
