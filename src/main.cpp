@@ -523,12 +523,6 @@ int main(int argc, char* argv[])
         *render::vk_shader::load(renderer, "../shaders/bin/meshlets.frag.spv"),
     };
 
-    render::vk_shader meshlets_shaders[] = {
-        *render::vk_shader::load(renderer, "../shaders/bin/meshlets.task.spv"),
-        *render::vk_shader::load(renderer, "../shaders/bin/meshlets.mesh.spv"),
-        *render::vk_shader::load(renderer, "../shaders/bin/meshlets.frag.spv"),
-    };
-
     const auto indexed_render_pipeline =
         *render::vk_pipeline::create_graphics(renderer, indexed_shaders, COUNT_OF(indexed_shaders));
 
@@ -546,6 +540,12 @@ int main(int argc, char* argv[])
     render::vk_pipeline meshlets_occlusion_cull_pipeline;
     if (mesh_shading_supported)
     {
+        render::vk_shader meshlets_shaders[] = {
+            *render::vk_shader::load(renderer, "../shaders/bin/meshlets.task.spv"),
+            *render::vk_shader::load(renderer, "../shaders/bin/meshlets.mesh.spv"),
+            *render::vk_shader::load(renderer, "../shaders/bin/meshlets.frag.spv"),
+        };
+
         meshlets_render_pipeline =
             *render::vk_pipeline::create_graphics(renderer, meshlets_shaders, COUNT_OF(meshlets_shaders));
 
