@@ -10,11 +10,6 @@ vec3 transform_vec3(vec3 point, vec4 pos_and_scale, vec4 quat)
     return (point + 2.0 * cross(quat.xyz, cross(quat.xyz, point) + quat.w * point)) * pos_and_scale.w + pos_and_scale.xyz;
 }
 
-uint get_bit(uint flags, uint bit)
-{
-    return (flags >> bit) & 1;
-}
-
 // 2D Polyhedral Bounds of a Clipped, Perspective-Projected 3D Sphere. Michael Mara, Morgan McGuire. 2013
 // Adapted version from https://github.com/zeux/niagara
 bool project_sphere(vec3 c, float r, float znear, float P00, float P11, out vec4 aabb)

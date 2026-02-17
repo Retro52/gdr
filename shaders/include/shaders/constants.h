@@ -23,7 +23,9 @@ namespace shader_constants
 
     const uint kTaskWorkGroups = 32;
     const uint kMeshWorkGroups = 32;
-
 #ifdef __cplusplus
 }
 #endif
+
+#define GET_BIT(flags, bit)   ((flags >> bit) & 1)
+#define CHECK_BIT(flags, bit) GET_BIT(flags, bit) == 1

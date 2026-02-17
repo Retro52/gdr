@@ -51,7 +51,7 @@ void main()
 
     uint idx = mi * gl_WorkGroupSize.x + ti;
 
-    if (idx >= frame_cull.draw_count || get_bit(mesh_visibility_buffer[idx >> 5], idx & 31u) == 0)
+    if (idx >= frame_cull.draw_count || GET_BIT(mesh_visibility_buffer[idx >> 5], idx & 31u) == 0)
     {
         return;
     }
@@ -66,13 +66,13 @@ void main()
     visible = visible && center.z * frame_cull.frustum[1] - abs(center.x) * frame_cull.frustum[0] > -radius;
     visible = visible && center.z * frame_cull.frustum[3] - abs(center.y) * frame_cull.frustum[2] > -radius;
     visible = visible && center.z - radius < -frame_cull.frustum[4] && center.z + radius > -frame_cull.frustum[5];
-    visible = visible || get_bit(frame_cull.flags, kFrustumCullBit) == 0;
+    visible = visible || GET_BIT(frame_cull.flags, kFrustumCullBit) == 0;
 
     if (visible)
     {
         const float kLODFactor = 10.0F;
         uint lod_base = min(meshes_data[idx].lod_count - 1, max(0, uint(floor(log2((length(-center) + kLODFactor) / kLODFactor)))));
-        lod_base = get_bit(frame_cull.flags, kLodFlagBit) == 0 ? 0 : lod_base;
+        lod_base = GET_BIT(frame_cull.flags, kLodFlagBit) == 0 ? 0 : lod_base;
         LODData selected_lod = meshes_data[idx].lod_array[lod_base];
 
         uint dci = atomicAdd(draw_commands_count, 1);

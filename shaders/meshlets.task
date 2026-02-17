@@ -73,9 +73,9 @@ void main()
     vec3 view_center = (frame_cull.view * vec4(transform_vec3(sphere_center, meshes_transforms[mesh_id].pos_and_scale, meshes_transforms[mesh_id].rotation_quat), 1.0F)).xyz;
 
     bool visible = true;
-    visible = get_bit(frame_cull.flags, kMeshletConeCullBit) == 0 || dot(view_center, view_axis) < cull_cutoff * length(view_center) + sphere_radius;
+    visible = GET_BIT(frame_cull.flags, kMeshletConeCullBit) == 0 || dot(view_center, view_axis) < cull_cutoff * length(view_center) + sphere_radius;
 
-    if (get_bit(frame_cull.flags, kMeshletFrustumCullBit) == 1)
+    if (GET_BIT(frame_cull.flags, kMeshletFrustumCullBit) == 1)
     {
         visible = visible && view_center.z * frame_cull.frustum[1] - abs(view_center.x) * frame_cull.frustum[0] > -sphere_radius;
         visible = visible && view_center.z * frame_cull.frustum[3] - abs(view_center.y) * frame_cull.frustum[2] > -sphere_radius;
