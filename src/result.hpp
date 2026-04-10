@@ -4,12 +4,12 @@
 
 #include <assert2.hpp>
 
-struct [[nodiscard]] error_t
+struct [[nodiscard]] result_error_t
 {
     const char* message;
 };
 
-inline error_t error(const char* msg)
+inline result_error_t error(const char* msg)
 {
     return {msg};
 }
@@ -48,7 +48,7 @@ struct [[nodiscard]] result
         ::new (&value) T(static_cast<T&&>(v));
     }
 
-    result(error_t e) noexcept
+    result(result_error_t e) noexcept
         : status(status::error)
         , message(e.message)
     {
