@@ -56,7 +56,7 @@ result<render::vk_mapped_buffer> render::create_buffer_mapped(const VkBufferCrea
     const auto& buffer = render::create_buffer(buffer_create_info, allocator, allocation_flags);
     if (!buffer)
     {
-        return buffer.message;
+        return error(buffer.message);
     }
 
     vk_mapped_buffer result {.size = buffer->size, .buffer = buffer->buffer, .allocation = buffer->allocation};

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <types.hpp>
+#include <pod_types.hpp>
 
 void free_aligned(void* ptr);
 void* alloc_aligned(u64 size, u8 alignment);

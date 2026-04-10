@@ -9,7 +9,7 @@ result<render::vk_buffer_transfer> render::create_buffer_transfer(VkDevice devic
     const auto cmd_buffer = render::create_command_buffer(device, queue.family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
     if (!cmd_buffer)
     {
-        return cmd_buffer.message;
+        return error(cmd_buffer.message);
     }
 
     const auto staging_buffer = render::create_buffer(staging_memory_size,
@@ -19,7 +19,7 @@ result<render::vk_buffer_transfer> render::create_buffer_transfer(VkDevice devic
 
     if (!staging_buffer)
     {
-        return staging_buffer.message;
+        return error(staging_buffer.message);
     }
 
     void* data = nullptr;

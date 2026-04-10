@@ -1,6 +1,6 @@
 #pragma once
 
-#include <types.hpp>
+#include <pod_types.hpp>
 
 /// @imgui
 struct gpu_profile_data

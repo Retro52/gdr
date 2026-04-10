@@ -1,15 +1,11 @@
 #include <assert2.hpp>
 #include <cpp/alg_constexpr.hpp>
-#include <cpp/containers/stack_string.hpp>
+#include <cpp/containers/hash_set.hpp>
+#include <cpp/containers/heap_array.hpp>
+#include <cpp/hash/crc_hash.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
 #include <tracy/Tracy.hpp>
-
-#include <algorithm>
-#include <iostream>
-#include <ranges>
-#include <unordered_set>
-#include <vector>
 
 using namespace render;
 
@@ -23,7 +19,7 @@ bool inst_ext_available(const char* name)
 {
     u32 n = 0;
     vkEnumerateInstanceExtensionProperties(nullptr, &n, nullptr);
-    std::vector<VkExtensionProperties> props(n);
+    cpp::heap_array<VkExtensionProperties> props(n);
     if (n)
     {
         vkEnumerateInstanceExtensionProperties(nullptr, &n, props.data());
@@ -42,7 +38,7 @@ bool layer_available(const char* name)
 {
     u32 n = 0;
     vkEnumerateInstanceLayerProperties(&n, nullptr);
-    std::vector<VkLayerProperties> props(n);
+    cpp::heap_array<VkLayerProperties> props(n);
 
     if (n)
     {
@@ -60,7 +56,7 @@ bool layer_available(const char* name)
     return false;
 }
 
-void insert_video_driver_extensions(const window& window, std::vector<const char*>& extensions_array)
+void insert_video_driver_extensions(const window& window, cpp::heap_array<const char*>& extensions_array)
 {
     extensions_array.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
     switch (window.get_native_handle().type)
@@ -162,20 +158,15 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT s
                                         VkDebugUtilsMessageTypeFlagsEXT,
                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void*)
 {
-    std::cerr << "[VK VALIDATION] ";
-    std::cerr << (pCallbackData->pMessage ? pCallbackData->pMessage : "(null)");
-    std::cerr << std::endl;
-
     if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
-        std::cerr << std::flush;
         assert2m(false, pCallbackData->pMessage ? pCallbackData->pMessage : "VK validation error");
     }
     return VK_FALSE;
 }
 
 void load_instance_layers_and_extensions(const window& window, const instance_desc& desc,
-                                         std::vector<const char*>& layers, std::vector<const char*>& extensions)
+                                         cpp::heap_array<const char*>& layers, cpp::heap_array<const char*>& extensions)
 {
     if (desc.device_features.requested(rendering_features_table::eValidation)
         && layer_available("VK_LAYER_KHRONOS_validation") && inst_ext_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
@@ -193,7 +184,7 @@ bool choose_queue_families(VkPhysicalDevice phys, VkSurfaceKHR surface, u32& gfx
     u32 count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(phys, &count, nullptr);
 
-    std::vector<VkQueueFamilyProperties> qfp(count);
+    cpp::heap_array<VkQueueFamilyProperties> qfp(count);
     vkGetPhysicalDeviceQueueFamilyProperties(phys, &count, qfp.data());
 
     auto pick_any_pred = [&](auto pred) -> u32
@@ -255,7 +246,7 @@ bool choose_queue_families(VkPhysicalDevice phys, VkSurfaceKHR surface, u32& gfx
         && transfer != VK_QUEUE_FAMILY_IGNORED;
 }
 
-std::vector<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysicalDevice device, VkSurfaceKHR surface)
+cpp::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysicalDevice device, VkSurfaceKHR surface)
 {
     ZoneScoped;
     // 1st - gfx, 2nd - compute, 3rd - transfer.
@@ -281,7 +272,7 @@ std::vector<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysicalDevice devi
     }
 
     float priority = 1.0f;
-    std::vector<VkDeviceQueueCreateInfo> create_infos(unique_count);
+    cpp::heap_array<VkDeviceQueueCreateInfo> create_infos(unique_count);
 
     for (u32 i = 0; i < unique_count; i++)
     {
@@ -330,13 +321,20 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
     u32 device_extensions_count;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &device_extensions_count, nullptr);
 
-    std::vector<VkExtensionProperties> device_extensions(device_extensions_count);
+    cpp::heap_array<VkExtensionProperties> device_extensions(device_extensions_count);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &device_extensions_count, device_extensions.data());
 
-    std::unordered_set<std::string_view> not_found_extensions {required_extensions.begin(), required_extensions.end()};
+    cpp::hash_set not_found_extensions(required_extensions.size());
+    for (auto& ext : required_extensions)
+    {
+        const auto key = cpp::crc::crc32(ext, cpp::cx_strlen(ext));
+        not_found_extensions.set(key, key);
+    }
+
     for (const auto& extension : device_extensions)
     {
-        not_found_extensions.erase(extension.extensionName);
+        const auto key = cpp::crc::crc32(extension.extensionName, cpp::cx_strlen(extension.extensionName));
+        not_found_extensions.erase(key, key);
     }
 
     VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features = {
@@ -376,9 +374,11 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
 ext_array build_extensions_from_feature_table(const rendering_features_table& features_table,
                                               bool required_only = false)
 {
-    ext_array array {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-                     VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
-                     TRACY_ONLY(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME)};
+    ext_array array;
+    array.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    array.emplace_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+    TRACY_ONLY(array.emplace_back(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME));
+
     for (u32 i = 0; i < cpp::cx_get_enum_bit_count(rendering_features_table::flag::eCOUNT); ++i)
     {
         const auto feature = static_cast<rendering_features_table::flag>(1 << i);
@@ -425,7 +425,7 @@ VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
     u32 device_count = 0;
     vkEnumeratePhysicalDevices(instance, &device_count, nullptr);
 
-    std::vector<VkPhysicalDevice> devices(device_count);
+    cpp::heap_array<VkPhysicalDevice> devices(device_count);
     vkEnumeratePhysicalDevices(instance, &device_count, devices.data());
 
     u32 best_rating                                  = 0;
@@ -563,7 +563,7 @@ result<context> create_vk_context(const window& window, const instance_desc& des
     application_info.engineVersion      = 1;
     application_info.apiVersion         = VK_API_VERSION_1_3;
 
-    std::vector<const char*> layers;
+    cpp::heap_array<const char*> layers;
     load_instance_layers_and_extensions(window, desc, layers, context.instance_extensions);
 
     const VkInstanceCreateInfo ici {
@@ -579,7 +579,7 @@ result<context> create_vk_context(const window& window, const instance_desc& des
 
     if (volkGetInstanceVersion() < ici.pApplicationInfo->apiVersion)
     {
-        return "Requested API version is not supported by an instance";
+        return error("Requested API version is not supported by an instance");
     }
 
     VK_RETURN_ON_FAIL(vkCreateInstance(&ici, nullptr, &context.instance));
@@ -658,7 +658,7 @@ VkPresentModeKHR choose_present_mode(VkPhysicalDevice device, VkSurfaceKHR surfa
     u32 present_modes = 0;
     vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_modes, nullptr);
 
-    std::vector<VkPresentModeKHR> available_present_modes(present_modes);
+    cpp::heap_array<VkPresentModeKHR> available_present_modes(present_modes);
     vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_modes, available_present_modes.data());
 
     for (const auto& present_mode : available_present_modes)
@@ -702,7 +702,7 @@ VkSurfaceFormatKHR choose_swapchain_format(VkPhysicalDevice device, VkSurfaceKHR
     u32 surface_formats = 0;
     vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_formats, nullptr);
 
-    std::vector<VkSurfaceFormatKHR> available_formats(surface_formats);
+    cpp::heap_array<VkSurfaceFormatKHR> available_formats(surface_formats);
     vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_formats, available_formats.data());
 
     auto choose_format_pred = [&](auto pred) -> VkSurfaceFormatKHR
@@ -776,11 +776,11 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
     swapchain sc_data;
     sc_data.surface_format = choose_swapchain_format(vk_context.physical_device, vk_context.surface, format);
 
-    const std::unordered_set unique_queues {vk_context.queues[queue_kind::eGfx].family,
-                                            vk_context.queues[queue_kind::ePresent].family};
-    const std::vector<u32> unique_queues_as_vec {unique_queues.begin(), unique_queues.end()};
+    const u32 unique_queues[2] {vk_context.queues[queue_kind::eGfx].family,
+                                vk_context.queues[queue_kind::ePresent].family};
 
-    const bool image_sharing_supported = unique_queues.size() > 1;
+    const bool image_sharing_supported =
+        vk_context.queues[queue_kind::eGfx].family != vk_context.queues[queue_kind::ePresent].family;
 
     VkSurfaceCapabilitiesKHR capabilities;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_context.physical_device, vk_context.surface, &capabilities);
@@ -802,8 +802,8 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
         .imageUsage =
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
         .imageSharingMode      = image_sharing_supported ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE,
-        .queueFamilyIndexCount = image_sharing_supported ? static_cast<u32>(unique_queues_as_vec.size()) : 0,
-        .pQueueFamilyIndices   = image_sharing_supported ? unique_queues_as_vec.data() : nullptr,
+        .queueFamilyIndexCount = image_sharing_supported ? static_cast<u32>(COUNT_OF(unique_queues)) : 0,
+        .pQueueFamilyIndices   = image_sharing_supported ? unique_queues : nullptr,
         .preTransform          = capabilities.currentTransform,
         .compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode           = choose_present_mode(vk_context.physical_device, vk_context.surface, vsync),
@@ -816,7 +816,7 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
     u32 img_count = 0;
     vkGetSwapchainImagesKHR(vk_context.device, sc_data.vk_swapchain, &img_count, nullptr);
 
-    std::vector<VkImage> imgs(img_count);
+    cpp::heap_array<VkImage> imgs(img_count);
     vkGetSwapchainImagesKHR(vk_context.device, sc_data.vk_swapchain, &img_count, imgs.data());
 
     sc_data.depth_format = choose_depth_format(vk_context.physical_device);
@@ -875,7 +875,7 @@ result<context> render::create_context(const window& window, const instance_desc
     auto r_created_context = create_vk_context(window, instance_desc);
     if (!r_created_context)
     {
-        return {r_created_context.message};
+        return error(r_created_context.message);
     }
 
     return *r_created_context;

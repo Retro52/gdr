@@ -1,13 +1,63 @@
 #pragma once
 
-#include <types.hpp>
 #include <assert2.hpp>
+#include <pod_types.hpp>
 
 namespace cpp
 {
+    template<class T>
+    struct remove_reference
+    {
+        using type = T;
+    };
+
+    template<class T>
+    struct remove_reference<T&>
+    {
+        using type = T;
+    };
+
+    template<class T>
+    struct remove_reference<T&&>
+    {
+        using type = T;
+    };
+
+    template<class T>
+    using remove_reference_t = remove_reference<T>::type;
+
+    template<class T>
+    constexpr T max(const T& a, const T& b)
+    {
+        return (a > b) ? a : b;
+    }
+
+    template<class T>
+    constexpr T min(const T& a, const T& b)
+    {
+        return (a < b) ? a : b;
+    }
+
+    template<class T>
+    [[nodiscard]] constexpr remove_reference_t<T>&& move(T&& _Arg) noexcept
+    {
+        return static_cast<remove_reference_t<T>&&>(_Arg);
+    }
+
+    template<class T>
+    [[nodiscard]] constexpr T&& forward(remove_reference_t<T>& _Arg) noexcept
+    {
+        return static_cast<T&&>(_Arg);
+    }
+
+    template<class T>
+    [[nodiscard]] constexpr T&& forward(remove_reference_t<T>&& _Arg) noexcept
+    {
+        return static_cast<T&&>(_Arg);
+    }
+
     template<typename T, typename U>
     constexpr bool cx_implies(T required, U supported) noexcept
-        requires(std::is_integral_v<T> && std::is_integral_v<U>)
     {
         return !required || supported;
     }

@@ -76,6 +76,7 @@ struct FrameCullData
     mat4 view;
     float frustum[6]; // left/right/top/bottom/znear/zfar
     vec2 pyramid_size;
+    vec2 viewport_size;
     float p00;
     float p11;
     uint draw_count;

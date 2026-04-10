@@ -63,6 +63,7 @@ struct frame_cull_data
     glm::mat4 view;
     float frustum[6];  // left/right/top/bottom/znear/zfar
     vec2 pyramid_size;
+    vec2 viewport_size;
     float p00;
     float p11;
     u32 draw_count;
@@ -350,7 +351,7 @@ u64 populate_scene(const u32 draw_count, const char* models[], u32 models_count,
     for (u32 i = 0; i < models_count; i++)
     {
         ZoneScopedN("load all models");
-        auto&& loaded = *static_model::load(models[i], geometry_pool);
+        auto loaded = *static_model::load(models[i], geometry_pool);
         unique_models.insert(unique_models.end(), loaded.begin(), loaded.end());
     }
 
@@ -740,8 +741,10 @@ int main(int argc, char* argv[])
                     auto view = camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
 
                     (*static_cast<frame_cull_data*>(frame_cull_data_buffer.mapped)) =
-                        frame_cull_data {
-                            .pyramid_size = depth_pyramid.base_size, .draw_count = kRepeatDraws, .flags = flags}
+                        frame_cull_data {.pyramid_size  = depth_pyramid.base_size,
+                                         .viewport_size = client_window.get_size_in_px(),
+                                         .draw_count    = kRepeatDraws,
+                                         .flags         = flags}
                             .build_frustum(projection, view);
                 }
                 else
@@ -980,6 +983,7 @@ int main(int argc, char* argv[])
                         "Meshlets cone cull",
                         "Meshlets frustum cull",
                         "Meshlets occlusion cull",
+                        "Small meshlets cull",
                     };
                     ImGuiEx::Bits(flags, names, COUNT_OF(names));
 

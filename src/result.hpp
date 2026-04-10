@@ -3,14 +3,19 @@
 #include <types.hpp>
 
 #include <assert2.hpp>
-#include <cpp/containers/stack_string.hpp>
 
-#include <cassert>
-#include <type_traits>
-#include <utility>
+struct [[nodiscard]] error_t
+{
+    const char* message;
+};
+
+inline error_t error(const char* msg)
+{
+    return {msg};
+}
 
 template<class T>
-struct result
+struct [[nodiscard]] result
 {
     enum class status
     {
@@ -32,31 +37,26 @@ struct result
     }
 
     result(const T& v)
-        requires(!std::is_same_v<std::remove_cvref_t<T>, const char*>)
         : status(status::ok)
     {
         ::new (&value) T(v);
     }
 
-    result(T&& v) noexcept(std::is_nothrow_move_constructible_v<T>)
-        requires(!std::is_same_v<std::remove_cvref_t<T>, const char*>)
+    result(T&& v)
         : status(status::ok)
     {
-        ::new (&value) T(std::move(v));
+        ::new (&value) T(static_cast<T&&>(v));
     }
 
-    result(const char* msg) noexcept
+    result(error_t e) noexcept
         : status(status::error)
-        , message(msg)
+        , message(e.message)
     {
     }
 
-    ~result() noexcept(std::is_nothrow_destructible_v<T>)
-    {
-        destroy_value();
-    }
+    ~result() noexcept { destroy_value(); }
 
-    result(const result& rhs)
+    result(const result& rhs) noexcept
         : status(rhs.status)
     {
         if (status == status::ok)
@@ -69,12 +69,12 @@ struct result
         }
     }
 
-    result(result&& rhs) noexcept(std::is_nothrow_move_constructible_v<T>)
+    result(result&& rhs) noexcept
         : status(rhs.status)
     {
         if (status == status::ok)
         {
-            ::new (&value) T(std::move(rhs.value));
+            ::new (&value) T(static_cast<T&&>(rhs.value));
         }
         else
         {
@@ -109,8 +109,7 @@ struct result
         return *this;
     }
 
-    result& operator=(result&& rhs) noexcept(std::is_nothrow_move_assignable_v<T>
-                                             && std::is_nothrow_move_constructible_v<T>)
+    result& operator=(result&& rhs) noexcept
     {
         if (this == &rhs)
         {
@@ -118,7 +117,7 @@ struct result
         }
         if (status == status::ok && rhs.status == status::ok)
         {
-            value = std::move(rhs.value);
+            value = static_cast<T&&>(rhs.value);
             return *this;
         }
 
@@ -127,7 +126,7 @@ struct result
 
         if (status == status::ok)
         {
-            ::new (&value) T(std::move(rhs.value));
+            ::new (&value) T(static_cast<T&&>(rhs.value));
         }
         else
         {
@@ -136,10 +135,7 @@ struct result
         return *this;
     }
 
-    explicit operator bool() const noexcept
-    {
-        return status == status::ok;
-    }
+    explicit operator bool() const noexcept { return status == status::ok; }
 
     T& operator*() &
     {
@@ -147,10 +143,10 @@ struct result
         return value;
     }
 
-    T operator*() &&
+    T&& operator*() &&
     {
         assert2m(status == status::ok, message);
-        return value;
+        return static_cast<T&&>(value);
     }
 
     const T& operator*() const&

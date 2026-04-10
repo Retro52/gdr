@@ -154,6 +154,6 @@
 #define VK_RETURN_ON_FAIL(EXPR)                   \
     if (const auto res = EXPR; res != VK_SUCCESS) \
     {                                             \
-        VK_FAIL_HANDLE(EXPR, return)              \
+        VK_FAIL_HANDLE(EXPR, return error)        \
     }
 

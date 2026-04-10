@@ -171,7 +171,7 @@ result<std::vector<sm_mesh_data>> render::parse_model<sm_vertex>(const fs::path&
     auto contents = fs::read_file(path);
     if (!contents)
     {
-        return contents.message;
+        return error(contents.message);
     }
 
     const auto& data = contents.value;
@@ -194,7 +194,7 @@ result<std::vector<sm_mesh_data>> render::parse_model<sm_vertex>(const fs::path&
 
         if ((scene == nullptr) || ((scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) != 0) || (scene->mRootNode == nullptr))
         {
-            return importer.GetErrorString();
+            return error(importer.GetErrorString());
         }
     }
 

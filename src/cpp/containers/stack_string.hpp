@@ -3,11 +3,12 @@
 #include <assert2.hpp>
 #include <cpp/alg_constexpr.hpp>
 #include <cpp/hash/crc_hash.hpp>
-#include <cpp/math.hpp>
+#include <stdio.h>
 
-#include <cassert>
+#if ENABLE_STL
 #include <string>
 #include <string_view>
+#endif
 
 namespace cpp
 {
@@ -26,22 +27,9 @@ namespace cpp
     public:
         constexpr stack_string_base() = default;
 
-        // String view support
-        // NOLINTNEXTLINE(*-explicit-constructor)
-        [[maybe_unused]] constexpr stack_string_base(std::string_view sv)
-            : stack_string_base(sv.data(), sv.length())
-        {
-        }
-
         // NOLINTNEXTLINE(*-explicit-constructor)
         /* implicit */ [[maybe_unused]] constexpr stack_string_base(const char* str)
             : stack_string_base(str, cpp::cx_strlen(str))
-        {
-        }
-
-        // NOLINTNEXTLINE(*-explicit-constructor)
-        /* implicit */ [[maybe_unused]] constexpr stack_string_base(const std::string& str)
-            : stack_string_base(str.c_str(), str.length())
         {
         }
 
@@ -57,50 +45,40 @@ namespace cpp
         {
         }
 
-        explicit constexpr stack_string_base(const char* str, size_t len)
+#if ENABLE_STL
+        // String view support
+        // NOLINTNEXTLINE(*-explicit-constructor)
+        [[maybe_unused]] constexpr stack_string_base(std::string_view sv)
+            : stack_string_base(sv.data(), sv.length())
         {
-            set_value(str, len);
         }
 
-        constexpr void clear()
+        // NOLINTNEXTLINE(*-explicit-constructor)
+        /* implicit */ [[maybe_unused]] constexpr stack_string_base(const std::string& str)
+            : stack_string_base(str.c_str(), str.length())
         {
-            cpp::cx_fill(&m_str[0], m_str + N, 0);
         }
+#endif
 
-        [[nodiscard]] constexpr bool empty() const
-        {
-            return m_str[0] == 0;
-        }
+        explicit constexpr stack_string_base(const char* str, size_t len) { set_value(str, len); }
 
-        [[nodiscard]] constexpr size_t length() const
-        {
-            return cpp::cx_strlen(m_str);
-        }
+        constexpr void clear() { cpp::cx_fill(&m_str[0], m_str + N, 0); }
 
-        [[nodiscard]] constexpr static size_t capacity()
-        {
-            return N;
-        }
+        [[nodiscard]] constexpr bool empty() const { return m_str[0] == 0; }
 
-        [[nodiscard]] constexpr char* data()
-        {
-            return m_str;
-        }
+        [[nodiscard]] constexpr size_t length() const { return cpp::cx_strlen(m_str); }
 
-        [[nodiscard]] constexpr const char* data() const
-        {
-            return m_str;
-        }
+        [[nodiscard]] constexpr static size_t capacity() { return N; }
 
-        [[nodiscard]] std::string string() const
-        {
-            return std::string(m_str);
-        }
+        [[nodiscard]] constexpr char* data() { return m_str; }
 
-        [[nodiscard]] constexpr const char* c_str() const
-        {
-            return data();
-        }
+        [[nodiscard]] constexpr const char* data() const { return m_str; }
+
+#if ENABLE_STL
+        [[nodiscard]] std::string string() const { return std::string(m_str); }
+#endif
+
+        [[nodiscard]] constexpr const char* c_str() const { return data(); }
 
         [[nodiscard]] constexpr stack_string_base substring(const size_t off, size_t count) const
         {
@@ -120,32 +98,25 @@ namespace cpp
         template<size_t No, typename... Args>
         static void format_to(stack_string_base<No>& dst, const char* fmt, Args&&... args)
         {
-            snprintf(dst.data(), No, fmt, std::forward<Args>(args)...);
+            snprintf(dst.data(), No, fmt, cpp::forward<Args>(args)...);
         }
 
         template<typename... Args>
         static auto make_formatted(const char* fmt, Args&&... args) noexcept
         {
             stack_string_base dst;
-            format_to(dst, fmt, std::forward<Args>(args)...);
+            format_to(dst, fmt, cpp::forward<Args>(args)...);
 
             return dst;
         }
 
-        constexpr bool operator==(const char* other) const
-        {
-            return cpp::cx_strcmp(m_str, other) == 0;
-        }
+        constexpr bool operator==(const char* other) const { return cpp::cx_strcmp(m_str, other) == 0; }
 
-        constexpr bool operator==(const std::string& other) const
-        {
-            return cpp::cx_strcmp(m_str, other.c_str()) == 0;
-        }
+#if ENABLE_STL
+        constexpr bool operator==(const std::string& other) const { return cpp::cx_strcmp(m_str, other.c_str()) == 0; }
+#endif
 
-        constexpr bool operator==(const stack_string_base& rhs) const
-        {
-            return cpp::cx_strcmp(m_str, rhs.m_str) == 0;
-        }
+        constexpr bool operator==(const stack_string_base& rhs) const { return cpp::cx_strcmp(m_str, rhs.m_str) == 0; }
 
         constexpr auto& operator=(const char* other)
         {
@@ -153,11 +124,13 @@ namespace cpp
             return *this;
         }
 
+#if ENABLE_STL
         constexpr auto& operator=(const std::string& other)
         {
             set_value(other.c_str(), other.length());
             return *this;
         }
+#endif
 
         template<size_t No>
         constexpr auto& operator=(const stack_string_base<No>& other)
@@ -228,7 +201,7 @@ namespace cpp
     private:
         constexpr void set_value(const char* data, size_t size)
         {
-            const auto size_clamped = std::min(N - 1, size);
+            const auto size_clamped = cpp::min(N - 1, size);
 
             m_str[size_clamped] = 0;
             cpp::cx_copy_n(m_str, data, sizeof(char) * size_clamped);
@@ -236,7 +209,7 @@ namespace cpp
 
         constexpr void append_value(const char* data, size_t size, size_t offset)
         {
-            const auto size_clamped = std::min(N - 1 - offset, size);
+            const auto size_clamped = cpp::min(N - 1 - offset, size);
 
             m_str[offset + size_clamped] = 0;
             cpp::cx_copy_n(m_str + offset, data, sizeof(char) * size_clamped);
@@ -247,11 +220,13 @@ namespace cpp
     };
 }
 
+#if ENABLE_STL
 template<size_t N>
 struct std::hash<::cpp::stack_string_base<N>>
 {
-    constexpr std::size_t operator()(const cpp::stack_string_base<N>& t) const noexcept
+    constexpr auto operator()(const cpp::stack_string_base<N>& t) const noexcept
     {
         return ::cpp::crc::crc64(t.data(), t.length());
     }
 };
+#endif

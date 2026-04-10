@@ -7,8 +7,6 @@
 
 #include <types.hpp>
 
-#include <string_view>
-
 class window
 {
 public:
@@ -65,7 +63,7 @@ public:
     };
 
 public:
-    window(std::string_view title, ivec2 size, bool fullscreen);
+    window(const char* title, ivec2 size, bool fullscreen);
 
     ~window();
 

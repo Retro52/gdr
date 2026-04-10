@@ -1,7 +1,5 @@
 #pragma once
 
-#include <types.hpp>
-
 #include <render/platform/vk/vk_buffer.hpp>
 #include <render/platform/vk/vk_buffer_transfer.hpp>
 #include <render/platform/vk/vk_renderer.hpp>

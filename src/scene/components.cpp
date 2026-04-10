@@ -1,4 +1,3 @@
-#include <cpp/math.hpp>
 #include <scene/components.hpp>
 
 glm::vec3 camera_component::get_up(const glm::quat& rotation) const noexcept

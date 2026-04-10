@@ -1,17 +1,12 @@
 #pragma once
 
 #include <cpp/alg_constexpr.hpp>
+#include <cpp/containers/heap_array.hpp>
 #include <render/platform/vk/vk_image.hpp>
-#include <render/platform/vk/vma.hpp>
-#include <result.hpp>
 #include <window.hpp>
-
-#include <vector>
 
 namespace render
 {
-    using ext_array = std::vector<const char*>;
-
     struct rendering_features_table
     {
         enum flag : u32
@@ -122,6 +117,8 @@ namespace render
         constexpr queue_kind_t eCompute  = 3;
         constexpr queue_kind_t COUNT     = 4;
     }
+
+    using ext_array = cpp::heap_array<const char*>;
 
     struct context
     {

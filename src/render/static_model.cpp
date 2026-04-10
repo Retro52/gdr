@@ -1,4 +1,6 @@
 #include <assert2.hpp>
+#include <cpp/alg_constexpr.hpp>
+#include <glm/geometric.hpp>
 #include <meshoptimizer.h>
 #include <render/sm_cache.hpp>
 #include <render/static_model.hpp>
@@ -243,5 +245,5 @@ result<std::vector<static_model>> static_model::load(const fs::path& path,
         return models;
     }
 
-    return "failed to parse the model";
+    return error("failed to parse the model");
 }

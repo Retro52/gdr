@@ -82,6 +82,17 @@ void main()
         visible = visible && view_center.z - sphere_radius < -frame_cull.frustum[4] && view_center.z + sphere_radius > -frame_cull.frustum[5];
     }
 
+    vec4 p_aabb;
+    if (visible && GET_BIT(frame_cull.flags, kSmallMeshletsCullBit) == 1 && project_sphere(view_center, sphere_radius, frame_cull.frustum[4], frame_cull.p00, frame_cull.p11, p_aabb))
+    {
+        vec2 pmin = p_aabb.xy * frame_cull.viewport_size;
+        vec2 pmax = p_aabb.zw * frame_cull.viewport_size;
+
+        // TODO: I think this should be 1/(2^subPixPrecBits)
+        const float sp_prec = 1.0 / 256.0;
+        visible = visible && !(round(pmin.x - sp_prec) == round(pmax.x) || round(pmin.y) == round(pmax.y + sp_prec));
+    }
+
     if (visible)
     {
         uint idx = atomicAdd(meshlets_count, 1);

@@ -2,6 +2,7 @@
 
 #include <render/platform/vk/vma.hpp>
 #include <result.hpp>
+#include <pod_types.hpp>
 
 namespace render
 {

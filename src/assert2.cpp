@@ -1,6 +1,6 @@
 #include <SDL3/SDL.h>
 
-#include <types.hpp>
+#include <pod_types.hpp>
 
 #include <assert2.hpp>
 #include <cpp/hash/hashed_string.hpp>

@@ -2,12 +2,12 @@
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
 
-window::window(std::string_view title, ivec2 size, bool fullscreen)
+window::window(const char* title, ivec2 size, bool fullscreen)
 {
     ZoneScoped;
 
     SDL_Init(SDL_INIT_VIDEO);
-    m_window = SDL_CreateWindow(title.data(),
+    m_window = SDL_CreateWindow(title,
                                 size.x,
                                 size.y,
                                 (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) | SDL_WINDOW_HIGH_PIXEL_DENSITY

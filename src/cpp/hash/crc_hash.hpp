@@ -1,10 +1,10 @@
 #pragma once
 
-#include <types.hpp>
+#include <pod_types.hpp>
 
 namespace cpp::crc
 {
-    static constexpr u32 CRC32_TABLE[256] = {
+    static constexpr u32 kCRCTable32[] = {
         0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f, 0xe963a535, 0x9e6495a3, 0x0edb8832,
         0x79dcb8a4, 0xe0d5e91e, 0x97d2d988, 0x09b64c2b, 0x7eb17cbd, 0xe7b82d07, 0x90bf1d91, 0x1db71064, 0x6ab020f2,
         0xf3b97148, 0x84be41de, 0x1adad47d, 0x6ddde4eb, 0xf4d4b551, 0x83d385c7, 0x136c9856, 0x646ba8c0, 0xfd62f97a,
@@ -35,7 +35,7 @@ namespace cpp::crc
         0x24b4a3a6, 0xbad03605, 0xcdd70693, 0x54de5729, 0x23d967bf, 0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94,
         0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d};
 
-    static constexpr u64 CRC64_TABLE[256] = {
+    static constexpr u64 kCRCTable64[] = {
         0x0000000000000000, 0x42F0E1EBA9EA3693, 0x85E1C3D753D46D26, 0xC711223CFA3E5BB5, 0x493366450E42ECDF,
         0x0BC387AEA7A8DA4C, 0xCCD2A5925D9681F9, 0x8E224479F47CB76A, 0x9266CC8A1C85D9BE, 0xD0962D61B56FEF2D,
         0x17870F5D4F51B498, 0x5577EEB6E6BB820B, 0xDB55AACF12C73561, 0x99A54B24BB2D03F2, 0x5EB4691841135847,
@@ -94,7 +94,7 @@ namespace cpp::crc
         u32 crc = prev_crc;
         for (u64 i = 0; i < len; ++i)
         {
-            crc = (crc >> 8) ^ CRC32_TABLE[(crc ^ str[i]) & 0xFF];
+            crc = (crc >> 8) ^ kCRCTable32[(crc ^ str[i]) & 0xFF];
         }
         return crc ^ 0xFFFFFFFF;
     }
@@ -104,7 +104,7 @@ namespace cpp::crc
         u64 crc = prev_crc;
         for (u64 i = 0; i < len; ++i)
         {
-            crc = (crc >> 8) ^ CRC64_TABLE[(crc ^ str[i]) & 0xFF];
+            crc = (crc >> 8) ^ kCRCTable64[(crc ^ str[i]) & 0xFF];
         }
         return crc ^ 0xFFFFFFFFFFFFFFFFULL;
     }

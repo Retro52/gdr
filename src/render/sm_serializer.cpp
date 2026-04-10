@@ -30,7 +30,7 @@ result<bytes> render::serialize_mesh_cache(const u32* indices, u64 indices_count
     ZoneScoped;
     if (!indices || !vertices || indices_count == 0 || vertices_count == 0)
     {
-        return "corrupted data";
+        return error("corrupted data");
     }
 
     const u64 indices_size  = indices_count * sizeof(u32);
@@ -102,7 +102,7 @@ result<bytes> render::serialize_model_cache(const bytes* meshes, u32 mesh_count)
     ZoneScoped;
     if (!meshes || mesh_count == 0)
     {
-        return "corrupted data";
+        return error("corrupted data");
     }
 
     u64 data_size = 0;
@@ -140,7 +140,7 @@ result<bytes> render::load_model_cache(const fs::path& path, u32& mesh_count)
     auto file = fs::read_file(path);
     if (!file)
     {
-        return file.message;
+        return error(file.message);
     }
 
     const u64 file_size      = file->size();
@@ -166,7 +166,7 @@ result<bytes> render::load_model_cache(const fs::path& path, u32& mesh_count)
 
     if (header.magic != kSMMagic || header.meshes_count == 0)
     {
-        return header.magic != kSMMagic ? "version missmatch" : "no meshes were saved";
+        return header.magic != kSMMagic ? error("version missmatch") : error("no meshes were saved");
     }
 
     bytes result(mesh_data_size);

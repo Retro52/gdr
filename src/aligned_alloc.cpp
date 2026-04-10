@@ -2,8 +2,6 @@
 #include <assert2.hpp>
 #include <cpp/alg_constexpr.hpp>
 
-#include <cassert>
-
 u64 align(const u64 addr, const u8 alignment)
 {
     const u64 mask = alignment - 1;
@@ -60,7 +58,7 @@ void* realloc_aligned(void* memory, const u64 size, const u8 alignment)
     auto* new_memory        = alloc_aligned(size, alignment);
     const u64 original_size = reinterpret_cast<u64*>(static_cast<u8*>(memory) - header_size - 1)[0];
 
-    cpp::cx_memcpy(new_memory, memory, std::min(original_size, size));
+    cpp::cx_memcpy(new_memory, memory, cpp::min(original_size, size));
     free_aligned(memory);
 
     return new_memory;
