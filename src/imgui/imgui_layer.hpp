@@ -5,6 +5,8 @@
 #include <render/platform/vk/vk_renderer.hpp>
 #include <window.hpp>
 
+#include <vector>
+
 class imgui_layer
 {
 public:

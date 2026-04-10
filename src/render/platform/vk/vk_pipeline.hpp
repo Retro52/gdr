@@ -1,7 +1,7 @@
 #pragma once
 
 #include <fs/path.hpp>
-#include <render/platform/vk/vk_error.hpp>
+#include <bytes.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
 #include <result.hpp>
 
@@ -50,10 +50,7 @@ namespace render
             u32 push_constant_struct_size {0};
             VkShaderStageFlagBits stage {VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM};
 
-            shader_meta()
-            {
-                cpp::cx_fill(std::begin(bindings), std::end(bindings), VK_DESCRIPTOR_TYPE_MAX_ENUM);
-            }
+            shader_meta() { cpp::cx_fill(bindings + 0, bindings + COUNT_OF(bindings), VK_DESCRIPTOR_TYPE_MAX_ENUM); }
         };
 
     public:

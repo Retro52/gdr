@@ -1,5 +1,6 @@
 #pragma once
 
+#include <glm/mat4x4.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
 

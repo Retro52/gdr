@@ -92,7 +92,7 @@ namespace render
 
     struct swapchain
     {
-        std::vector<swapchain_image> images;
+        cpp::heap_array<swapchain_image> images;
         VkSurfaceFormatKHR surface_format;
 
         VkSwapchainKHR vk_swapchain {VK_NULL_HANDLE};

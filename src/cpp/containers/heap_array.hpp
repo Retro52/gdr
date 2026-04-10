@@ -3,6 +3,7 @@
 #include <assert2.hpp>
 #include <cpp/alg_constexpr.hpp>
 #include <pod_types.hpp>
+#include <tracy/Tracy.hpp>
 
 namespace cpp
 {
@@ -22,12 +23,14 @@ namespace cpp
             , m_capacity {size}
             , m_data(new T[size])
         {
+            ZoneScoped;
             assert2(m_data != nullptr);
         }
 
         template<typename It>
         explicit heap_array(It begin, const It end)
         {
+            ZoneScoped;
             while (begin != end)
             {
                 push_back(*begin++);
@@ -39,6 +42,7 @@ namespace cpp
             , m_capacity {other.m_size}
             , m_data {other.m_size ? new T[other.m_size] : nullptr}
         {
+            ZoneScoped;
             cpp::cx_copy_n(m_data, other.m_data, m_size);
         }
 
@@ -47,6 +51,7 @@ namespace cpp
             , m_capacity {other.m_capacity}
             , m_data {other.m_data}
         {
+            ZoneScoped;
             other.m_size     = 0;
             other.m_capacity = 0;
             other.m_data     = nullptr;
@@ -54,6 +59,7 @@ namespace cpp
 
         heap_array& operator=(const heap_array& other)
         {
+            ZoneScoped;
             if (this != &other)
             {
                 delete[] m_data;
@@ -69,6 +75,7 @@ namespace cpp
 
         heap_array& operator=(heap_array&& other) noexcept
         {
+            ZoneScoped;
             if (this != &other)
             {
                 delete[] m_data;
@@ -86,23 +93,23 @@ namespace cpp
 
         ~heap_array() { delete[] m_data; }
 
-        T* data() { return m_data; }
+        [[nodiscard]] T* data() { return m_data; }
 
-        const T* data() const { return m_data; }
+        [[nodiscard]] const T* data() const { return m_data; }
 
-        T* begin() { return m_data; }
+        [[nodiscard]] T* begin() { return m_data; }
 
-        const T* begin() const { return m_data; }
+        [[nodiscard]] const T* begin() const { return m_data; }
 
-        T* end() { return m_data + m_size; }
+        [[nodiscard]] T* end() { return m_data + m_size; }
 
-        const T* end() const { return m_data + m_size; }
+        [[nodiscard]] const T* end() const { return m_data + m_size; }
 
-        u64 size() const { return m_size; }
+        [[nodiscard]] u64 size() const { return m_size; }
 
-        u64 capacity() const { return m_capacity; }
+        [[nodiscard]] u64 capacity() const { return m_capacity; }
 
-        bool empty() const { return m_size == 0; }
+        [[nodiscard]] bool empty() const { return m_size == 0; }
 
         T& operator[](u64 i)
         {
@@ -118,6 +125,7 @@ namespace cpp
 
         void push_back(const T& value)
         {
+            ZoneScoped;
             if (m_size >= m_capacity)
             {
                 grow(cpp::max(m_capacity * 4 / 3, u64(8)));
@@ -128,6 +136,7 @@ namespace cpp
 
         void push_back(T&& value)
         {
+            ZoneScoped;
             if (m_size >= m_capacity)
             {
                 grow(cpp::max(m_capacity * 4 / 3, static_cast<u64>(8)));
@@ -139,6 +148,7 @@ namespace cpp
         template<typename... Args>
         T& emplace_back(Args&&... args)
         {
+            ZoneScoped;
             if (m_size >= m_capacity)
             {
                 grow(cpp::max(m_capacity * 4 / 3, static_cast<u64>(8)));
@@ -151,6 +161,7 @@ namespace cpp
 
         void copy_into(const T* data, const u64 count)
         {
+            ZoneScoped;
             if (m_size + count > m_capacity)
             {
                 grow(cpp::max(m_size + count, m_capacity * 4 / 3));
@@ -160,9 +171,32 @@ namespace cpp
             m_size += count;
         }
 
+        void resize(u64 new_size)
+        {
+            ZoneScoped;
+            m_capacity = new_size;
+
+            auto* data_tmp = new T[m_capacity];
+            cpp::cx_copy_n(data_tmp, m_data, cpp::min(new_size, m_size));
+
+            delete[] m_data;
+            m_data = data_tmp;
+            m_size = new_size;
+        }
+
+        // don't preserve capacity here intentionally btw
+        void clear()
+        {
+            ZoneScoped;
+            delete[] m_data;
+            m_size     = 0;
+            m_capacity = 0;
+        }
+
     private:
         void grow(const u64 new_capacity)
         {
+            ZoneScoped;
             assert2(new_capacity > m_capacity);
 
             m_capacity     = new_capacity;

@@ -1,8 +1,8 @@
 #pragma once
 
-#include <bytes.hpp>
-#include <render/platform/vk/vk_device.hpp>
+#include <cpp/containers/heap_array.hpp>
 #include <render/platform/vk/vk_command_buffer.hpp>
+#include <render/platform/vk/vk_device.hpp>
 #include <tracy/TracyVulkan.hpp>
 #include <window.hpp>
 
@@ -63,7 +63,7 @@ namespace render
         render::context m_context;
         render::swapchain m_swapchain;
 
-        std::vector<frame_data> m_in_flight_frames;
+        cpp::heap_array<frame_data> m_in_flight_frames;
 
         ivec2 m_swapchain_size {};
 

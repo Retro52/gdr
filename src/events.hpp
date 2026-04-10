@@ -4,6 +4,7 @@
 
 #include <types.hpp>
 
+#include <reflection/enum.hpp>
 #include <window.hpp>
 
 #include <array>
@@ -31,22 +32,13 @@ enum class event_type
     count
 };
 
-enum class mouse_button
-{
-    left   = SDL_BUTTON_LEFT,
-    right  = SDL_BUTTON_RIGHT,
-    scroll = SDL_BUTTON_MIDDLE,
-    x1     = SDL_BUTTON_X1,
-    x2     = SDL_BUTTON_X1,
-};
+REGISTER_ENUM(mouse_button, left = SDL_BUTTON_LEFT, right = SDL_BUTTON_RIGHT, scroll = SDL_BUTTON_MIDDLE,
+              x1 = SDL_BUTTON_X1, x2 = SDL_BUTTON_X1);
 
-enum class button_state
-{
-    up,           // just raised
-    down,         // just pressed
-    double_down,  // aka pressed twice
-    unknown
-};
+REGISTER_ENUM(button_state, up,  // just raised
+              down,              // just pressed
+              double_down,       // aka pressed twice
+              unknown);
 
 enum class keycode
 {

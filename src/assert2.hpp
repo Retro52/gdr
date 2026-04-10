@@ -8,14 +8,26 @@ namespace debug
     void assert2_show_assert_popup(const char* message);
 }
 
+#if !defined(NDEBUG)
 #define assert2(EXPR)                              \
-    if (!(EXPR))                                     \
+    if (!(EXPR))                                   \
     {                                              \
         ::debug::assert2_show_assert_popup(#EXPR); \
     }
 
 #define assert2m(EXPR, MESSAGE)                      \
-    if (!(EXPR))                                       \
+    if (!(EXPR))                                     \
     {                                                \
         ::debug::assert2_show_assert_popup(MESSAGE); \
     }
+#else
+
+#define assert2(EXPR)         \
+    do                        \
+    {                         \
+        (void)sizeof((EXPR)); \
+    } while (false)
+
+#define assert2m(EXPR, MESSAGE) assert2(EXPR || MESSAGE)
+
+#endif

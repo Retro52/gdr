@@ -1,8 +1,11 @@
 #include <assert2.hpp>
+#include <assimp/Importer.hpp>
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
 #include <cpp/alg_constexpr.hpp>
+#include <fs/fs.hpp>
 #include <glm/geometric.hpp>
 #include <meshoptimizer.h>
-#include <render/sm_cache.hpp>
 #include <render/static_model.hpp>
 #include <tracy/Tracy.hpp>
 
@@ -12,6 +15,155 @@ using namespace render;
 
 namespace
 {
+    // TODO: waiting here (again) caching system rewrite w/ compression and other stuff. Coming, probably, never tbh
+
+    static_model::mesh_data load_mesh(const aiMesh* mesh) noexcept
+    {
+        ZoneScoped;
+        assert2(mesh->HasNormals());
+
+        cpp::heap_array<static_model::vertex> raw_vertices(mesh->mNumVertices);
+        for (u32 i = 0; i < mesh->mNumVertices; i++)
+        {
+            if (mesh->mTextureCoords[0]) [[likely]]
+            {
+                raw_vertices[i].position = {mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z};
+                raw_vertices[i].normal   = {mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z};
+#if 0
+            raw_vertices[i].uv       = {mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y};
+            raw_vertices[i].tangent  = {mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z};
+#endif
+            }
+            else
+            {
+                raw_vertices[i].position = {mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z};
+                raw_vertices[i].normal   = {mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z};
+            }
+        }
+
+        // now walk through each of the mesh's faces (a face is a mesh its triangle) and retrieve the corresponding
+        // vertex indices.
+        // aiProcess_Triangulate guarantees every face will only contain triangles, except line/point faces,
+        // but we don't care about those
+        cpp::heap_array<u32> indices(mesh->mNumFaces * 3);
+        for (u32 i = 0; i < mesh->mNumFaces; i++)
+        {
+            const u32 base = i * 3;
+            const u32* src = mesh->mFaces[i].mIndices;
+            assert2(mesh->mFaces[i].mNumIndices == 3);
+
+            indices[base + 0] = src[0];
+            indices[base + 1] = src[1];
+            indices[base + 2] = src[2];
+        }
+
+        u64 vertex_count = 0;
+        cpp::heap_array<u32> remap(indices.size());
+
+        {
+            ZoneScopedN("meshopt_generateVertexRemap");
+
+            vertex_count = meshopt_generateVertexRemap(remap.data(),
+                                                       indices.data(),
+                                                       indices.size(),
+                                                       raw_vertices.data(),
+                                                       raw_vertices.size(),
+                                                       sizeof(static_model::vertex));
+        }
+
+        cpp::heap_array<static_model::vertex> vertices(vertex_count);
+
+        {
+            ZoneScopedN("meshopt_remap[Vertex/Index]Buffer");
+
+            meshopt_remapVertexBuffer(
+                vertices.data(), raw_vertices.data(), raw_vertices.size(), sizeof(static_model::vertex), remap.data());
+            meshopt_remapIndexBuffer(indices.data(), indices.data(), indices.size(), remap.data());
+        }
+
+        {
+            ZoneScopedN("meshopt_optimizeVertexCache");
+            meshopt_optimizeVertexCache(indices.data(), indices.data(), indices.size(), vertices.size());
+        }
+
+        {
+            ZoneScopedN("meshopt_optimizeVertexFetch");
+            meshopt_optimizeVertexFetch(vertices.data(),
+                                        indices.data(),
+                                        indices.size(),
+                                        vertices.data(),
+                                        vertices.size(),
+                                        sizeof(static_model::vertex));
+        }
+
+        return {.vertices = vertices, .indices = indices};
+    }
+
+    result<cpp::heap_array<static_model::mesh_data>> parse_model(const fs::path& path)
+    {
+        ZoneScoped;
+
+        auto contents = fs::read_file(path);
+        if (!contents)
+        {
+            return error(contents.message);
+        }
+
+        const auto& data = contents.value;
+
+        const aiScene* scene = nullptr;
+        cpp::heap_array<static_model::mesh_data> meshes;
+
+        {
+            ZoneScopedN("Assimp::ReadFileFromMemory");
+
+#if 1
+            thread_local Assimp::Importer importer;
+#else
+            Assimp::Importer importer;
+#endif
+
+            constexpr auto flags =
+                aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_FlipUVs | aiProcess_CalcTangentSpace;
+            scene = importer.ReadFileFromMemory(data.data(), data.size(), flags);
+
+            if ((scene == nullptr) || ((scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) != 0)
+                || (scene->mRootNode == nullptr))
+            {
+                return error(importer.GetErrorString());
+            }
+        }
+
+        {
+            std::stack<aiNode*> process_nodes;
+            ZoneScopedN("process sub-meshes");
+
+            process_nodes.push(scene->mRootNode);
+
+            while (!process_nodes.empty())
+            {
+                const auto* node = process_nodes.top();
+                process_nodes.pop();
+
+                for (unsigned int i = 0; i < node->mNumMeshes; i++)
+                {
+                    // the node object only contains indices to index the actual objects in the scene.
+                    // the scene contains all the data, node is just to keep stuff organized (like relations between
+                    // nodes).
+                    const aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+                    meshes.push_back(load_mesh(mesh));
+                }
+
+                for (unsigned int i = 0; i < node->mNumChildren; i++)
+                {
+                    process_nodes.push(node->mChildren[i]);
+                }
+            }
+        }
+
+        return meshes;
+    }
+
     // TODO: batch data uploads together
     template<typename T>
     void upload_data(const vk_buffer_transfer& transfer, vk_shared_buffer& dst_buffer, const T* data, const u64 count)
@@ -45,21 +197,21 @@ namespace
         return {center, radius};
     }
 
-    void build_meshlets(const std::vector<static_model::vertex>& vertices, const std::vector<u32>& indices,
-                        std::vector<static_model::meshlet>& meshlets, std::vector<u8>& meshlets_payload,
-                        u32 base_payload_offset) noexcept
+    void build_meshlets(const cpp::heap_array<static_model::vertex>& vertices, const cpp::heap_array<u32>& indices,
+                        cpp::heap_array<static_model::meshlet>& meshlets, cpp::heap_array<u8>& meshlets_payload,
+                        const u32 base_payload_offset) noexcept
     {
         ZoneScoped;
         const u64 meshlets_upper_bound = meshopt_buildMeshletsBound(
             indices.size(), static_model::kMaxVerticesPerMeshlet, static_model::kMaxTrianglesPerMeshlet);
 
         const u64 vertices_offset = indices.size();
-        std::vector<u8> meshlets_data(indices.size() * 5);
+        cpp::heap_array<u8> meshlets_data(indices.size() * 5);
 
         u8* meshlet_indices_ptr   = meshlets_data.data();
         u32* meshlet_vertices_ptr = reinterpret_cast<u32*>(meshlets_data.data() + vertices_offset);
 
-        std::vector<meshopt_Meshlet> meshopt_meshlets(meshlets_upper_bound);
+        cpp::heap_array<meshopt_Meshlet> meshopt_meshlets(meshlets_upper_bound);
 
         const u64 meshlets_count = meshopt_buildMeshlets(meshopt_meshlets.data(),
                                                          meshlet_vertices_ptr,
@@ -141,18 +293,18 @@ namespace
     }
 }
 
-result<std::vector<static_model>> static_model::load(const fs::path& path,
-                                                     render::vk_scene_geometry_pool& geometry_pool)
+result<cpp::heap_array<static_model>> static_model::load(const fs::path& path,
+                                                         render::vk_scene_geometry_pool& geometry_pool)
 {
     ZoneScoped;
 
-    std::vector<mesh_data> model_meshes;
-    if (render::load_model<vertex>(path, model_meshes))
+    if (auto result = parse_model(path))
     {
-        std::vector<static_model> models(model_meshes.size());
+        const cpp::heap_array<mesh_data>& model_meshes = *result;
+        cpp::heap_array<static_model> models(model_meshes.size());
 
-        std::vector<meshlet> meshlets;
-        std::vector<u8> meshlets_payload;
+        cpp::heap_array<meshlet> meshlets;
+        cpp::heap_array<u8> meshlets_payload;
 
         for (u32 i = 0; i < model_meshes.size(); ++i)
         {
@@ -165,7 +317,7 @@ result<std::vector<static_model>> static_model::load(const fs::path& path,
             models[i].base_vertex = geometry_pool.vertex.offset / sizeof(vertex);
             upload_data(geometry_pool.transfer, geometry_pool.vertex, mesh.vertices.data(), mesh.vertices.size());
 
-            std::vector<u32> indices_work_copy = mesh.indices;
+            cpp::heap_array<u32> indices_work_copy = mesh.indices;
             const f32 lod_scale =
                 meshopt_simplifyScale(&mesh.vertices[0].position.x, mesh.vertices.size(), sizeof(vertex));
 

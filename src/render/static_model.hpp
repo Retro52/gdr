@@ -4,7 +4,6 @@
 #include <render/platform/vk/vk_buffer.hpp>
 #include <render/platform/vk/vk_geometry_pool.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
-#include <render/sm_cache.hpp>
 #include <shaders/constants.h>
 
 struct static_model
@@ -45,8 +44,13 @@ struct static_model
 #endif
     };
 
-    using mesh_data = render::mesh_data<vertex>;
-    static result<std::vector<static_model>> load(const fs::path& path, render::vk_scene_geometry_pool& geometry_pool);
+    struct mesh_data
+    {
+        cpp::heap_array<vertex> vertices;
+        cpp::heap_array<u32> indices;
+    };
+
+    static result<cpp::heap_array<static_model>> load(const fs::path& path, render::vk_scene_geometry_pool& geometry_pool);
 
     vec4 b_sphere;
     u32 base_vertex {0};

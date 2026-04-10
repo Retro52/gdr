@@ -1,5 +1,7 @@
 #include <assert2.hpp>
+#include <cpp/containers/heap_array.hpp>
 #include <fs/fs.hpp>
+#include <render/platform/vk/vk_error.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 
 #define SPV_ENABLE_UTILITY_CODE
@@ -215,8 +217,8 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
 
     struct spv_struct
     {
-        spv_id* self {nullptr};         // pointer into a spv_ids array declaring instruction (id)
-        std::vector<spv_id*> children;  // associated members
+        spv_id* self {nullptr};             // pointer into a spv_ids array declaring instruction (id)
+        cpp::heap_array<spv_id*> children;  // associated members
     };
 
     struct spv_push_desc
@@ -287,7 +289,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
         return id;
     };
 
-    auto try_parse_local_size = [&](const u32* inst, const std::vector<spv_id>& spv_ids, const bool force_ids)
+    auto try_parse_local_size = [&](const u32* inst, const cpp::heap_array<spv_id>& spv_ids, const bool force_ids)
     {
         switch (force_ids ? SpvExecutionModeLocalSizeId : static_cast<SpvExecutionMode>(inst[2]))
         {
@@ -319,7 +321,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     assert2(inst[0] == SpvMagicNumber);
 
     const u32 id_count = inst[3];
-    std::vector<spv_id> spv_ids(id_count);
+    cpp::heap_array<spv_id> spv_ids(id_count);
 
     // 5 = first actual instruction offset as per specification
     inst += 5;
@@ -505,7 +507,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
                                                  u32 shaders_count, VkPrimitiveTopology topology)
 {
     ZoneScoped;
-    std::vector<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
+    cpp::heap_array<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
     for (u32 i = 0; i < shaders_count; ++i)
     {
         assert2(shaders[i].meta.stage != VK_SHADER_STAGE_COMPUTE_BIT);

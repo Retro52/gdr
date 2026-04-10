@@ -20,6 +20,7 @@
 #include <imgui/imgui_layer.hpp>
 #include <render/debug/frustum_renderer.hpp>
 #include <render/platform/vk/vk_barrier.hpp>
+#include <render/platform/vk/vk_error.hpp>
 #include <render/platform/vk/vk_image.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_query.hpp>
@@ -346,7 +347,7 @@ u64 populate_scene(const u32 draw_count, const char* models[], u32 models_count,
 
     u64 scene_triangles_total = 0;
     std::vector<static_model> unique_models;
-    const u32 kVolumeItemsPerSide = std::cbrtl(draw_count);
+    const u32 kVolumeItemsPerSide = std::lroundl(std::cbrt(draw_count));
 
     for (u32 i = 0; i < models_count; i++)
     {
@@ -933,6 +934,14 @@ int main(int argc, char* argv[])
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "editor"));
 
                     editor.begin_frame(renderer);
+
+                    ImGui::SeparatorText("debug");
+
+                    static mouse_button debug_button = mouse_button::left;
+                    ImGuiEx::Enum("Mouse state: ", debug_button);
+                    ImGui::Text(
+                        "%s",
+                        reflection::string_from_enum<button_state>(client_events.get_mouse_button_state(debug_button)));
 
                     ImGui::SeparatorText("camera controller");
                     codegen::draw(controller);
