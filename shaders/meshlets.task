@@ -73,7 +73,7 @@ void main()
     vec3 view_center = (frame_cull.view * vec4(transform_vec3(sphere_center, meshes_transforms[mesh_id].pos_and_scale, meshes_transforms[mesh_id].rotation_quat), 1.0F)).xyz;
 
     bool visible = true;
-    visible = GET_BIT(frame_cull.flags, kMeshletConeCullBit) == 0 || dot(view_center, view_axis) < cull_cutoff * length(view_center) + sphere_radius;
+    visible = GET_BIT(frame_cull.flags, kMeshletConeCullBit) == 0 || (dot(view_center, view_axis) < cull_cutoff * length(view_center) + sphere_radius);
 
     if (GET_BIT(frame_cull.flags, kMeshletFrustumCullBit) == 1)
     {
@@ -88,7 +88,7 @@ void main()
         vec2 pmin = p_aabb.xy * frame_cull.viewport_size;
         vec2 pmax = p_aabb.zw * frame_cull.viewport_size;
 
-        // TODO: I think this should be 1/(2^subPixPrecBits)
+        // TODO: I think this should be 1/(2^subPixPrecBits) or smth like that
         const float sp_prec = 1.0 / 256.0;
         visible = visible && !(round(pmin.x - sp_prec) == round(pmax.x) || round(pmin.y) == round(pmax.y + sp_prec));
     }

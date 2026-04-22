@@ -39,21 +39,21 @@ namespace cpp
     }
 
     template<class T>
-    [[nodiscard]] constexpr remove_reference_t<T>&& move(T&& _Arg) noexcept
+    [[nodiscard]] constexpr remove_reference_t<T>&& move(T&& p) noexcept
     {
-        return static_cast<remove_reference_t<T>&&>(_Arg);
+        return static_cast<remove_reference_t<T>&&>(p);
     }
 
     template<class T>
-    [[nodiscard]] constexpr T&& forward(remove_reference_t<T>& _Arg) noexcept
+    [[nodiscard]] constexpr T&& forward(remove_reference_t<T>& p) noexcept
     {
-        return static_cast<T&&>(_Arg);
+        return static_cast<T&&>(p);
     }
 
     template<class T>
-    [[nodiscard]] constexpr T&& forward(remove_reference_t<T>&& _Arg) noexcept
+    [[nodiscard]] constexpr T&& forward(remove_reference_t<T>&& p) noexcept
     {
-        return static_cast<T&&>(_Arg);
+        return static_cast<T&&>(p);
     }
 
     template<typename T, typename U>
@@ -142,12 +142,44 @@ namespace cpp
     }
 
     template<typename T>
-    constexpr T* cx_copy_n(T* dest, const T* src, u64 count)
+    constexpr T* cx_move_n(T* dest, T* src, const u64 count)
+    {
+        for (u64 i = 0; i < count; ++i)
+        {
+            dest[i] = cpp::move(src[i]);
+        }
+        return dest;
+    }
+
+    template<typename T>
+    constexpr T* cx_copy_n(T* dest, const T* src, const u64 count)
     {
         for (u64 i = 0; i < count; ++i)
         {
             dest[i] = src[i];
         }
+        return dest;
+    }
+
+    template<typename T>
+    constexpr T* cx_uninitialized_move_n(T* dest, T* src, const u64 count)
+    {
+        for (u64 i = 0; i < count; ++i)
+        {
+            new (dest + i) T(cpp::move(src[i]));
+        }
+
+        return dest;
+    }
+
+    template<typename T>
+    constexpr T* cx_uninitialized_copy_n(T* dest, const T* src, const u64 count)
+    {
+        for (u64 i = 0; i < count; ++i)
+        {
+            new (dest + i) T(src[i]);
+        }
+
         return dest;
     }
 }

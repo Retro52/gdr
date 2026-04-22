@@ -3,7 +3,8 @@
 #include <assert2.hpp>
 #include <cpp/alg_constexpr.hpp>
 #include <cpp/hash/crc_hash.hpp>
-#include <stdio.h>
+
+#include <cstdio>
 
 #if ENABLE_STL
 #include <string>
@@ -12,13 +13,13 @@
 
 namespace cpp
 {
-    template<size_t N>
+    template<u64 N>
     class stack_string_base;
 
     using stack_string     = stack_string_base<64>;
     using big_stack_string = stack_string_base<260>;
 
-    template<size_t N>
+    template<u64 N>
     class stack_string_base
     {
     public:
@@ -33,13 +34,13 @@ namespace cpp
         {
         }
 
-        template<size_t No>
+        template<u64 No>
         [[maybe_unused]] explicit constexpr stack_string_base(stack_string_base<No>&& other)
             : stack_string_base(other.c_str(), other.length())
         {
         }
 
-        template<size_t No>
+        template<u64 No>
         [[maybe_unused]] explicit constexpr stack_string_base(const stack_string_base<No>& other)
             : stack_string_base(other.c_str(), other.length())
         {
@@ -60,15 +61,15 @@ namespace cpp
         }
 #endif
 
-        explicit constexpr stack_string_base(const char* str, size_t len) { set_value(str, len); }
+        explicit constexpr stack_string_base(const char* str, u64 len) { set_value(str, len); }
 
         constexpr void clear() { cpp::cx_fill(&m_str[0], m_str + N, 0); }
 
         [[nodiscard]] constexpr bool empty() const { return m_str[0] == 0; }
 
-        [[nodiscard]] constexpr size_t length() const { return cpp::cx_strlen(m_str); }
+        [[nodiscard]] constexpr u64 length() const { return cpp::cx_strlen(m_str); }
 
-        [[nodiscard]] constexpr static size_t capacity() { return N; }
+        [[nodiscard]] constexpr static u64 capacity() { return N; }
 
         [[nodiscard]] constexpr char* data() { return m_str; }
 
@@ -80,25 +81,27 @@ namespace cpp
 
         [[nodiscard]] constexpr const char* c_str() const { return data(); }
 
-        [[nodiscard]] constexpr stack_string_base substring(const size_t off, size_t count) const
+        [[nodiscard]] constexpr stack_string_base substring(const u64 off, u64 count) const
         {
-            const size_t len = length();
+            const u64 len = length();
             if (off >= len)
             {
                 return {};
             }
 
             stack_string_base ret;
-            count = cpp::min(count, cpp::min(len - off, ret.capacity() - 1));
+            count = cpp::min(count, cpp::min(len - off, capacity() - 1));
             ret.set_value(m_str + off, count);
 
             return ret;
         }
 
-        template<size_t No, typename... Args>
+        template<u64 No, typename... Args>
         static void format_to(stack_string_base<No>& dst, const char* fmt, Args&&... args)
         {
-            snprintf(dst.data(), No, fmt, cpp::forward<Args>(args)...);
+            stack_string_base<No> tmp;
+            snprintf(tmp.data(), No, fmt, cpp::forward<Args>(args)...);
+            dst.set_value(tmp.data(), tmp.length());
         }
 
         template<typename... Args>
@@ -132,7 +135,7 @@ namespace cpp
         }
 #endif
 
-        template<size_t No>
+        template<u64 No>
         constexpr auto& operator=(const stack_string_base<No>& other)
         {
             if (&other == this)
@@ -144,7 +147,7 @@ namespace cpp
             return *this;
         }
 
-        template<size_t No>
+        template<u64 No>
         constexpr auto& operator=(stack_string_base<No>&& other)
         {
             if (&other == this)
@@ -162,7 +165,7 @@ namespace cpp
             return *this;
         }
 
-        template<size_t No>
+        template<u64 No>
         constexpr auto& operator+=(const stack_string_base<No>& other)
         {
             append_value(other.c_str(), other.length(), this->length());
@@ -177,7 +180,7 @@ namespace cpp
             return result;
         }
 
-        template<size_t No>
+        template<u64 No>
         constexpr stack_string operator+(const stack_string_base<No>& other)
         {
             stack_string result;
@@ -186,20 +189,20 @@ namespace cpp
             return result;
         }
 
-        [[nodiscard]] constexpr char& operator[](const size_t pos)
+        [[nodiscard]] constexpr char& operator[](const u64 pos)
         {
             assert2(pos < capacity() && "pos can not be bigger than capacity");
             return m_str[pos];
         }
 
-        [[nodiscard]] constexpr const char& operator[](const size_t pos) const
+        [[nodiscard]] constexpr const char& operator[](const u64 pos) const
         {
             assert2(pos < capacity() && "pos can not be bigger than capacity");
             return m_str[pos];
         }
 
     private:
-        constexpr void set_value(const char* data, size_t size)
+        constexpr void set_value(const char* data, const u64 size)
         {
             const auto size_clamped = cpp::min(N - 1, size);
 
@@ -207,7 +210,7 @@ namespace cpp
             cpp::cx_copy_n(m_str, data, sizeof(char) * size_clamped);
         }
 
-        constexpr void append_value(const char* data, size_t size, size_t offset)
+        constexpr void append_value(const char* data, const u64 size, u64 offset)
         {
             const auto size_clamped = cpp::min(N - 1 - offset, size);
 
@@ -221,7 +224,7 @@ namespace cpp
 }
 
 #if ENABLE_STL
-template<size_t N>
+template<u64 N>
 struct std::hash<::cpp::stack_string_base<N>>
 {
     constexpr auto operator()(const cpp::stack_string_base<N>& t) const noexcept

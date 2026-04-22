@@ -22,7 +22,11 @@ layout (binding = 2) buffer MeshesDrawCommandsCount
     uint draw_commands_count;
 };
 
+#ifdef FOR_LATE_OCCLUSION_TEST
+layout (binding = 3) buffer MeshVisibilityBuffer
+#else
 layout (binding = 3) readonly buffer MeshVisibilityBuffer
+#endif
 {
     uint mesh_visibility_buffer[];
 };
@@ -44,14 +48,25 @@ layout (binding = 5) writeonly buffer DrawIndexedIndirects
 };
 #endif
 
+#ifdef FOR_LATE_OCCLUSION_TEST
+layout (binding = 6) uniform sampler2D depth_pyramid;
+#endif
+
 void main()
 {
     uint mi = gl_WorkGroupID.x;
     uint ti = gl_LocalInvocationID.x;
 
     uint idx = mi * gl_WorkGroupSize.x + ti;
+    bool inv_visibility_bit = (GET_BIT(mesh_visibility_buffer[idx >> 5], idx & 31u) == 0);
 
-    if (idx >= frame_cull.draw_count || GET_BIT(mesh_visibility_buffer[idx >> 5], idx & 31u) == 0)
+#ifdef FOR_LATE_OCCLUSION_TEST
+    const bool early_out = false;
+#else
+    bool early_out = inv_visibility_bit;
+#endif
+
+    if (idx >= frame_cull.draw_count || early_out)
     {
         return;
     }
@@ -68,7 +83,27 @@ void main()
     visible = visible && center.z - radius < -frame_cull.frustum[4] && center.z + radius > -frame_cull.frustum[5];
     visible = visible || GET_BIT(frame_cull.flags, kFrustumCullBit) == 0;
 
-    if (visible)
+#ifdef FOR_LATE_OCCLUSION_TEST
+    vec4 p_aabb;
+    if (visible && GET_BIT(frame_cull.flags, kOcclusionCullBit) == 1 && project_sphere(center, radius, frame_cull.frustum[4], frame_cull.p00, frame_cull.p11, p_aabb))
+    {
+        vec2 pmd_size = vec2(p_aabb.z - p_aabb.x, p_aabb.w - p_aabb.y) * frame_cull.pyramid_size;
+        float level = ceil(log2(max(pmd_size.x, pmd_size.y)));
+
+        float pmd_depth = textureLod(depth_pyramid, (p_aabb.xy + p_aabb.zw) * 0.5, level).x;
+        float spr_depth = -frame_cull.frustum[4] / (center.z + radius);
+
+        visible = visible && spr_depth >= pmd_depth;
+    }
+#endif
+
+#ifdef FOR_LATE_OCCLUSION_TEST
+    const bool skip_draw = !inv_visibility_bit;
+#else
+    const bool skip_draw = false;
+#endif
+
+    if (visible && !skip_draw)
     {
         const float kLODFactor = 10.0F;
         uint lod_base = min(meshes_data[idx].lod_count - 1, max(0, uint(floor(log2((length(-center) + kLODFactor) / kLODFactor)))));
@@ -77,14 +112,14 @@ void main()
 
         uint dci = atomicAdd(draw_commands_count, 1);
 
-        #ifdef FOR_MESH_PIPELINE
+#ifdef FOR_MESH_PIPELINE
         draw_indirect_cmds[dci].group_size[0] = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
         draw_indirect_cmds[dci].group_size[1] = 1;
         draw_indirect_cmds[dci].group_size[2] = 1;
 
         draw_indirect_cmds[dci].mesh_id = idx;
         draw_indirect_cmds[dci].base_meshlet = selected_lod.base_meshlet;
-        #else
+#else
         draw_indirect_cmds[dci].instance_count = 1;
         draw_indirect_cmds[dci].first_instance = 0;
         draw_indirect_cmds[dci].vertex_offset = int(meshes_data[idx].base_vertex);
@@ -92,6 +127,13 @@ void main()
         draw_indirect_cmds[dci].mesh_id = idx;
         draw_indirect_cmds[dci].first_index = selected_lod.base_index;
         draw_indirect_cmds[dci].index_count = selected_lod.indices_count;
-        #endif
+#endif
     }
+
+#ifdef FOR_LATE_OCCLUSION_TEST
+    if (visible)
+        atomicOr(mesh_visibility_buffer[idx >> 5], 1u << (idx & 31u));
+    else
+        atomicAnd(mesh_visibility_buffer[idx >> 5], ~(1u << (idx & 31u)));
+#endif
 }

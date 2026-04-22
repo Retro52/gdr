@@ -15,51 +15,51 @@ namespace cpp
 
         ~f16() = default;
 
-        f16(f32 value)
+        f16(const f32 value)
             : m_data(meshopt_quantizeHalf(value))
         {
         }
 
-        f32 to_f32() const { return meshopt_dequantizeHalf(m_data); }
+        [[nodiscard]] f32 to_f32() const { return meshopt_dequantizeHalf(m_data); }
 
-        f16& operator=(f32 value)
+        f16& operator=(const f32 value)
         {
             m_data = meshopt_quantizeHalf(value);
             return *this;
         }
 
-        f16& operator+=(f16 other)
+        f16& operator+=(const f16 other)
         {
             m_data = meshopt_quantizeHalf(this->to_f32() + other.to_f32());
             return *this;
         }
 
-        f16& operator-=(f16 other)
+        f16& operator-=(const f16 other)
         {
             m_data = meshopt_quantizeHalf(this->to_f32() - other.to_f32());
             return *this;
         }
 
-        f16& operator*=(f16 other)
+        f16& operator*=(const f16 other)
         {
             m_data = meshopt_quantizeHalf(this->to_f32() - other.to_f32());
             return *this;
         }
 
-        f16& operator/=(f16 other)
+        f16& operator/=(const f16 other)
         {
             m_data = meshopt_quantizeHalf(this->to_f32() - other.to_f32());
             return *this;
         }
 
-        f16 operator+(f16 other) const { return other += *this; }
+        [[nodiscard]] f16 operator+(const f16 other) const { return {this->to_f32() + other.to_f32()}; }
 
-        f16 operator-(f16 other) const { return other -= *this; }
+        [[nodiscard]] f16 operator-(const f16 other) const { return {this->to_f32() - other.to_f32()}; }
 
-        f16 operator*(f16 other) const { return other *= *this; }
+        [[nodiscard]] f16 operator*(const f16 other) const { return {this->to_f32() * other.to_f32()}; }
 
-        f16 operator/(f16 other) const { return other /= *this; }
+        [[nodiscard]] f16 operator/(const f16 other) const { return {this->to_f32() / other.to_f32()}; }
 
-        bool operator==(const f16& other) const { return m_data == other.m_data; }
+        [[nodiscard]] bool operator==(const f16& other) const { return m_data == other.m_data; }
     };
 }
