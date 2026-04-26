@@ -23,10 +23,17 @@ layout (binding = 4) readonly buffer MeshesTransforms
     MeshTransform meshes_transforms[];
 };
 
+#ifdef FOR_TASK_PIPELINE
+layout (binding = 5) readonly buffer DrawMeshIndirects
+{
+    DrawTaskCommandIndirect draw_mesh_cmds[];
+};
+#else
 layout (binding = 5) readonly buffer DrawMeshIndirects
 {
     DrawMeshIndirect draw_mesh_cmds[];
 };
+#endif
 
 layout (binding = 6) buffer FrameCullDataBuffer
 {
@@ -43,13 +50,18 @@ taskPayloadSharedEXT MeshletTask meshlet_task;
 
 void main()
 {
+#ifdef FOR_TASK_PIPELINE
+    uint mesh_id = draw_mesh_cmds[gl_WorkGroupID.x].mesh_id;
+    uint meshlets_in_task = draw_mesh_cmds[gl_WorkGroupID.x].meshlet_count;
+    uint meshlet_id = draw_mesh_cmds[gl_WorkGroupID.x].meshlet_offset + gl_LocalInvocationID.x;
+#else
+    uint meshlets_in_task = kTaskWorkGroups; // FIXME
     uint meshlet_warp = gl_WorkGroupID.x;
     uint meshlet_id = draw_mesh_cmds[gl_DrawID].base_meshlet + meshlet_warp * kTaskWorkGroups + gl_LocalInvocationID.x;
-
     uint mesh_id = draw_mesh_cmds[gl_DrawID].mesh_id;
-
+#endif
     meshlet_task.mesh_id = mesh_id;
-    meshlet_task.base_vertex = meshes_data[gl_DrawID].base_vertex;
+    meshlet_task.base_vertex = meshes_data[mesh_id].base_vertex;
 
     meshlets_count = 0;
     barrier();
@@ -93,7 +105,7 @@ void main()
         visible = visible && !(round(pmin.x - sp_prec) == round(pmax.x) || round(pmin.y) == round(pmax.y + sp_prec));
     }
 
-    if (visible)
+    if (visible && gl_LocalInvocationID.x < meshlets_in_task)
     {
         uint idx = atomicAdd(meshlets_count, 1);
         meshlet_task.meshlet_ids[idx] = meshlet_id;

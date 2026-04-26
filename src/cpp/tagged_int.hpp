@@ -26,6 +26,7 @@ namespace cpp
         // it would also probably mean I'd need to include type_traits and I don't really want to do that
         static_assert((-1 >> 1) == -1, "tagged_int requires arithmetic right shift");
 #endif
+        static_assert(N < kTotalBits, "tagged_int requires N to be smaller than the size of arithmetic type");
 
     public:
         constexpr tagged_int() = default;

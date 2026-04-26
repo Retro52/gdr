@@ -4,12 +4,12 @@
 
 using namespace render;
 
-vk_renderer::vk_renderer(const render::instance_desc& desc, const window& window)
+vk_renderer::vk_renderer(const render::instance_desc& desc, const window& window, bool vsync)
     : m_context(*render::create_context(window, desc))
 {
     ZoneScoped;
 
-    resize_swapchain(window.get_size_in_px());
+    recreate_swapchain(window.get_size_in_px(), vsync);
     m_in_flight_frames.resize(m_swapchain.images.size());
 
     const VkSemaphoreCreateInfo semaphore_create_info {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
@@ -49,18 +49,7 @@ vk_renderer::vk_renderer(const render::instance_desc& desc, const window& window
 void vk_renderer::resize_swapchain(ivec2 new_size)
 {
     ZoneScoped;
-
-    if (new_size == m_swapchain_size || new_size.x < 1 || new_size.y < 1)
-    {
-        return;
-    }
-
-    const auto new_swapchain = *render::create_swapchain(
-        m_context, VK_FORMAT_B8G8R8A8_SRGB, new_size, kFramesInFlight, kUseVsync, m_swapchain.vk_swapchain);
-    render::destroy_swapchain(m_context, m_swapchain);
-
-    m_swapchain_size = new_size;
-    m_swapchain      = new_swapchain;
+    recreate_swapchain(new_size, get_vsync());
 }
 
 [[nodiscard]] bool vk_renderer::acquire_frame()
@@ -68,13 +57,15 @@ void vk_renderer::resize_swapchain(ivec2 new_size)
     ZoneScoped;
     vkWaitForFences(m_context.device, 1, &m_in_flight_frames[m_frame_index].fence, VK_TRUE, UINT64_MAX);
 
+    u32 new_image_index       = 0;
     const auto acquire_result = vkAcquireNextImageKHR(m_context.device,
                                                       m_swapchain.vk_swapchain,
                                                       UINT64_MAX,
                                                       m_in_flight_frames[m_frame_index].acquire_semaphore,
                                                       VK_NULL_HANDLE,
-                                                      &m_image_index);
+                                                      &new_image_index);
 
+    m_image_index = new_image_index & 0xFF;
     switch (acquire_result)
     {
     case VK_SUCCESS :
@@ -127,13 +118,14 @@ void vk_renderer::present_frame(VkCommandBuffer buffer)
                                      &gfx_submit_info,
                                      m_in_flight_frames[m_frame_index].fence));
 
+    u32 img_index = m_image_index;
     const VkPresentInfoKHR present_info_khr {
         .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores    = &m_swapchain.images[m_image_index].release_semaphore,
+        .pWaitSemaphores    = &m_swapchain.images[img_index].release_semaphore,
         .swapchainCount     = 1,
         .pSwapchains        = &m_swapchain.vk_swapchain,
-        .pImageIndices      = &m_image_index,
+        .pImageIndices      = &img_index,
         .pResults           = nullptr,
     };
 
@@ -150,15 +142,15 @@ void vk_renderer::present_frame(VkCommandBuffer buffer)
         VK_ASSERT_ON_FAIL(present_result);
     }
 
-    m_frame_index = (m_frame_index + 1) % m_in_flight_frames.size();
+    m_frame_index = (m_frame_index.value() + 1) % m_in_flight_frames.size();
 }
 
-u32 vk_renderer::get_frame_index() const
+u8 vk_renderer::get_frame_index() const
 {
     return m_frame_index;
 }
 
-u32 vk_renderer::get_frames_in_flight() const
+u8 vk_renderer::get_frames_in_flight() const
 {
     return m_in_flight_frames.size();
 }
@@ -198,4 +190,30 @@ u32 vk_renderer::get_frames_in_flight() const
 [[nodiscard]] render::swapchain_image vk_renderer::get_frame_swapchain_image() const
 {
     return m_swapchain.images[m_image_index];
+}
+
+void vk_renderer::set_vsync(bool vsync)
+{
+    recreate_swapchain(m_swapchain_size, vsync);
+}
+
+[[nodiscard]] bool vk_renderer::get_vsync() const
+{
+    return m_frame_index.get_flag(tagged_bits::vsync_bit);
+}
+
+void vk_renderer::recreate_swapchain(ivec2 new_size, bool vsync)
+{
+    if ((new_size == m_swapchain_size || new_size.x < 1 || new_size.y < 1) && vsync == get_vsync())
+    {
+        return;
+    }
+
+    const auto new_swapchain = *render::create_swapchain(
+        m_context, VK_FORMAT_B8G8R8A8_UNORM, new_size, kFramesInFlight, vsync, m_swapchain.vk_swapchain);
+    render::destroy_swapchain(m_context, m_swapchain);
+
+    m_swapchain_size = new_size;
+    m_swapchain      = new_swapchain;
+    m_frame_index.set_flag(tagged_bits::vsync_bit, vsync);
 }

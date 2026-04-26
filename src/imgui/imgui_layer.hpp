@@ -14,7 +14,7 @@ public:
 
     ~imgui_layer();
 
-    void begin_frame(const render::vk_renderer& renderer);
+    void begin_frame();
 
     void end_frame(const render::vk_renderer& renderer);
 

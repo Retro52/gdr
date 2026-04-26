@@ -61,6 +61,13 @@ struct DrawMeshIndirect
     uint mesh_id;
 };
 
+struct DrawTaskCommandIndirect
+{
+    uint mesh_id;
+    uint meshlet_count;
+    uint meshlet_offset;
+};
+
 struct DrawIndexedIndirect
 {
     uint index_count;

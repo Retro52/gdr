@@ -170,7 +170,9 @@ void begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView depth, 
 
 void reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& draw_count_buffer)
 {
-    vkCmdFillBuffer(cmd, draw_count_buffer.buffer, 0, draw_count_buffer.size, 0);
+    vkCmdFillBuffer(cmd, draw_count_buffer.buffer, 0, sizeof(u32), 0);
+    vkCmdFillBuffer(cmd, draw_count_buffer.buffer, sizeof(u32), sizeof(u32[2]), 1);
+
     render::cmd_buffer_barrier(cmd,
                                draw_count_buffer.buffer,
                                VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -179,7 +181,7 @@ void reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& draw_
                                VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
 }
 
-void draw_scene(const bool use_meshlets, VkCommandBuffer cmd, const render::vk_pipeline& pipeline,
+void draw_scene(const bool use_meshlets, const bool use_tasks, VkCommandBuffer cmd, const render::vk_pipeline& pipeline,
                 const render::vk_scene_geometry_pool& geometry_pool, const render::vk_buffer& meshes_data,
                 const render::vk_buffer& meshes_transforms, const render::vk_buffer& draw_count_buffer,
                 const render::vk_buffer& draw_indirect_cmds_buffer,
@@ -196,6 +198,11 @@ void draw_scene(const bool use_meshlets, VkCommandBuffer cmd, const render::vk_p
                                                               frame_cull_data_buffer.buffer};
 
         pipeline.push_descriptor_set(cmd, render_bindings);
+        if (use_tasks)
+        {
+            vkCmdDrawMeshTasksIndirectEXT(cmd, draw_count_buffer.buffer, 0, 1, 0);
+            return;
+        }
         vkCmdDrawMeshTasksIndirectCountEXT(cmd,
                                            draw_indirect_cmds_buffer.buffer,
                                            0,
@@ -452,7 +459,8 @@ int main(int argc, char* argv[])
             .app_version     = 1,
             .device_features = features_table,
         },
-        client_window);
+        client_window,
+        false);
     depth_image_data depth_image = create_depth_image(client_window.get_size_in_px(),
                                                       renderer.get_swapchain().depth_format,
                                                       renderer.get_context().device,
@@ -540,6 +548,12 @@ int main(int argc, char* argv[])
     render::vk_pipeline meshlets_cull_pipeline;
     render::vk_pipeline meshlets_render_pipeline;
     render::vk_pipeline meshlets_occlusion_cull_pipeline;
+
+    render::vk_pipeline task_cull_pipeline;
+    render::vk_pipeline task_render_pipeline;
+    render::vk_pipeline task_occlusion_cull_pipeline;
+
+    // TODO: resource system pls before I go insane
     if (mesh_shading_supported)
     {
         render::vk_shader meshlets_shaders[] = {
@@ -548,12 +562,24 @@ int main(int argc, char* argv[])
             *render::vk_shader::load(renderer, "../shaders/bin/meshlets.frag.spv"),
         };
 
+        render::vk_shader task_shaders[] = {
+            *render::vk_shader::load(renderer, "../shaders/bin/meshlets_submit.task.spv"),
+            meshlets_shaders[1],
+            meshlets_shaders[2],
+        };
+
+        // tasks
+        task_render_pipeline = *render::vk_pipeline::create_graphics(renderer, task_shaders, COUNT_OF(task_shaders));
+        task_cull_pipeline   = *render::vk_pipeline::create_compute(
+            renderer, *render::vk_shader::load(renderer, "../shaders/bin/cull_tasks.comp.spv"));
+        task_occlusion_cull_pipeline = *render::vk_pipeline::create_compute(
+            renderer, *render::vk_shader::load(renderer, "../shaders/bin/cull_occlusion_tasks.comp.spv"));
+
+        // meshlets
         meshlets_render_pipeline =
             *render::vk_pipeline::create_graphics(renderer, meshlets_shaders, COUNT_OF(meshlets_shaders));
-
         meshlets_cull_pipeline = *render::vk_pipeline::create_compute(
             renderer, *render::vk_shader::load(renderer, "../shaders/bin/cull_meshlets.comp.spv"));
-
         meshlets_occlusion_cull_pipeline = *render::vk_pipeline::create_compute(
             renderer, *render::vk_shader::load(renderer, "../shaders/bin/cull_occlusion_meshlets.comp.spv"));
     }
@@ -614,7 +640,7 @@ int main(int argc, char* argv[])
     }
 
     render::vk_buffer draw_count_buffer = *render::create_buffer(
-        sizeof(u32),
+        sizeof(u32[3]),
         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         renderer.get_context().allocator,
         0);
@@ -668,6 +694,9 @@ int main(int argc, char* argv[])
 
     u32 flags                     = 0xFFFF;
     bool freeze_cull_data         = false;
+    bool enable_vsync             = renderer.get_vsync();
+    bool enable_fullscreen        = client_window.get_fullscreen();
+    bool enable_task_pipeline     = false;
     bool enable_meshlets_pipeline = mesh_shading_supported;
 
 #if TEST_MULTI_OBJECTS
@@ -705,6 +734,12 @@ int main(int argc, char* argv[])
         auto& camera_transform = camera.get_component<transform_component>();
         auto& camera_data      = camera.get_component<camera_component>();
         controller.update(camera_transform, camera_data, static_cast<f32>(dt));
+
+        if (renderer.get_vsync() != enable_vsync)
+        {
+            renderer.set_vsync(enable_vsync);
+            return;
+        }
 
         if (!renderer.acquire_frame())
         {
@@ -770,7 +805,8 @@ int main(int argc, char* argv[])
                                                                                  : indexed_draw_indirect_buffer.buffer};
 
                     const render::vk_pipeline& cull_pass =
-                        enable_meshlets_pipeline ? meshlets_cull_pipeline : indexed_cull_pipeline;
+                        enable_meshlets_pipeline ? (enable_task_pipeline ? task_cull_pipeline : meshlets_cull_pipeline)
+                                                 : indexed_cull_pipeline;
                     cull_pass.bind(buffer);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
 
@@ -805,7 +841,8 @@ int main(int argc, char* argv[])
                 vkCmdSetViewport(buffer, 0, 1, &viewport);
 
                 const auto& render_pipeline =
-                    enable_meshlets_pipeline ? meshlets_render_pipeline : indexed_render_pipeline;
+                    enable_meshlets_pipeline ? (enable_task_pipeline ? task_render_pipeline : meshlets_render_pipeline)
+                                             : indexed_render_pipeline;
                 render_pipeline.bind(buffer);
                 render_pipeline.push_constant(buffer, pc_data {.pv = camera_proj_view});
 
@@ -819,6 +856,7 @@ int main(int argc, char* argv[])
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "draw last frame occluders"));
 
                     draw_scene(enable_meshlets_pipeline,
+                               enable_task_pipeline,
                                buffer,
                                render_pipeline,
                                geometry_pool,
@@ -885,7 +923,10 @@ int main(int argc, char* argv[])
                             depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL)};
 
                     const render::vk_pipeline& cull_pass =
-                        enable_meshlets_pipeline ? meshlets_occlusion_cull_pipeline : indexed_cull_occlusion_pipeline;
+                        enable_meshlets_pipeline
+                            ? (enable_task_pipeline ? task_occlusion_cull_pipeline : meshlets_occlusion_cull_pipeline)
+                            : indexed_cull_occlusion_pipeline;
+
                     cull_pass.bind(buffer);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
 
@@ -910,6 +951,7 @@ int main(int argc, char* argv[])
                                     VK_ATTACHMENT_STORE_OP_STORE,
                                     renderer.get_scissor());
                     draw_scene(enable_meshlets_pipeline,
+                               enable_task_pipeline,
                                buffer,
                                render_pipeline,
                                geometry_pool,
@@ -933,15 +975,20 @@ int main(int argc, char* argv[])
                     ZoneScopedN("main.draw.editor");
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), buffer, "editor"));
 
-                    editor.begin_frame(renderer);
+                    editor.begin_frame();
 
-                    ImGui::SeparatorText("debug");
-
-                    static mouse_button debug_button = mouse_button::left;
-                    ImGuiEx::Enum("Mouse state: ", debug_button);
-                    ImGui::Text(
-                        "%s",
-                        reflection::string_from_enum<button_state>(client_events.get_mouse_button_state(debug_button)));
+                    if (ImGui::CollapsingHeader("Mouse state"))
+                    {
+                        const auto values = reflection::get_enum_values<mouse_button>();
+                        for (int i = 0; i < reflection::get_enum_values_count<mouse_button>(); i++)
+                        {
+                            ImGui::Text(
+                                "%s: %s",
+                                reflection::string_from_enum<mouse_button>(static_cast<mouse_button>(values[i].value)),
+                                reflection::string_from_enum<button_state>(
+                                    client_events.get_mouse_button_state(static_cast<mouse_button>(values[i].value))));
+                        }
+                    }
 
                     ImGui::SeparatorText("camera controller");
                     codegen::draw(controller);
@@ -954,7 +1001,14 @@ int main(int argc, char* argv[])
 
                     ImGui::SeparatorText("renderer settings");
                     codegen::draw(client_render_settings);
+                    ImGui::Checkbox("Enable vsync", &enable_vsync);
+                    if (ImGui::Checkbox("Enable fullscreen", &enable_fullscreen))
+                    {
+                        client_window.set_fullscreen(enable_fullscreen);
+                    }
+
                     ImGui::BeginDisabled(!mesh_shading_supported);
+                    ImGui::Checkbox("Enable task path", &enable_task_pipeline);
                     ImGui::Checkbox("Enable meshlets path", &enable_meshlets_pipeline);
                     ImGui::EndDisabled();
 

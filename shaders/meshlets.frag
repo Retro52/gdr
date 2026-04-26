@@ -4,13 +4,9 @@
 #include "include/shaders/constants.h"
 
 in VS_IN {
-    layout (location = 0) in vec2 uv;
-    layout (location = 1) in vec3 normal;
-    layout (location = 2) in vec3 tangent;
-    layout (location = 3) in vec3 bitangent;
-    layout (location = 4) in vec4 world_pos;
+    layout (location = 0) in vec3 normal;
 #if VISUALIZE_MESHLETS
-    layout (location = 5) flat in uint meshlet_id;
+    layout (location = 1) flat in uint meshlet_id;
 #endif
 } vs_in;
 

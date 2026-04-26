@@ -67,7 +67,6 @@ string(STRIP "${SHADERS_CONFIG}" SHADERS_CONFIG)
 string(REPLACE "\n" ";" SHADERS_CONFIG "${SHADERS_CONFIG}")
 
 foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
-    message(STATUS "SC '${SHADER_CONFIG}'")
     if (NOT SHADER_CONFIG)
         continue()
     endif ()

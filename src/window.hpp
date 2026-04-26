@@ -1,11 +1,14 @@
 #pragma once
 
-#include <SDL3/SDL.h>
 #if defined(SDL_PLATFORM_APPLE)
 #include <SDL3/SDL_metal.h>
 #endif
 
 #include <types.hpp>
+
+#include <cpp/tagged_int.hpp>
+
+struct SDL_Window;
 
 class window
 {
@@ -67,9 +70,13 @@ public:
 
     ~window();
 
-    [[nodiscard]] native get_native_handle() const noexcept;
-
     bool set_size(ivec2 size) const noexcept;
+
+    void set_fullscreen(bool fullscreen) noexcept;
+
+    [[nodiscard]] bool get_fullscreen() const noexcept;
+
+    [[nodiscard]] native get_native_handle() const noexcept;
 
     [[nodiscard]] ivec2 get_size() const noexcept;
 

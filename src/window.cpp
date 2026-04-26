@@ -1,3 +1,5 @@
+#include <SDL3/SDL.h>
+
 #include <render/static_model.hpp>
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
@@ -25,6 +27,16 @@ window::~window()
     SDL_Metal_DestroyView(m_metal_view);
 #endif
     SDL_DestroyWindow(m_window);
+}
+
+void window::set_fullscreen(bool fullscreen) noexcept
+{
+    SDL_SetWindowFullscreen(m_window, fullscreen);
+}
+
+[[nodiscard]] bool window::get_fullscreen() const noexcept
+{
+    return SDL_GetWindowFlags(m_window) & SDL_WINDOW_FULLSCREEN;
 }
 
 [[nodiscard]] window::native window::get_native_handle() const noexcept

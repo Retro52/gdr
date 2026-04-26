@@ -26,13 +26,9 @@ layout (push_constant) uniform constants
 } pc;
 
 out VS_OUT {
-    layout (location = 0) out vec2 uv;
-    layout (location = 1) out vec3 normal;
-    layout (location = 2) out vec3 tangent;
-    layout (location = 3) out vec3 bitangent;
-    layout (location = 4) out vec4 world_pos;
+    layout (location = 0) out vec3 normal;
 #if VISUALIZE_MESHLETS
-    layout (location = 5) out flat uint meshlet_id;
+    layout (location = 1) out flat uint meshlet_id;
 #endif
 } vs_out;
 
@@ -43,7 +39,7 @@ void main()
     vec3 local_pos = vec3(v.px, v.py, v.pz);
     uint mesh_id = draw_cmds[gl_DrawID].mesh_id;
 
-    vs_out.world_pos = vec4(transform_vec3(local_pos, meshes_transforms[mesh_id].pos_and_scale, meshes_transforms[mesh_id].rotation_quat), 1.0);
+    vec4 world_pos = vec4(transform_vec3(local_pos, meshes_transforms[mesh_id].pos_and_scale, meshes_transforms[mesh_id].rotation_quat), 1.0);
     vs_out.normal = vec3(v.nx, v.ny, v.nz);
 
 #if 0
@@ -56,5 +52,5 @@ void main()
     vs_out.meshlet_id = gl_VertexIndex;
 #endif
 
-    gl_Position = pc.vp * vs_out.world_pos;
+    gl_Position = pc.vp * world_pos;
 }

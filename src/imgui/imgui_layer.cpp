@@ -49,7 +49,7 @@ imgui_layer::imgui_layer(const window& window, const render::vk_renderer& render
     VkImageCreateInfo image_info {
         .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType   = VK_IMAGE_TYPE_2D,
-        .format      = VK_FORMAT_B8G8R8A8_SRGB,
+        .format      = renderer.get_swapchain().surface_format.format,
         .extent      = {kAtlasWidth, kAtlasHeight, 1},
         .mipLevels   = 1,
         .arrayLayers = 1,
@@ -91,14 +91,17 @@ imgui_layer::~imgui_layer()
     ImGui::DestroyContext();
 }
 
-void imgui_layer::begin_frame(const render::vk_renderer& renderer)
+void imgui_layer::begin_frame()
 {
     m_atlas_data.reset_cursor();
 
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
+}
 
+void imgui_layer::end_frame(const render::vk_renderer& renderer)
+{
     VkRenderingAttachmentInfo color_attachment_info {
         .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView   = renderer.get_frame_swapchain_image().image_view,
@@ -106,8 +109,8 @@ void imgui_layer::begin_frame(const render::vk_renderer& renderer)
         .loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD,
         .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
         .clearValue  = {
-                        .color = {0.0F, 0.0F, 0.0F, 1.0F},
-                        }
+            .color = {0.0F, 0.0F, 0.0F, 1.0F},
+            }
     };
 
     const VkRenderingInfo rendering_info {.sType                = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
@@ -116,15 +119,6 @@ void imgui_layer::begin_frame(const render::vk_renderer& renderer)
                                           .colorAttachmentCount = 1,
                                           .pColorAttachments    = &color_attachment_info};
 
-    renderer.submit(
-        [&](VkCommandBuffer cmd)
-        {
-            vkCmdBeginRendering(cmd, &rendering_info);
-        });
-}
-
-void imgui_layer::end_frame(const render::vk_renderer& renderer)
-{
     if (ImGui::CollapsingHeader("pick into the atlas data"))
     {
         ImGui::Image(m_atlas_data.imgui_descriptor,
@@ -135,6 +129,7 @@ void imgui_layer::end_frame(const render::vk_renderer& renderer)
     renderer.submit(
         [&, this](VkCommandBuffer cmd)
         {
+            vkCmdBeginRendering(cmd, &rendering_info);
             ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
             vkCmdEndRendering(cmd);
             this->flush_pending(cmd);

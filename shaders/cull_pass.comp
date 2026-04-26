@@ -37,10 +37,17 @@ layout (binding = 4) readonly buffer FrameCullDataBuffer
 };
 
 #ifdef FOR_MESH_PIPELINE
+#ifdef FOR_TASK_PIPELINE
+layout (binding = 5) writeonly buffer DrawMeshIndirects
+{
+    DrawTaskCommandIndirect draw_indirect_cmds[];
+};
+#else
 layout (binding = 5) writeonly buffer DrawMeshIndirects
 {
     DrawMeshIndirect draw_indirect_cmds[];
 };
+#endif
 #else
 layout (binding = 5) writeonly buffer DrawIndexedIndirects
 {
@@ -110,16 +117,29 @@ void main()
         lod_base = GET_BIT(frame_cull.flags, kLodFlagBit) == 0 ? 0 : lod_base;
         LODData selected_lod = meshes_data[idx].lod_array[lod_base];
 
-        uint dci = atomicAdd(draw_commands_count, 1);
-
 #ifdef FOR_MESH_PIPELINE
-        draw_indirect_cmds[dci].group_size[0] = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
+        uint taskCount = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
+#ifdef FOR_TASK_PIPELINE
+        uint dci = atomicAdd(draw_commands_count, taskCount);
+        for (uint i = taskCount; i > 0; i--)
+        {
+            uint dcii = dci + taskCount - i;
+            uint offset = kTaskWorkGroups * (taskCount - i);
+            draw_indirect_cmds[dcii].mesh_id = idx;
+            draw_indirect_cmds[dcii].meshlet_offset = selected_lod.base_meshlet + offset;
+            draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups);
+        }
+#else
+        uint dci = atomicAdd(draw_commands_count, 1);
+        draw_indirect_cmds[dci].group_size[0] = taskCount;
         draw_indirect_cmds[dci].group_size[1] = 1;
         draw_indirect_cmds[dci].group_size[2] = 1;
 
         draw_indirect_cmds[dci].mesh_id = idx;
         draw_indirect_cmds[dci].base_meshlet = selected_lod.base_meshlet;
+#endif
 #else
+        uint dci = atomicAdd(draw_commands_count, 1);
         draw_indirect_cmds[dci].instance_count = 1;
         draw_indirect_cmds[dci].first_instance = 0;
         draw_indirect_cmds[dci].vertex_offset = int(meshes_data[idx].base_vertex);

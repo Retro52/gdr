@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cpp/containers/heap_array.hpp>
+#include <cpp/tagged_int.hpp>
 #include <render/platform/vk/vk_command_buffer.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <tracy/TracyVulkan.hpp>
@@ -21,7 +22,7 @@ namespace render
         };
 
     public:
-        vk_renderer(const render::instance_desc& desc, const window& window);
+        vk_renderer(const render::instance_desc& desc, const window& window, bool vsync);
 
         [[nodiscard]] const render::context& get_context() const;
 
@@ -33,9 +34,9 @@ namespace render
 
         void present_frame(VkCommandBuffer buffer);
 
-        [[nodiscard]] u32 get_frame_index() const;
+        [[nodiscard]] u8 get_frame_index() const;
 
-        [[nodiscard]] u32 get_frames_in_flight() const;
+        [[nodiscard]] u8 get_frames_in_flight() const;
 
         [[nodiscard]] VkRect2D get_scissor() const;
 
@@ -49,6 +50,10 @@ namespace render
 
         [[nodiscard]] render::swapchain_image get_frame_swapchain_image() const;
 
+        void set_vsync(bool vsync);
+
+        [[nodiscard]] bool get_vsync() const;
+
         template<typename Func>
         void submit(Func&& func) const
         {
@@ -56,10 +61,17 @@ namespace render
         }
 
     private:
-        constexpr static bool kUseVsync      = false;
-        constexpr static u32 kFramesInFlight = 2;
+        void recreate_swapchain(ivec2 new_size, bool vsync);
 
     private:
+        constexpr static u32 kFramesInFlight = 2;
+
+        enum tagged_bits
+        {
+            vsync_bit,
+            count
+        };
+
         render::context m_context;
         render::swapchain m_swapchain;
 
@@ -67,7 +79,7 @@ namespace render
 
         ivec2 m_swapchain_size {};
 
-        u32 m_frame_index {0};
-        u32 m_image_index {0};
+        cpp::tagged_int<u8, tagged_bits::count> m_frame_index {0};
+        u8 m_image_index {0};
     };
 }

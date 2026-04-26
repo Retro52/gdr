@@ -23,8 +23,8 @@ namespace shader_constants
 
     const uint kLODCount = 8;
 
-    const uint kTaskWorkGroups = 32;
-    const uint kMeshWorkGroups = 32;
+    const uint kTaskWorkGroups = 64;
+    const uint kMeshWorkGroups = 64;
 #ifdef __cplusplus
 }
 #endif
