@@ -52,6 +52,11 @@ public:
         return clone;
     }
 
+    [[nodiscard]] entt::entity get_native() const noexcept
+    {
+        return m_entity;
+    }
+
 private:
     friend class scene;
 

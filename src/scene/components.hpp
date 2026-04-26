@@ -8,28 +8,24 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
-#include <render/static_model.hpp>
 
 /// @imgui
 struct transform_component
 {
-    vec3 position;
+    vec3 position {0.0F};
     float uniform_scale {1.0F};
-    glm::quat rotation;
+    glm::quat rotation {};
+
+    transform_component() = default;
+    explicit transform_component(const glm::mat4& transform);
+    explicit transform_component(const vec3& position, float uniform_scale, const glm::quat& rotation);
 };
 
 /// @imgui
-struct static_model_component
+struct mesh_component
 {
-    static_model model;
-};
-
-/// @imgui
-struct directional_light_component
-{
-    /// @color
-    vec3 color;
-    vec3 direction;
+    u32 mesh_offset;
+    u32 primitives_count;
 };
 
 /// @imgui

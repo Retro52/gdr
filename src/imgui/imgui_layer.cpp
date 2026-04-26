@@ -34,7 +34,7 @@ imgui_layer::imgui_layer(const window& window, const render::vk_renderer& render
     init_info.DescriptorPool                               = VK_NULL_HANDLE;
     init_info.MinImageCount                                = 2;
     init_info.ImageCount                                   = renderer.get_frames_in_flight();
-    init_info.DescriptorPoolSize                           = IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE;
+    init_info.DescriptorPoolSize                           = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE;
     init_info.Allocator                                    = nullptr;
     init_info.PipelineInfoMain.PipelineRenderingCreateInfo = {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
@@ -109,8 +109,8 @@ void imgui_layer::end_frame(const render::vk_renderer& renderer)
         .loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD,
         .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
         .clearValue  = {
-            .color = {0.0F, 0.0F, 0.0F, 1.0F},
-            }
+                        .color = {0.0F, 0.0F, 0.0F, 1.0F},
+                        }
     };
 
     const VkRenderingInfo rendering_info {.sType                = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
@@ -165,18 +165,19 @@ bool imgui_layer::allocate_region(u32 w, u32 h, VkOffset2D& out_offset)
     return true;
 }
 
-void imgui_layer::image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size)
+void imgui_layer::image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size, f32 brightness)
 {
-    image_impl(image, view, size, {uv.x, uv.y}, {uv.z, uv.w}, src_layout, VK_IMAGE_ASPECT_COLOR_BIT);
+    image_impl(image, view, size, {uv.x, uv.y}, {uv.z, uv.w}, src_layout, brightness, VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
-void imgui_layer::depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size)
+void imgui_layer::depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size,
+                              f32 brightness)
 {
-    image_impl(image, view, size, {uv.x, uv.y}, {uv.z, uv.w}, src_layout, VK_IMAGE_ASPECT_DEPTH_BIT);
+    image_impl(image, view, size, {uv.x, uv.y}, {uv.z, uv.w}, src_layout, brightness, VK_IMAGE_ASPECT_DEPTH_BIT);
 }
 
 void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec2 uv0, ImVec2 uv1,
-                             VkImageLayout src_layout, VkImageAspectFlags aspect)
+                             VkImageLayout src_layout, f32 brightness, VkImageAspectFlags aspect)
 {
     VkOffset2D offset;
     if (!allocate_region(static_cast<u32>(size.x), static_cast<u32>(size.y), offset))
@@ -192,6 +193,7 @@ void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec
         .extent     = {static_cast<u32>(size.x), static_cast<u32>(size.y)},
         .src_layout = src_layout,
         .aspect     = aspect,
+        .brightness = brightness
     });
 
     ImVec2 atlas_uv0 {static_cast<f32>(offset.x) / kAtlasWidth, static_cast<f32>(offset.y) / kAtlasHeight};
@@ -212,7 +214,7 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
         return;
     }
 
-    std::vector<VkImageMemoryBarrier2> barriers(m_pending_uploads.size());
+    cpp::heap_array<VkImageMemoryBarrier2> barriers(m_pending_uploads.size());
 
     for (u32 i = 0; i < m_pending_uploads.size(); ++i)
     {
@@ -274,12 +276,7 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
         vkCmdSetViewport(cmd, 0, 1, &viewport);
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        struct push_constants
-        {
-            u32 is_depth;
-        } pc {.is_depth = req.aspect == VK_IMAGE_ASPECT_DEPTH_BIT ? 1u : 0u};
-
-        m_blit_pipeline.push_constant(cmd, pc);
+        m_blit_pipeline.push_constant(cmd, req.brightness);
 
         render::vk_descriptor_info descriptor {
             m_atlas_data.sampler, req.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};

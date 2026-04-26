@@ -1,6 +1,5 @@
 #include <SDL3/SDL.h>
 
-#include <render/static_model.hpp>
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
 

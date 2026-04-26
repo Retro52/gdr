@@ -1,12 +1,12 @@
 #pragma once
 
-#include <fs/path.hpp>
-#include <render/platform/vk/vk_buffer.hpp>
+#include <fs/fs.hpp>
 #include <render/platform/vk/vk_geometry_pool.hpp>
-#include <render/platform/vk/vk_renderer.hpp>
 #include <shaders/constants.h>
 
-struct static_model
+class scene;
+
+namespace loader
 {
     constexpr static u32 kMaxIndicesPerMeshlet   = shader_constants::kMaxIndicesPerMeshlet;
     constexpr static u32 kMaxVerticesPerMeshlet  = shader_constants::kMaxVerticesPerMeshlet;
@@ -34,6 +34,20 @@ struct static_model
         u8 triangles_count;
     };
 
+    struct primitive
+    {
+        vec4 b_sphere;
+        u32 base_vertex {0};
+        u32 lod_count {0};
+        lod lod_array[kLODCount];
+    };
+
+    struct mesh_desc
+    {
+        u32 offset;
+        u32 prim_count;
+    };
+
     struct vertex
     {
         vec3 position;
@@ -50,10 +64,12 @@ struct static_model
         cpp::heap_array<u32> indices;
     };
 
-    static result<cpp::heap_array<static_model>> load(const fs::path& path, render::vk_scene_geometry_pool& geometry_pool);
+    struct stats
+    {
+        u64 meshes     = 0;
+        u64 primitives = 0;
+        u64 triangles  = 0;
+    };
 
-    vec4 b_sphere;
-    u32 base_vertex {0};
-    u32 lod_count {0};
-    lod lod_array[kLODCount];
-};
+    stats load(const fs::path& path, scene& scene, render::vk_scene_geometry_pool& geometry_pool);
+}

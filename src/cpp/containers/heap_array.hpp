@@ -164,6 +164,15 @@ namespace cpp
             m_end += count;
         }
 
+        void reserve(const u64 new_capacity)
+        {
+            ZoneScoped;
+            if (new_capacity > capacity())
+            {
+                grow(new_capacity);
+            }
+        }
+
         void resize(const u64 new_size)
         {
             ZoneScoped;

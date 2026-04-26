@@ -39,3 +39,10 @@ CMakeCache.txt
 
 # Apple weird shit
 .DS_Store
+
+# gltf binary files
+*.glb
+*.gltf
+
+# local data files
+data

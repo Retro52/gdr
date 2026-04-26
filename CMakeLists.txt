@@ -38,12 +38,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         glm::glm
         EnTT::EnTT
         volk::volk
-        assimp::assimp
         Tracy::TracyClient
         SPIRV-Headers::SPIRV-Headers
         GPUOpen::VulkanMemoryAllocator
 
         imgui
+        cgltf
         meshoptimizer
         nlohmann_json
 )
@@ -55,4 +55,12 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 target_include_directories(${PROJECT_NAME} PUBLIC
         "${PROJECT_SOURCE_DIR}/src"
         "${CODEGEN_ROOT}"
+)
+
+add_custom_target(clean_build
+        COMMAND ${CMAKE_COMMAND} -E echo "Removing ${CMAKE_BINARY_DIR}/*.exe..."
+        COMMAND ${CMAKE_COMMAND} -E remove "${CMAKE_BINARY_DIR}/*.exe"
+        COMMAND ${CMAKE_COMMAND} -E echo "Removing ${SHADERS_BIN_FOLDER}..."
+        COMMAND ${CMAKE_COMMAND} -E remove_directory ${SHADERS_BIN_FOLDER}
+        COMMAND ${CMAKE_COMMAND} -E echo "Clean complete."
 )

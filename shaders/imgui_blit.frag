@@ -7,21 +7,13 @@ layout (set = 0, binding = 0) uniform sampler2D u_source;
 
 layout (push_constant) uniform PushConstants
 {
-    uint is_depth;
+    float brightness;
 };
 
 void main()
 {
     vec4 sampled = texture(u_source, in_uv);
 
-    if (is_depth == 1)
-    {
-        const float kContrast = 1000.0F;
-        out_color = sampled * kContrast;
-    }
-    else
-    {
-        const float kContrast = 1000.0F;
-        out_color = sampled * kContrast;
-    }
+    const float kContrast = 1000.0F;
+    out_color = sampled * mix(1.0F, kContrast, brightness);
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <entt/entt.hpp>
+#include <scene/scene_hierarchy.hpp>
 
 class entity;
 
@@ -30,6 +30,18 @@ public:
     }
 
     template<typename T>
+    [[nodiscard]] T* try_get_component(entt::entity entity)
+    {
+        return m_registry.try_get<T>(entity);
+    }
+
+    template<typename T>
+    [[nodiscard]] const T* try_get_component(entt::entity entity) const
+    {
+        return m_registry.try_get<T>(entity);
+    }
+
+    template<typename T>
     [[nodiscard]] bool has_component(entt::entity entity) const
     {
         return m_registry.all_of<T>(entity);
@@ -40,6 +52,9 @@ public:
     {
         return m_registry.emplace<T>(entity, std::forward<Args>(args)...);
     }
+
+public:
+    DEBUG_ONLY(scene_hierarchy hierarchy);
 
 private:
     entt::registry m_registry;

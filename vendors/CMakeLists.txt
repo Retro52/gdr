@@ -7,9 +7,6 @@ add_subdirectory(tinyxml2)
 add_subdirectory(spirv-headers)
 add_subdirectory(meshoptimizer)
 
-set(ASSIMP_BUILD_TESTS OFF)
-add_subdirectory(assimp)
-
 set(TRACY_ENABLE ON)
 set(TRACY_ON_DEMAND ON)
 add_subdirectory(tracy)
@@ -39,3 +36,6 @@ target_include_directories(imgui PUBLIC imgui)
 target_compile_definitions(imgui PUBLIC IMGUI_IMPL_VULKAN_USE_VOLK)
 
 target_link_libraries(imgui PUBLIC SDL3::SDL3 volk::volk)
+
+add_library(cgltf INTERFACE)
+target_include_directories(cgltf INTERFACE cgltf)

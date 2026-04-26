@@ -28,6 +28,8 @@ namespace render
         vk_shared_buffer index;
         vk_shared_buffer vertex;
         vk_shared_buffer meshlets;
+        vk_shared_buffer primitives;
+        vk_shared_buffer transforms;
         vk_shared_buffer meshlets_payload;
 
         vk_buffer_transfer transfer;

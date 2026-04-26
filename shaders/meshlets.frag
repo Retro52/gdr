@@ -40,9 +40,11 @@ vec3 meshlet_color(uint id)
 
 void main()
 {
+    const vec3 sun_dir = vec3(-1.0F);
+
 #if VISUALIZE_MESHLETS
     o_frag_color = vec4(meshlet_color(vs_in.meshlet_id), 1.0F);
 #else
-    o_frag_color = vec4(vs_in.normal, 1.0F);
+    o_frag_color = vec4(vec3(dot(vs_in.normal, sun_dir)), 1.0F);
 #endif
 }

@@ -1,6 +1,3 @@
-[submodule "vendors/assimp"]
-	path = vendors/assimp
-	url = https://github.com/assimp/assimp.git
 [submodule "vendors/glm"]
 	path = vendors/glm
 	url = https://github.com/g-truc/glm.git
@@ -34,3 +31,6 @@
 [submodule "vendors/spirv-headers"]
 	path = vendors/spirv-headers
 	url = https://github.com/KhronosGroup/SPIRV-Headers.git
+[submodule "vendors/cgltf"]
+	path = vendors/cgltf
+	url = https://github.com/jkuhlmann/cgltf.git

@@ -19,9 +19,9 @@ public:
     void end_frame(const render::vk_renderer& renderer);
 
     void image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv = {0, 0, 1, 1},
-               ImVec2 size = {256, 256});
+               ImVec2 size = {256, 256}, f32 brightness = 0.0f);
     void depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv = {0, 0, 1, 1},
-                     ImVec2 size = {256, 256});
+                     ImVec2 size = {256, 256}, f32 brightness = 1.0f);
 
 private:
     struct blit_request
@@ -32,6 +32,8 @@ private:
         VkExtent2D extent;
         VkImageLayout src_layout;
         VkImageAspectFlags aspect;
+
+        f32 brightness; // normalized [0, 1]
     };
 
     struct atlas_data
@@ -57,7 +59,7 @@ private:
     bool allocate_region(u32 w, u32 h, VkOffset2D& out_offset);
 
     void image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec2 uv0, ImVec2 uv1, VkImageLayout src_layout,
-                    VkImageAspectFlags aspect);
+                    f32 brightness, VkImageAspectFlags aspect);
 
 private:
     constexpr static u32 kAtlasWidth {4096};
