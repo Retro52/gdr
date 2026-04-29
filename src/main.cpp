@@ -10,10 +10,8 @@
 #include <codegen/camera_controller.hpp>
 #include <codegen/imgui/gpu_profile_data.hpp>
 #include <codegen/render_settings.hpp>
-#include <codegen/scene/components.hpp>
 #include <editor/hierarchy.hpp>
 #include <events.hpp>
-#include <fs/fs.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <imgui/gpu_profile_data.hpp>
@@ -33,25 +31,8 @@
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
 
-#include <vector>
-
 #define NO_EDITOR     0
 #define NO_PERF_QUERY 0
-
-constexpr u64 operator""_KB(u64 x)
-{
-    return x * 1024;
-}
-
-constexpr u64 operator""_MB(u64 x)
-{
-    return x * 1024 * 1024;
-}
-
-constexpr u64 operator""_GB(u64 x)
-{
-    return x * 1024 * 1024 * 1024;
-}
 
 struct pc_data
 {
@@ -78,19 +59,21 @@ struct draw_indexed_indirect
 struct frame_cull_data
 {
     glm::mat4 view;
-    float frustum[6];  // left/right/top/bottom/znear/zfar
+    f32 frustum[6];  // left/right/top/bottom/znear/zfar
     vec2 pyramid_size;
     vec2 viewport_size;
-    float p00;
-    float p11;
+    f32 p00;
+    f32 p11;
+    f32 lod_threshold;
     u32 draw_count;
     u32 flags;
 
     frame_cull_data& build_frustum(const glm::mat4& iproj, const glm::mat4& iview)
     {
-        this->view = iview;
-        this->p00  = iproj[0][0];
-        this->p11  = iproj[1][1];
+        this->view          = iview;
+        this->p00           = iproj[0][0];
+        this->p11           = iproj[1][1];
+        this->lod_threshold = 2.0F / (viewport_size.y * glm::abs(this->p11));
 
         auto t_pv = glm::transpose(iproj);
 
@@ -347,12 +330,76 @@ cpp::stack_string format_big_number(u64 number)
 void draw_shared_buffer_stats(const char* label, const render::vk_shared_buffer& buffer)
 {
     const auto fraction = static_cast<f32>(buffer.offset) / static_cast<f32>(buffer.size);
-    const auto str      = cpp::stack_string::make_formatted("%s buffer: %.4lf/%.4lf MB used (%.2lf %)",
+    const auto str      = cpp::stack_string::make_formatted("%s buffer: %.4lf/%.4lf MB used (%.2lf%%)",
                                                        label,
                                                        bytes_to_mb(buffer.offset),
                                                        bytes_to_mb(buffer.size),
                                                        fraction * 100.0F);
     ImGui::ProgressBar(fraction, ImVec2(ImGui::GetContentRegionAvail().x, 0.0F), str.c_str());
+}
+
+template<typename T>
+T get_random(const T min, const T max)
+{
+    return min + (static_cast<T>(rand()) / RAND_MAX) * (max - min);
+}
+
+u64 populate_scene(const u32 draw_count, const cpp::heap_array<loader::mesh_data>& primitives, scene& scene,
+                   render::vk_scene_geometry_pool& geometry_pool)
+{
+    ZoneScoped;
+
+    u64 scene_triangles_total     = 0;
+    const u32 kVolumeItemsPerSide = std::lroundl(std::cbrt(draw_count));
+
+    cpp::heap_array<loader::primitive> prims(primitives.size());
+    for (u32 i = 0; i < primitives.size(); ++i)
+    {
+        prims[i] = loader::upload_primitive(primitives[i], geometry_pool);
+    }
+
+    auto* transforms_ptr = static_cast<transform_component*>(geometry_pool.transfer.mapped);
+    auto* primitives_ptr = reinterpret_cast<loader::primitive*>(static_cast<u8*>(geometry_pool.transfer.mapped)
+                                                                + sizeof(transform_component) * draw_count);
+
+    for (u32 i = 0; i < draw_count; ++i)
+    {
+        ZoneScopedN("create models within the scene");
+        primitives_ptr[i] = prims[get_random<i32>(0, prims.size() - 1)];
+        scene_triangles_total += primitives_ptr[i].lod_array[0].indices_count / 3;
+
+        auto entity = scene.create_entity();
+        entity.add_component<mesh_component>();
+        entity.add_component<id_component>();
+
+        auto& transform    = transforms_ptr[i];
+        transform.position = {
+            i % kVolumeItemsPerSide,
+            (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
+            i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
+        };
+
+        constexpr f32 kDensityInverse = 7.5F;
+        transform.position *= vec3(1.5F);
+        transform.position *= vec3(get_random<f32>(-kDensityInverse, kDensityInverse),
+                                   get_random<f32>(-kDensityInverse, kDensityInverse),
+                                   get_random<f32>(-kDensityInverse, kDensityInverse));
+        transform.position += primitives_ptr[i].b_sphere.w;
+
+        transform.uniform_scale = get_random<f32>(0.75F, 10.0F);
+        transform.rotation =
+            glm::quat(vec3(get_random<f32>(-180, 180), get_random<f32>(-180, 180), get_random<f32>(-180, 180)));
+    }
+
+    render::submit_transfer(geometry_pool.transfer,
+                            geometry_pool.transforms.buffer,
+                            VkBufferCopy {.size = draw_count * sizeof(transform_component)});
+    render::submit_transfer(geometry_pool.transfer,
+                            geometry_pool.primitives.buffer,
+                            VkBufferCopy {.srcOffset = sizeof(transform_component) * draw_count,
+                                          .size      = draw_count * sizeof(loader::primitive)});
+
+    return scene_triangles_total;
 }
 
 int main(int argc, char* argv[])
@@ -608,8 +655,19 @@ int main(int argc, char* argv[])
     bool enable_task_pipeline     = mesh_shading_supported;
     bool enable_meshlets_pipeline = mesh_shading_supported;
 
-    // const auto stats = loader::load("../data/a380.glb", client_scene, geometry_pool);
-    const auto stats = loader::load("../data/bistro.glb", client_scene, geometry_pool);
+#if !SCENE_MODE
+    const auto stats = loader::load_scene("../data/bistro.glb", client_scene, geometry_pool);
+#else
+    loader::stats stats {
+        .meshes     = 1,
+        .primitives = 144'000,  // kRepeatDraws
+    };
+
+    cpp::heap_array<loader::mesh_data> meshes;
+    meshes.populate(loader::load_mesh("../data/kitten.glb"));
+
+    stats.triangles = populate_scene(stats.primitives, meshes, client_scene, geometry_pool);
+#endif
 
     auto get_time = []<typename T = f64>()
     {
@@ -923,6 +981,7 @@ int main(int argc, char* argv[])
                     draw_shared_buffer_stats("Primitives", geometry_pool.primitives);
                     draw_shared_buffer_stats("Meshlets payload", geometry_pool.meshlets_payload);
 
+#if !NO_PERF_QUERY
                     ImGui::SeparatorText("Last frame pipeline stats");
                     ImGui::Text("input_assembly_vertices: %s",
                                 format_big_number(frame_stats_data.input_assembly_vertices).c_str());
@@ -933,6 +992,7 @@ int main(int argc, char* argv[])
                     ImGui::Text("triangles_count: %s", format_big_number(frame_stats_data.triangles_count).c_str());
                     ImGui::Text("fragment_shader_invocations: %s",
                                 format_big_number(frame_stats_data.fragment_shader_invocations).c_str());
+#endif
 
                     ImGui::SeparatorText("render controls");
 

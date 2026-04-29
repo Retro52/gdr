@@ -14,6 +14,6 @@ void main()
 {
     vec4 sampled = texture(u_source, in_uv);
 
-    const float kContrast = 1000.0F;
+    const float kContrast = 250.0F;
     out_color = sampled * mix(1.0F, kContrast, brightness);
 }

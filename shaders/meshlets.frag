@@ -45,6 +45,10 @@ void main()
 #if VISUALIZE_MESHLETS
     o_frag_color = vec4(meshlet_color(vs_in.meshlet_id), 1.0F);
 #else
-    o_frag_color = vec4(vec3(dot(vs_in.normal, sun_dir)), 1.0F);
+#if 0
+    o_frag_color = vec4(mix(vec3(dot(vs_in.normal, sun_dir)), vec3(0.5F), 0.5F), 1.0F);
+#else
+    o_frag_color = vec4(vs_in.normal, 1.0F);
+#endif
 #endif
 }

@@ -5,10 +5,10 @@
 /// @imgui
 struct gpu_profile_data
 {
-    /// @readonly
+    /// @hide
     f64 frame_start {0.0F};
 
-    /// @readonly
+    /// @hide
     f64 frame_end {0.0F};
 
     /// @readonly @name(GPU render time (ms))

@@ -152,6 +152,18 @@ namespace cpp
             return *m_end++;
         }
 
+        void populate(heap_array&& other)
+        {
+            ZoneScoped;
+            populate(other.data(), other.size());
+        }
+
+        void populate(const heap_array& other)
+        {
+            ZoneScoped;
+            populate(other.data(), other.size());
+        }
+
         void populate(const T* data, const u64 count)
         {
             ZoneScoped;

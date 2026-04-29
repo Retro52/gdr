@@ -29,6 +29,7 @@ using u8  = uint8_t;
 using u16 = uint16_t;
 using u32 = uint32_t;
 using u64 = uint64_t;
+using ull = unsigned long long;
 
 using i8  = int8_t;
 using i16 = int16_t;
@@ -37,3 +38,18 @@ using i64 = int64_t;
 
 using f32 = float;
 using f64 = double;
+
+constexpr ull operator""_KB(const ull x)
+{
+    return x << 10;
+}
+
+constexpr ull operator""_MB(const ull x)
+{
+    return x << 20;
+}
+
+constexpr ull operator""_GB(const ull x)
+{
+    return x << 30;
+}

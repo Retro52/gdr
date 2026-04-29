@@ -86,6 +86,7 @@ struct FrameCullData
     vec2 viewport_size;
     float p00;
     float p11;
+    float lod_threshold;
     uint draw_count;
     uint flags;
 };

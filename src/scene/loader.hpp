@@ -71,5 +71,9 @@ namespace loader
         u64 triangles  = 0;
     };
 
-    stats load(const fs::path& path, scene& scene, render::vk_scene_geometry_pool& geometry_pool);
+    cpp::heap_array<mesh_data> load_mesh(const fs::path& path);
+
+    stats load_scene(const fs::path& path, scene& scene, render::vk_scene_geometry_pool& geometry_pool);
+
+    primitive upload_primitive(const mesh_data& data, render::vk_scene_geometry_pool& geometry_pool);
 }

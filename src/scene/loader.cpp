@@ -32,7 +32,7 @@ namespace
         dst_buffer.offset += count * sizeof(T);
     }
 
-    loader::mesh_data load_mesh(const cgltf_primitive& prim) noexcept
+    loader::mesh_data load_primitive(const cgltf_primitive& prim) noexcept
     {
         ZoneScoped;
 
@@ -310,7 +310,46 @@ namespace
     }
 }
 
-loader::stats loader::load(const fs::path& path, scene& scene, render::vk_scene_geometry_pool& geometry_pool)
+cpp::heap_array<loader::mesh_data> loader::load_mesh(const fs::path& path)
+{
+    ZoneScoped;
+    if (path.extension() != ".gltf" && path.extension() != ".glb")
+    {
+        return {};
+    }
+
+    cgltf_options options = {};
+    cgltf_data* data      = nullptr;
+
+    CHECK(cgltf_parse_file(&options, path.c_str(), &data));
+    SUMMON_JANITOR(cgltf_free(data));
+
+    CHECK(cgltf_load_buffers(&options, data, path.c_str()));
+    CHECK(cgltf_validate(data));
+
+    cpp::heap_array<loader::mesh_data> meshes;
+    meshes.reserve(data->meshes_count);
+
+    for (u64 i = 0; i < data->meshes_count; ++i)
+    {
+        const cgltf_mesh& mesh = data->meshes[i];
+
+        for (u64 prim = 0; prim < mesh.primitives_count; ++prim)
+        {
+            const auto& primitive = mesh.primitives[prim];
+            if (primitive.type != cgltf_primitive_type_triangles || !primitive.indices || !primitive.attributes)
+            {
+                continue;
+            }
+
+            meshes.emplace_back(load_primitive(primitive));
+        }
+    }
+
+    return meshes;
+}
+
+loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_scene_geometry_pool& geometry_pool)
 {
     ZoneScoped;
     if (path.extension() != ".gltf" && path.extension() != ".glb")
@@ -339,7 +378,7 @@ loader::stats loader::load(const fs::path& path, scene& scene, render::vk_scene_
     {
         const cgltf_mesh& mesh = data->meshes[i];
 
-        u32 first_primitive = primitive_data.size();
+        const u32 first_primitive = primitive_data.size();
         for (u64 prim = 0; prim < mesh.primitives_count; ++prim)
         {
             const auto& primitive = mesh.primitives[prim];
@@ -348,17 +387,7 @@ loader::stats loader::load(const fs::path& path, scene& scene, render::vk_scene_
                 continue;
             }
 
-            auto prim_data = load_mesh(primitive);
-
-            auto& mesh_data       = primitive_data.emplace_back();
-            mesh_data.b_sphere    = compute_bounding_sphere(prim_data);
-            mesh_data.base_vertex = geometry_pool.vertex.offset / sizeof(vertex);
-
-            assert2(geometry_pool.vertex.offset % sizeof(vertex) == 0);
-            upload_data(
-                geometry_pool.transfer, geometry_pool.vertex, prim_data.vertices.data(), prim_data.vertices.size());
-
-            generate_lods(prim_data, mesh_data, geometry_pool);
+            primitive_data.emplace_back(upload_primitive(load_primitive(primitive), geometry_pool));
         }
 
         meshes[i] = {.offset     = first_primitive,
@@ -445,4 +474,19 @@ loader::stats loader::load(const fs::path& path, scene& scene, render::vk_scene_
     // TODO
 
     return stats;
+}
+
+loader::primitive loader::upload_primitive(const mesh_data& data, render::vk_scene_geometry_pool& geometry_pool)
+{
+    loader::primitive prim;
+
+    prim.b_sphere    = compute_bounding_sphere(data);
+    prim.base_vertex = geometry_pool.vertex.offset / sizeof(vertex);
+
+    assert2(geometry_pool.vertex.offset % sizeof(vertex) == 0);
+    upload_data(geometry_pool.transfer, geometry_pool.vertex, data.vertices.data(), data.vertices.size());
+
+    generate_lods(data, prim, geometry_pool);
+
+    return prim;
 }
