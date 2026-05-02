@@ -9,13 +9,13 @@ namespace shader_constants
 
 #define VISUALIZE_MESHLETS 0
 
-    const uint kLodFlagBit              = 1;
-    const uint kFrustumCullBit          = 2;
-    const uint kOcclusionCullBit        = 3;
-    const uint kMeshletConeCullBit      = 4;
-    const uint kMeshletFrustumCullBit   = 5;
-    const uint kMeshletOcclusionCullBit = 6;
-    const uint kSmallMeshletsCullBit    = 7;
+    const uint kLodFlagBit              = 0;
+    const uint kFrustumCullBit          = 1;
+    const uint kOcclusionCullBit        = 2;
+    const uint kMeshletConeCullBit      = 3;
+    const uint kMeshletFrustumCullBit   = 4;
+    const uint kMeshletOcclusionCullBit = 5;
+    const uint kSmallMeshletsCullBit    = 6;
 
     const uint kMaxVerticesPerMeshlet  = 64;
     const uint kMaxTrianglesPerMeshlet = 94;

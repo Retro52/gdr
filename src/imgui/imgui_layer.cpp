@@ -119,7 +119,7 @@ void imgui_layer::end_frame(const render::vk_renderer& renderer)
                                           .colorAttachmentCount = 1,
                                           .pColorAttachments    = &color_attachment_info};
 
-    if (ImGui::CollapsingHeader("pick into the atlas data"))
+    if (ImGui::CollapsingHeader("[imgui_layer] Atlas texture"))
     {
         ImGui::Image(m_atlas_data.imgui_descriptor,
                      {ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().x});

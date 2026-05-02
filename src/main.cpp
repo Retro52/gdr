@@ -721,7 +721,7 @@ int main(int argc, char* argv[])
         }
 
         renderer.submit(
-            [&](VkCommandBuffer buffer)
+            [&](const VkCommandBuffer buffer)
             {
                 ZoneScopedN("main.renderer.submit");
                 constexpr VkCommandBufferBeginInfo command_buffer_begin_info {
@@ -933,33 +933,8 @@ int main(int argc, char* argv[])
                     editor.begin_frame();
 
                     hierarchy_window_context.draw(client_scene);
-                    if (ImGui::CollapsingHeader("Mouse state"))
-                    {
-                        const auto values = reflection::get_enum_values<mouse_button>();
-                        for (int i = 0; i < reflection::get_enum_values_count<mouse_button>(); i++)
-                        {
-                            ImGui::Text(
-                                "%s: %s",
-                                reflection::string_from_enum<mouse_button>(static_cast<mouse_button>(values[i].value)),
-                                reflection::string_from_enum<button_state>(
-                                    client_events.get_mouse_button_state(static_cast<mouse_button>(values[i].value))));
-                        }
-                    }
-
                     ImGui::SeparatorText("camera controller");
                     codegen::draw(controller);
-
-                    ImGui::SeparatorText("renderer settings");
-                    codegen::draw(client_render_settings);
-                    ImGui::Checkbox("Enable vsync", &enable_vsync);
-                    if (ImGui::Checkbox("Enable fullscreen", &enable_fullscreen))
-                    {
-                        client_window.set_fullscreen(enable_fullscreen);
-                    }
-
-                    ImGui::BeginDisabled(!mesh_shading_supported);
-                    ImGui::Checkbox("Enable meshlets path", &enable_meshlets_pipeline);
-                    ImGui::EndDisabled();
 
                     ImGui::SeparatorText("gpu timings");
                     codegen::draw(profile_data);
@@ -968,14 +943,16 @@ int main(int argc, char* argv[])
                     ImGui::Text("Tris Max: %s", format_big_number(profile_data.tris_in_scene_max).c_str());
                     ImGui::Text("Tris Drawn: %s", format_big_number(profile_data.tris_in_scene_total).c_str());
 
-                    ImGui::SeparatorText("gpu stats");
-                    draw_shared_buffer_stats("Vertices", geometry_pool.vertex);
-                    draw_shared_buffer_stats("Indices", geometry_pool.index);
-                    draw_shared_buffer_stats("Meshlets", geometry_pool.meshlets);
-                    draw_shared_buffer_stats("Transform", geometry_pool.transforms);
-                    draw_shared_buffer_stats("Primitives", geometry_pool.primitives);
-                    draw_shared_buffer_stats("Meshlets payload", geometry_pool.meshlets_payload);
-                    draw_scene_geometry_pool(geometry_pool);
+                    if (ImGui::CollapsingHeader("gpu stats"))
+                    {
+                        draw_shared_buffer_stats("Vertices", geometry_pool.vertex);
+                        draw_shared_buffer_stats("Indices", geometry_pool.index);
+                        draw_shared_buffer_stats("Meshlets", geometry_pool.meshlets);
+                        draw_shared_buffer_stats("Transform", geometry_pool.transforms);
+                        draw_shared_buffer_stats("Primitives", geometry_pool.primitives);
+                        draw_shared_buffer_stats("Meshlets payload", geometry_pool.meshlets_payload);
+                        draw_scene_geometry_pool(geometry_pool);
+                    }
 #if !NO_PERF_QUERY
                     ImGui::SeparatorText("Last frame pipeline stats");
                     ImGui::Text("input_assembly_vertices: %s",
@@ -992,7 +969,6 @@ int main(int argc, char* argv[])
                     ImGui::SeparatorText("render controls");
 
                     const char* names[] = {
-                        "Dummy",
                         "LODs",
                         "Frustum cull",
                         "Occlusion cull",
@@ -1002,14 +978,33 @@ int main(int argc, char* argv[])
                         "Small meshlets cull",
                     };
                     ImGuiEx::Bits(flags, names, COUNT_OF(names));
+                    codegen::draw(client_render_settings);
 
-                    if ((freeze_cull_data && ImGui::Button("Unfreeze cull data"))
-                        || (!freeze_cull_data && ImGui::Button("Freeze cull data")))
+                    ImGui::BeginDisabled(!mesh_shading_supported);
+                    ImGui::Checkbox("Enable meshlets path", &enable_meshlets_pipeline);
+                    ImGui::EndDisabled();
+
+                    ImGui::Checkbox("Enable vsync", &enable_vsync);
+                    if (ImGui::Checkbox("Enable fullscreen", &enable_fullscreen))
                     {
-                        freeze_cull_data = !freeze_cull_data;
+                        client_window.set_fullscreen(enable_fullscreen);
                     }
 
-                    if (ImGui::CollapsingHeader("Render targets", ImGuiTreeNodeFlags_DefaultOpen))
+                    {
+                        ImGuiEx::ScopedColor btn(
+                            ImGuiCol_Button, freeze_cull_data ? IM_COL32(180, 60, 60, 255) : IM_COL32(60, 60, 65, 255));
+                        ImGuiEx::ScopedColor btn_hover(ImGuiCol_ButtonHovered,
+                                                       freeze_cull_data ? IM_COL32(210, 85, 85, 255)
+                                                                        : IM_COL32(80, 80, 85, 255));
+                        ImGuiEx::ScopedColor btn_active(ImGuiCol_ButtonActive,
+                                                        freeze_cull_data ? IM_COL32(230, 110, 110, 255)
+                                                                         : IM_COL32(100, 100, 105, 255));
+
+                        if (ImGui::Button(freeze_cull_data ? "Unfreeze cull data" : "Freeze cull data"))
+                            freeze_cull_data = !freeze_cull_data;
+                    }
+
+                    if (ImGui::CollapsingHeader("Render targets"))
                     {
                         static int img_in_line = 2;
                         ImGui::SliderInt("Images in line", &img_in_line, 1, 2);
@@ -1033,7 +1028,7 @@ int main(int argc, char* argv[])
                                      {size_x, size_y});
                     }
 
-                    if (ImGui::CollapsingHeader("Depth pyramid", ImGuiTreeNodeFlags_DefaultOpen))
+                    if (ImGui::CollapsingHeader("Depth pyramid"))
                     {
                         static int idx = 0;
                         idx            = std::min(idx, static_cast<int>(depth_pyramid.pyramid_count) - 1);
@@ -1049,6 +1044,19 @@ int main(int argc, char* argv[])
                                      {0, 1, 1, 0},
                                      {size_x, size_y},
                                      1.0F);
+                    }
+
+                    if (ImGui::CollapsingHeader("Mouse state"))
+                    {
+                        const auto values = reflection::get_enum_values<mouse_button>();
+                        for (int i = 0; i < reflection::get_enum_values_count<mouse_button>(); i++)
+                        {
+                            ImGui::Text(
+                                "%s: %s",
+                                reflection::string_from_enum<mouse_button>(static_cast<mouse_button>(values[i].value)),
+                                reflection::string_from_enum<button_state>(
+                                    client_events.get_mouse_button_state(static_cast<mouse_button>(values[i].value))));
+                        }
                     }
 
                     editor.end_frame(renderer);

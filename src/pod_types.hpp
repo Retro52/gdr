@@ -41,12 +41,12 @@ using f64 = double;
 
 constexpr u8 operator""_u8(const ull x)
 {
-    return x << 10;
+    return static_cast<u8>(x);
 }
 
 constexpr u16 operator""_u16(const ull x)
 {
-    return x << 10;
+    return static_cast<u16>(x);
 }
 
 constexpr ull operator""_KB(const ull x)
