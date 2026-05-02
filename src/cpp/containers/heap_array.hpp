@@ -152,19 +152,19 @@ namespace cpp
             return *m_end++;
         }
 
-        void populate(heap_array&& other)
+        void append(heap_array&& other)
         {
             ZoneScoped;
-            populate(other.data(), other.size());
+            append(other.data(), other.size());
         }
 
-        void populate(const heap_array& other)
+        void append(const heap_array& other)
         {
             ZoneScoped;
-            populate(other.data(), other.size());
+            append(other.data(), other.size());
         }
 
-        void populate(const T* data, const u64 count)
+        void append(const T* data, const u64 count)
         {
             ZoneScoped;
             if (m_end + count > m_capacity_end)

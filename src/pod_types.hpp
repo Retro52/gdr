@@ -39,6 +39,16 @@ using i64 = int64_t;
 using f32 = float;
 using f64 = double;
 
+constexpr u8 operator""_u8(const ull x)
+{
+    return x << 10;
+}
+
+constexpr u16 operator""_u16(const ull x)
+{
+    return x << 10;
+}
+
 constexpr ull operator""_KB(const ull x)
 {
     return x << 10;

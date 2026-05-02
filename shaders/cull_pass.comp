@@ -37,17 +37,10 @@ layout (binding = 4) readonly buffer FrameCullDataBuffer
 };
 
 #ifdef FOR_MESH_PIPELINE
-#ifdef FOR_TASK_PIPELINE
 layout (binding = 5) writeonly buffer DrawMeshIndirects
 {
     DrawTaskCommandIndirect draw_indirect_cmds[];
 };
-#else
-layout (binding = 5) writeonly buffer DrawMeshIndirects
-{
-    DrawMeshIndirect draw_indirect_cmds[];
-};
-#endif
 #else
 layout (binding = 5) writeonly buffer DrawIndexedIndirects
 {
@@ -106,7 +99,7 @@ void main()
 #endif
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-    const bool skip_draw = !inv_visibility_bit;
+    const bool skip_draw = false;
 #else
     const bool skip_draw = false;
 #endif
@@ -118,7 +111,7 @@ void main()
 
         for (uint i = 1; i < meshes_data[idx].lod_count; ++i)
         {
-            if (meshes_data[idx].lod_array[i].error <= (dist * frame_cull.lod_threshold / scale))
+            if ((meshes_data[idx].lod_array[i].error * scale / dist) <= frame_cull.lod_threshold)
                 lod_base = i;
             else
                 break;
@@ -129,7 +122,6 @@ void main()
 
 #ifdef FOR_MESH_PIPELINE
         uint taskCount = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
-#ifdef FOR_TASK_PIPELINE
         uint dci = atomicAdd(draw_commands_count, taskCount);
         for (uint i = taskCount; i > 0; i--)
         {
@@ -139,15 +131,6 @@ void main()
             draw_indirect_cmds[dcii].meshlet_offset = selected_lod.base_meshlet + offset;
             draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups);
         }
-#else
-        uint dci = atomicAdd(draw_commands_count, 1);
-        draw_indirect_cmds[dci].group_size[0] = taskCount;
-        draw_indirect_cmds[dci].group_size[1] = 1;
-        draw_indirect_cmds[dci].group_size[2] = 1;
-
-        draw_indirect_cmds[dci].mesh_id = idx;
-        draw_indirect_cmds[dci].base_meshlet = selected_lod.base_meshlet;
-#endif
 #else
         uint dci = atomicAdd(draw_commands_count, 1);
         draw_indirect_cmds[dci].instance_count = 1;

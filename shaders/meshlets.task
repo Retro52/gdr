@@ -23,22 +23,28 @@ layout (binding = 4) readonly buffer MeshesTransforms
     MeshTransform meshes_transforms[];
 };
 
-#ifdef FOR_TASK_PIPELINE
 layout (binding = 5) readonly buffer DrawMeshIndirects
 {
     DrawTaskCommandIndirect draw_mesh_cmds[];
 };
-#else
-layout (binding = 5) readonly buffer DrawMeshIndirects
-{
-    DrawMeshIndirect draw_mesh_cmds[];
-};
-#endif
 
 layout (binding = 6) buffer FrameCullDataBuffer
 {
     FrameCullData frame_cull;
 };
+
+#ifdef FOR_LATE_OCCLUSION_TEST
+layout (binding = 7) buffer MeshletsVisibilityBuffer
+#else
+layout (binding = 7) readonly buffer MeshletsVisibilityBuffer
+#endif
+{
+    uint meshlets_visibility_buffer[];
+};
+
+#ifdef FOR_LATE_OCCLUSION_TEST
+layout (binding = 8) uniform sampler2D depth_pyramid;
+#endif
 
 layout (push_constant) uniform constants
 {
@@ -50,16 +56,10 @@ taskPayloadSharedEXT MeshletTask meshlet_task;
 
 void main()
 {
-#ifdef FOR_TASK_PIPELINE
     uint mesh_id = draw_mesh_cmds[gl_WorkGroupID.x].mesh_id;
     uint meshlets_in_task = draw_mesh_cmds[gl_WorkGroupID.x].meshlet_count;
     uint meshlet_id = draw_mesh_cmds[gl_WorkGroupID.x].meshlet_offset + gl_LocalInvocationID.x;
-#else
-    uint meshlets_in_task = kTaskWorkGroups; // FIXME
-    uint meshlet_warp = gl_WorkGroupID.x;
-    uint meshlet_id = draw_mesh_cmds[gl_DrawID].base_meshlet + meshlet_warp * kTaskWorkGroups + gl_LocalInvocationID.x;
-    uint mesh_id = draw_mesh_cmds[gl_DrawID].mesh_id;
-#endif
+
     meshlet_task.mesh_id = mesh_id;
     meshlet_task.base_vertex = meshes_data[mesh_id].base_vertex;
 
@@ -105,11 +105,42 @@ void main()
         visible = visible && !(round(pmin.x - sp_prec) == round(pmax.x) || round(pmin.y) == round(pmax.y + sp_prec));
     }
 
-    if (visible && gl_LocalInvocationID.x < meshlets_in_task)
+    bool was_visible_last_frame = GET_BIT(meshlets_visibility_buffer[meshlet_id >> 5], meshlet_id & 31) == 1;
+    bool emit = visible && gl_LocalInvocationID.x < meshlets_in_task;
+
+#ifdef FOR_LATE_OCCLUSION_TEST
+    bool drawn_in_early = was_visible_last_frame && visible;
+    if (visible && GET_BIT(frame_cull.flags, kMeshletOcclusionCullBit) == 1 && project_sphere(view_center, sphere_radius, frame_cull.frustum[4], frame_cull.p00, frame_cull.p11, p_aabb))
+    {
+        vec2 pmd_size = vec2(p_aabb.z - p_aabb.x, p_aabb.w - p_aabb.y) * frame_cull.pyramid_size;
+        float level = ceil(log2(max(pmd_size.x, pmd_size.y)));
+
+        float pmd_depth = textureLod(depth_pyramid, (p_aabb.xy + p_aabb.zw) * 0.5, level).x;
+        float spr_depth = -frame_cull.frustum[4] / (view_center.z + sphere_radius);
+
+        visible = visible && spr_depth >= pmd_depth;
+    }
+
+    emit = emit && visible && (!drawn_in_early || GET_BIT(frame_cull.flags, kMeshletOcclusionCullBit) == 0);
+#else
+    emit = emit && (was_visible_last_frame || GET_BIT(frame_cull.flags, kMeshletOcclusionCullBit) == 0);
+#endif
+
+    if (emit)
     {
         uint idx = atomicAdd(meshlets_count, 1);
         meshlet_task.meshlet_ids[idx] = meshlet_id;
     }
+
+#ifdef FOR_LATE_OCCLUSION_TEST
+    if (gl_LocalInvocationID.x < meshlets_in_task)
+    {
+        if (visible)
+            atomicOr(meshlets_visibility_buffer[meshlet_id >> 5], 1u << (meshlet_id & 31));
+        else
+            atomicAnd(meshlets_visibility_buffer[meshlet_id >> 5], ~(1u << (meshlet_id & 31)));
+    }
+#endif
 
     barrier();
     EmitMeshTasksEXT(meshlets_count, 1, 1);

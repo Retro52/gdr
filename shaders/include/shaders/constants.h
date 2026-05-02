@@ -1,3 +1,4 @@
+// ReSharper disable once CppMissingIncludeGuard
 #ifdef __cplusplus
 #pragma once
 

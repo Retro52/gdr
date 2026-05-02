@@ -67,8 +67,9 @@ namespace loader
     struct stats
     {
         u64 meshes     = 0;
-        u64 primitives = 0;
+        u64 meshlets   = 0;
         u64 triangles  = 0;
+        u64 primitives = 0;
     };
 
     cpp::heap_array<mesh_data> load_mesh(const fs::path& path);

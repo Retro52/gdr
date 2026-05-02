@@ -147,8 +147,8 @@ bool imgui_layer::allocate_region(u32 w, u32 h, VkOffset2D& out_offset)
     auto& atlas = m_atlas_data;
     if (atlas.cursor_x + w > kAtlasWidth)
     {
-        atlas.cursor_y += atlas.cursor_row;
-        atlas.cursor_x   = 0;
+        atlas.cursor_y += atlas.cursor_row + kAtlasPadding;
+        atlas.cursor_x   = kAtlasPadding;
         atlas.cursor_row = 0;
     }
 
@@ -160,7 +160,7 @@ bool imgui_layer::allocate_region(u32 w, u32 h, VkOffset2D& out_offset)
     out_offset.x = static_cast<i32>(atlas.cursor_x);
     out_offset.y = static_cast<i32>(atlas.cursor_y);
 
-    atlas.cursor_x += w;
+    atlas.cursor_x += w + kAtlasPadding;
     atlas.cursor_row = std::max(atlas.cursor_row, h);
     return true;
 }
@@ -242,13 +242,12 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
     render::transition_image(
         cmd, m_atlas_data.atlas_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-    VkRenderingAttachmentInfo color_attachment {
-        .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView   = m_atlas_data.atlas_image.view,
-        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .loadOp      = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-        .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
-    };
+    VkRenderingAttachmentInfo color_attachment {.sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                                                .imageView   = m_atlas_data.atlas_image.view,
+                                                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                                .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                                .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
+                                                .clearValue  = {.color = VkClearColorValue()}};
 
     VkRenderingInfo rendering_info {
         .sType                = VK_STRUCTURE_TYPE_RENDERING_INFO,

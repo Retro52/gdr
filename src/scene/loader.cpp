@@ -5,9 +5,9 @@
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 #include <scene/loader.hpp>
+#include <scene/scene.hpp>
 
-#include "glm/gtc/type_ptr.inl"
-#include "scene.hpp"
+#include <glm/gtc/type_ptr.inl>
 
 #define CHECK(EXPR)                   \
     if (EXPR != cgltf_result_success) \
@@ -18,6 +18,17 @@
 
 namespace
 {
+    struct loader_context
+    {
+        cpp::heap_array<loader::vertex> vertices;
+        cpp::heap_array<u32> indices;
+
+        cpp::heap_array<loader::meshlet> meshlets;
+        cpp::heap_array<u8> meshlets_data;
+
+        cpp::heap_array<loader::primitive> primitives;
+    };
+
     // TODO: batch data uploads together
     template<typename T>
     void upload_data(const render::vk_buffer_transfer& transfer, render::vk_shared_buffer& dst_buffer, const T* data,
@@ -206,8 +217,8 @@ namespace
         }
     }
 
-    void generate_lods(const loader::mesh_data& data, loader::primitive& primitive,
-                       render::vk_scene_geometry_pool& geometry_pool)
+    void generate_lods(const loader::mesh_data& data, const render::vk_scene_geometry_pool& geometry_pool,
+                       loader::primitive& primitive, loader_context& ctx)
     {
         ZoneScoped;
 
@@ -225,30 +236,26 @@ namespace
             constexpr f32 kSimplifyAttribWeights[]  = {1.0F, 1.0F, 1.0F};
             constexpr unsigned int kSimplifyOptions = meshopt_SimplifySparse;
 
-            build_meshlets(
-                data.vertices, indices_work_copy, meshlets, meshlets_payload, geometry_pool.meshlets_payload.offset);
+            build_meshlets(data.vertices,
+                           indices_work_copy,
+                           meshlets,
+                           meshlets_payload,
+                           geometry_pool.meshlets_payload.offset + ctx.meshlets_data.size());
 
             ++primitive.lod_count;
             auto& curr_lod = primitive.lod_array[j];
 
             curr_lod.lod_error = curr_error * lod_scale;
 
-            assert2(geometry_pool.index.offset % sizeof(u32) == 0);
-            assert2(geometry_pool.meshlets.offset % sizeof(loader::meshlet) == 0);
-
             curr_lod.meshlets_count = meshlets.size();
-            curr_lod.base_meshlet   = geometry_pool.meshlets.offset / sizeof(loader::meshlet);
+            curr_lod.base_meshlet   = (geometry_pool.meshlets.offset / sizeof(loader::meshlet)) + ctx.meshlets.size();
 
             curr_lod.indices_count = indices_work_copy.size();
-            curr_lod.base_index    = geometry_pool.index.offset / sizeof(u32);
+            curr_lod.base_index    = (geometry_pool.index.offset / sizeof(u32)) + ctx.indices.size();
 
-            upload_data(geometry_pool.transfer, geometry_pool.meshlets, meshlets.data(), meshlets.size());
-            upload_data(
-                geometry_pool.transfer, geometry_pool.index, indices_work_copy.data(), indices_work_copy.size());
-            upload_data(geometry_pool.transfer,
-                        geometry_pool.meshlets_payload,
-                        meshlets_payload.data(),
-                        meshlets_payload.size());
+            ctx.meshlets.append(meshlets);
+            ctx.indices.append(indices_work_copy);
+            ctx.meshlets_data.append(meshlets_payload);
 
             if (j == COUNT_OF(primitive.lod_array) - 1)
             {
@@ -366,19 +373,14 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
     CHECK(cgltf_load_buffers(&options, data, path.c_str()));
     CHECK(cgltf_validate(data));
 
-    loader::stats stats {
-        .primitives = geometry_pool.primitives.offset / sizeof(loader::primitive),
-        .triangles  = geometry_pool.index.offset / sizeof(u32),
-    };
-
-    cpp::heap_array<loader::primitive> primitive_data;
+    loader_context ctx;
     cpp::heap_array<loader::mesh_desc> meshes(data->meshes_count);
 
     for (u64 i = 0; i < data->meshes_count; ++i)
     {
         const cgltf_mesh& mesh = data->meshes[i];
 
-        const u32 first_primitive = primitive_data.size();
+        const u32 first_primitive = ctx.primitives.size();
         for (u64 prim = 0; prim < mesh.primitives_count; ++prim)
         {
             const auto& primitive = mesh.primitives[prim];
@@ -387,24 +389,39 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
                 continue;
             }
 
-            primitive_data.emplace_back(upload_primitive(load_primitive(primitive), geometry_pool));
+            auto prim_data = load_primitive(primitive);
+            loader::primitive prim_desc {
+                .b_sphere    = compute_bounding_sphere(prim_data),
+                .base_vertex = static_cast<u32>((geometry_pool.vertex.offset / sizeof(vertex)) + ctx.vertices.size()),
+            };
+
+            ctx.vertices.append(prim_data.vertices);
+            generate_lods(prim_data, geometry_pool, prim_desc, ctx);
+
+            ctx.primitives.emplace_back(prim_desc);
         }
 
         meshes[i] = {.offset     = first_primitive,
-                     .prim_count = static_cast<u32>(primitive_data.size() - first_primitive)};
+                     .prim_count = static_cast<u32>(ctx.primitives.size() - first_primitive)};
     }
 
-    upload_data(geometry_pool.transfer, geometry_pool.primitives, primitive_data.data(), primitive_data.size());
+    upload_data(geometry_pool.transfer, geometry_pool.index, ctx.indices.data(), ctx.indices.size());
+    upload_data(geometry_pool.transfer, geometry_pool.primitives, ctx.primitives.data(), ctx.primitives.size());
+    upload_data(geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
+    upload_data(geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
+    upload_data(
+        geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
 
-    stats = {
+    loader::stats stats = {
         .meshes     = meshes.size(),
-        .primitives = geometry_pool.primitives.offset / sizeof(loader::primitive) - stats.primitives,
-        .triangles  = (geometry_pool.index.offset / sizeof(u32) - stats.triangles) / 3,
+        .meshlets   = ctx.meshlets.size(),
+        .triangles  = ctx.indices.size() / 3,
+        .primitives = ctx.primitives.size(),
     };
 
 #if !defined(NDEBUG)
     auto& hierarchy = scene.hierarchy;
-    hierarchy.nodes.reserve(data->nodes_count);
+    hierarchy.nodes.resize(data->nodes_count);
 #endif
 
     // TODO: refactor (moving objects?)
@@ -449,16 +466,17 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
         }
 
 #if !defined(NDEBUG)
-        auto& scene_node = hierarchy.nodes.emplace_back();
+        auto& scene_node = hierarchy.nodes[cgltf_node_index(data, node)];
         scene_node.e     = entity.get_native();
+        scene_node.children.reserve(node->children_count);
+        for (size_t c = 0; c < node->children_count; ++c)
+        {
+            scene_node.children.push_back(static_cast<u32>(cgltf_node_index(data, node->children[c])));
+        }
+
         if (node->parent)
         {
             scene_node.parent = cgltf_node_index(data, node->parent);
-            scene_node.children.reserve(node->children_count);
-            for (size_t c = 0; c < node->children_count; ++c)
-            {
-                scene_node.children.push_back(static_cast<u32>(cgltf_node_index(data, node->children[c])));
-            }
         }
         else
         {
@@ -478,15 +496,24 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
 
 loader::primitive loader::upload_primitive(const mesh_data& data, render::vk_scene_geometry_pool& geometry_pool)
 {
+    ZoneScoped;
+
+    assert2(geometry_pool.index.offset % sizeof(u32) == 0);
+    assert2(geometry_pool.vertex.offset % sizeof(vertex) == 0);
+
     loader::primitive prim;
 
     prim.b_sphere    = compute_bounding_sphere(data);
     prim.base_vertex = geometry_pool.vertex.offset / sizeof(vertex);
 
-    assert2(geometry_pool.vertex.offset % sizeof(vertex) == 0);
-    upload_data(geometry_pool.transfer, geometry_pool.vertex, data.vertices.data(), data.vertices.size());
+    loader_context ctx;
+    generate_lods(data, geometry_pool, prim, ctx);
 
-    generate_lods(data, prim, geometry_pool);
+    upload_data(geometry_pool.transfer, geometry_pool.index, ctx.indices.data(), ctx.indices.size());
+    upload_data(geometry_pool.transfer, geometry_pool.vertex, data.vertices.data(), data.vertices.size());
+    upload_data(geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
+    upload_data(
+        geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
 
     return prim;
 }

@@ -33,7 +33,7 @@ private:
         VkImageLayout src_layout;
         VkImageAspectFlags aspect;
 
-        f32 brightness; // normalized [0, 1]
+        f32 brightness;  // normalized [0, 1]
     };
 
     struct atlas_data
@@ -62,8 +62,9 @@ private:
                     f32 brightness, VkImageAspectFlags aspect);
 
 private:
-    constexpr static u32 kAtlasWidth {4096};
-    constexpr static u32 kAtlasHeight {4096};
+    constexpr static u32 kAtlasWidth   = 4096;
+    constexpr static u32 kAtlasHeight  = 4096;
+    constexpr static u32 kAtlasPadding = 4;
 
     // TODO: keep an array of atlases?
     atlas_data m_atlas_data;
