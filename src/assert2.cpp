@@ -7,6 +7,7 @@
 #include <debug.hpp>
 
 #include <string>
+#include <algorithm>
 
 static SDL_Window* g_window = nullptr;
 
@@ -26,7 +27,7 @@ static std::string wrap_text(const char* text)
     while (!input.empty() && line_count < kMaxLines && newline_pos != std::string_view::npos)
     {
         newline_pos           = input.find('\n');
-        std::string_view line = input.substr(0, std::min(newline_pos, input.size()));
+        std::string_view line = input.substr(0, std::min(static_cast<size_t>(newline_pos), input.size()));
 
         while (!line.empty() && line_count++ < kMaxLines)
         {

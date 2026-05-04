@@ -2,6 +2,7 @@
 #include <backends/imgui_impl_vulkan.h>
 #include <imgui.h>
 #include <imgui/imgui_layer.hpp>
+#include <cmath>
 
 imgui_layer::imgui_layer(const window& window, const render::vk_renderer& renderer)
     : m_renderer(renderer)

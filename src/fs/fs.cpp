@@ -1,5 +1,3 @@
-#pragma once
-
 #include <fs/fs.hpp>
 #include <tracy/Tracy.hpp>
 

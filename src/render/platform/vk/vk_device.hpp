@@ -20,6 +20,7 @@ namespace render
             ePipelineStats     = 1 << 6,
             eSamplerMinMax     = 1 << 7,
             eScalarBlockLayout = 1 << 8,
+            ePortabilitySubset = 1 << 9,
             eCOUNT
         };
 
@@ -66,7 +67,7 @@ namespace render
             for (u32 i = 0; i < cpp::cx_get_enum_bit_count(rendering_features_table::eCOUNT); ++i)
             {
                 const auto feature = static_cast<flag>(1 << i);
-                result |= cpp::cx_implies(this->required(feature), this->requested(feature));
+                result &= this->required(feature) ? this->supported(feature) : result;
             }
 
             return result;

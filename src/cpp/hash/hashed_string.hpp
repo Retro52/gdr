@@ -96,8 +96,7 @@ namespace cpp
     };
 }
 
-// Operator to simplify string hashing. Example: using "str"_hs creates cpp::hashed_string from "str".
-constexpr auto operator""_hs(const char* str, u64 size)
+constexpr auto operator""_hs(const char* str, const std::size_t size)
 {
     return cpp::hashed_string(str, size);
 }

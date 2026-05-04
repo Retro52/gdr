@@ -271,7 +271,7 @@ cpp::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysicalDevice 
         }
     }
 
-    float priority = 1.0f;
+    constexpr static float kPriority = 1.0f;
     cpp::heap_array<VkDeviceQueueCreateInfo> create_infos(unique_count);
 
     for (u32 i = 0; i < unique_count; i++)
@@ -280,7 +280,7 @@ cpp::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysicalDevice 
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             .queueFamilyIndex = unique[i],
             .queueCount       = 1,
-            .pQueuePriorities = &priority,
+            .pQueuePriorities = &kPriority,
         };
     }
 
@@ -335,6 +335,12 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
     {
         const auto key = cpp::crc::crc32(extension.extensionName, cpp::cx_strlen(extension.extensionName));
         not_found_extensions.erase(key, key);
+
+        if (key == "VK_KHR_portability_subset"_crc32)
+        {
+            features_table.require(rendering_features_table::ePortabilitySubset);
+            features_table.set_supported(rendering_features_table::ePortabilitySubset, true);
+        }
     }
 
     VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features = {
@@ -395,6 +401,9 @@ ext_array build_extensions_from_feature_table(const rendering_features_table& fe
             case rendering_features_table::e8BitIntegers :
                 array.emplace_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
                 break;
+            case rendering_features_table::ePortabilitySubset:
+                array.emplace_back("VK_KHR_portability_subset");
+                break;
             default :
                 break;
             }
@@ -445,6 +454,7 @@ VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
         }
     }
 
+    assert2m(current_pick != VK_NULL_HANDLE, "No suitable physical device found");
     required_features = device_features_support;
     return current_pick;
 }

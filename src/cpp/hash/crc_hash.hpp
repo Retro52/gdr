@@ -2,6 +2,8 @@
 
 #include <pod_types.hpp>
 
+#include <cstddef>
+
 namespace cpp::crc
 {
     static constexpr u32 kCRCTable32[] = {
@@ -110,3 +112,13 @@ namespace cpp::crc
     }
 }
 
+// https://en.cppreference.com/cpp/language/user_literal
+constexpr auto operator""_crc32(const char* str, const std::size_t size)
+{
+    return cpp::crc::crc32(str, size);
+}
+
+constexpr auto operator""_crc64(const char* str, const std::size_t size)
+{
+    return cpp::crc::crc64(str, size);
+}

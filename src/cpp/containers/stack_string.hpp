@@ -223,6 +223,11 @@ namespace cpp
     };
 }
 
+constexpr auto operator""_stack(const char* str, const std::size_t size)
+{
+    return cpp::stack_string(str, size);
+}
+
 #if ENABLE_STL
 template<u64 N>
 struct std::hash<::cpp::stack_string_base<N>>

@@ -32,6 +32,11 @@ run_codegen(ROOT "${CODEGEN_ROOT}" SOURCES ${SOURCES})
 add_executable(${PROJECT_NAME} ${SOURCES} ${SHADERS} ${CODEGEN_GENERATED_HEADERS})
 add_dependencies(${PROJECT_NAME} shaders)
 
+if (APPLE)
+    find_package(Vulkan REQUIRED)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan)
+endif ()
+
 target_link_libraries(${PROJECT_NAME} PRIVATE
         shaders
 
