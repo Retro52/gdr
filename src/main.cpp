@@ -39,67 +39,37 @@ struct pc_data
     glm::mat4 pv;
 };
 
-struct draw_task_indirect_cmd
-{
-    u32 work_group_count[3];
-    u32 base_meshlet;
-    u32 mesh_id;
-};
+using frame_cull_data = shader_types::FrameCullData;
 
-struct draw_indexed_indirect
+void build_frustum(frame_cull_data& data, const glm::mat4& iproj, const glm::mat4& iview)
 {
-    u32 index_count;
-    u32 instance_count;
-    u32 first_index;
-    i32 vertex_offset;
-    u32 first_instance;
-    u32 mesh_id;
-};
+    data.view          = iview;
+    data.p00           = iproj[0][0];
+    data.p11           = iproj[1][1];
+    data.lod_threshold = 2.0F / (data.viewport_size.y * glm::abs(data.p11));
 
-struct frame_cull_data
-{
-    glm::mat4 view;
-    f32 frustum[6];  // left/right/top/bottom/znear/zfar
-    vec2 pyramid_size;
-    vec2 viewport_size;
-    f32 p00;
-    f32 p11;
-    f32 lod_threshold;
-    u32 draw_count;
-    u32 flags;
+    auto t_pv = glm::transpose(iproj);
 
-    frame_cull_data& build_frustum(const glm::mat4& iproj, const glm::mat4& iview)
+    auto plane = [&](const vec4 eq)
     {
-        this->view          = iview;
-        this->p00           = iproj[0][0];
-        this->p11           = iproj[1][1];
-        this->lod_threshold = 2.0F / (viewport_size.y * glm::abs(this->p11));
+        return eq / glm::length(vec3(eq));
+    };
 
-        auto t_pv = glm::transpose(iproj);
+    const vec4 hor_plane = plane(t_pv[3] + t_pv[0]);
+    const vec4 ver_plane = plane(t_pv[3] + t_pv[1]);
 
-        auto plane = [&](const vec4 eq)
-        {
-            return eq / glm::length(vec3(eq));
-        };
+    data.frustum[0] = hor_plane.x;
+    data.frustum[1] = hor_plane.z;
 
-        const vec4 hor_plane = plane(t_pv[3] + t_pv[0]);
-        const vec4 ver_plane = plane(t_pv[3] + t_pv[1]);
+    data.frustum[2] = glm::abs(ver_plane.y);
+    data.frustum[3] = ver_plane.z;
 
-        this->frustum[0] = hor_plane.x;
-        this->frustum[1] = hor_plane.z;
+    const auto w = t_pv[2].w;
+    const auto z = glm::max(t_pv[2].z, 1e-9F);
 
-        this->frustum[2] = glm::abs(ver_plane.y);
-        this->frustum[3] = ver_plane.z;
-
-        const auto w = t_pv[2].w;
-        const auto z = glm::max(t_pv[2].z, 1e-9F);
-
-        this->frustum[4] = w - z;
-        this->frustum[5] = w / z;
-
-        return *this;
-    }
-};
+    data.frustum[4] = w - z;
+    data.frustum[5] = w / z;
+}
 
 struct depth_image_data
 {
@@ -331,9 +301,9 @@ u64 populate_scene(const u32 draw_count, const cpp::heap_array<loader::mesh_data
         prims[i] = loader::upload_primitive(primitives[i], geometry_pool);
     }
 
-    auto* transforms_ptr = static_cast<transform_component*>(geometry_pool.transfer.mapped);
+    auto* instances_ptr  = static_cast<loader::instance*>(geometry_pool.transfer.mapped);
     auto* primitives_ptr = reinterpret_cast<loader::primitive*>(static_cast<u8*>(geometry_pool.transfer.mapped)
-                                                                + sizeof(transform_component) * draw_count);
+                                                                + sizeof(loader::instance) * draw_count);
 
     for (u32 i = 0; i < draw_count; ++i)
     {
@@ -345,31 +315,31 @@ u64 populate_scene(const u32 draw_count, const cpp::heap_array<loader::mesh_data
         entity.add_component<mesh_component>();
         entity.add_component<id_component>();
 
-        auto& transform    = transforms_ptr[i];
-        transform.position = {
+        auto& transform = instances_ptr[i];
+        vec3 position   = {
             i % kVolumeItemsPerSide,
             (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
             i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
         };
 
         constexpr f32 kDensityInverse = 7.5F;
-        transform.position *= vec3(1.5F);
-        transform.position *= vec3(get_random<f32>(-kDensityInverse, kDensityInverse),
-                                   get_random<f32>(-kDensityInverse, kDensityInverse),
-                                   get_random<f32>(-kDensityInverse, kDensityInverse));
-        transform.position += primitives_ptr[i].b_sphere.w;
+        position *= vec3(1.5F);
+        position *= vec3(get_random<f32>(-kDensityInverse, kDensityInverse),
+                         get_random<f32>(-kDensityInverse, kDensityInverse),
+                         get_random<f32>(-kDensityInverse, kDensityInverse));
+        position += primitives_ptr[i].radius;
 
-        transform.uniform_scale = get_random<f32>(0.75F, 10.0F);
-        transform.rotation =
+        transform.pos_and_scale = {position, get_random<f32>(0.75F, 10.0F)};
+        transform.rotation_quat =
             glm::quat(vec3(get_random<f32>(-180, 180), get_random<f32>(-180, 180), get_random<f32>(-180, 180)));
     }
 
     render::submit_transfer(geometry_pool.transfer,
                             geometry_pool.transforms.buffer,
-                            VkBufferCopy {.size = draw_count * sizeof(transform_component)});
+                            VkBufferCopy {.size = draw_count * sizeof(loader::instance)});
     render::submit_transfer(geometry_pool.transfer,
                             geometry_pool.primitives.buffer,
-                            VkBufferCopy {.srcOffset = sizeof(transform_component) * draw_count,
+                            VkBufferCopy {.srcOffset = sizeof(loader::instance) * draw_count,
                                           .size      = draw_count * sizeof(loader::primitive)});
 
     return scene_triangles_total;
@@ -395,6 +365,7 @@ int main(int argc, char* argv[])
                               .require(render::rendering_features_table::eDrawIndirect)
                               .require(render::rendering_features_table::eDynamicRender)
                               .require(render::rendering_features_table::eSamplerMinMax)
+                              .require(render::rendering_features_table::eScalarBlockLayout)
                               .require(render::rendering_features_table::eSynchronization2);
 
     render::vk_renderer renderer(
@@ -694,7 +665,7 @@ int main(int argc, char* argv[])
                                           draw_count_buffer.buffer,
                                           0,
                                           stats.primitives,
-                                          sizeof(draw_indexed_indirect));
+                                          sizeof(shader_types::DrawIndexedIndirect));
         }
     };
 
@@ -750,12 +721,12 @@ int main(int argc, char* argv[])
 
                     auto view = camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
 
-                    (*static_cast<frame_cull_data*>(frame_cull_data_buffer.mapped)) =
-                        frame_cull_data {.pyramid_size  = depth_pyramid.base_size,
+                    frame_cull_data fcd {.pyramid_size  = depth_pyramid.base_size,
                                          .viewport_size = client_window.get_size_in_px(),
                                          .draw_count    = static_cast<u32>(stats.primitives),
-                                         .flags         = flags}
-                            .build_frustum(projection, view);
+                                         .flags         = flags};
+                    build_frustum(fcd, projection, view);
+                    (*static_cast<frame_cull_data*>(frame_cull_data_buffer.mapped)) = fcd;
                 }
                 else
                 {
@@ -1004,7 +975,7 @@ int main(int argc, char* argv[])
                             freeze_cull_data = !freeze_cull_data;
                     }
 
-                    if (ImGui::CollapsingHeader("Render targets"))
+                    if (ImGui::CollapsingHeader("Render targets", ImGuiTreeNodeFlags_DefaultOpen))
                     {
                         static int img_in_line = 2;
                         ImGui::SliderInt("Images in line", &img_in_line, 1, 2);

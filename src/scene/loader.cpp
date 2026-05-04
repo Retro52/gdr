@@ -61,7 +61,7 @@ namespace
             assert2(count == vtx_count * 3);
             for (u64 j = 0; j < vtx_count; ++j)
             {
-                raw_vertices[j].position = {scratch[j * 3 + 0], scratch[j * 3 + 1], scratch[j * 3 + 2]};
+                cpp::cx_memcpy(&raw_vertices[j].px, &scratch[j * 3], sizeof(loader::vertex::px) * 3);
             }
         }
 
@@ -73,7 +73,7 @@ namespace
             assert2(count == vtx_count * 3);
             for (size_t j = 0; j < vtx_count; ++j)
             {
-                raw_vertices[j].normal = {scratch[j * 3 + 0], scratch[j * 3 + 1], scratch[j * 3 + 2]};
+                cpp::cx_memcpy(&raw_vertices[j].nx, &scratch[j * 3], sizeof(loader::vertex::px) * 3);
             }
         }
 
@@ -143,7 +143,7 @@ namespace
                                                          meshlet_indices_ptr,
                                                          indices.data(),
                                                          indices.size(),
-                                                         &vertices.data()->position.x,
+                                                         &vertices.data()->px,
                                                          vertices.size(),
                                                          sizeof(loader::vertex),
                                                          loader::kMaxVerticesPerMeshlet,
@@ -173,14 +173,14 @@ namespace
                     meshopt_computeMeshletBounds(&meshlet_vertices_ptr[meshopt_meshlet.vertex_offset],
                                                  &meshlet_indices_ptr[meshopt_meshlet.triangle_offset],
                                                  meshopt_meshlet.triangle_count,
-                                                 &vertices[0].position.x,
+                                                 &vertices[0].px,
                                                  vertices.size(),
                                                  sizeof(loader::vertex));
 
                 auto& meshlet           = meshlets[i];
                 meshlet.triangles_count = meshopt_meshlet.triangle_count;
                 meshlet.vertices_count  = meshopt_meshlet.vertex_count;
-                meshlet.payload_offset  = base_payload_offset + total_bytes_written;
+                meshlet.data_offset     = base_payload_offset + total_bytes_written;
 
                 cpp::cx_memcpy(meshlets_payload.data() + total_bytes_written,
                                &meshlet_vertices_ptr[meshopt_meshlet.vertex_offset],
@@ -226,8 +226,7 @@ namespace
         cpp::heap_array<loader::meshlet> meshlets;
 
         cpp::heap_array<u32> indices_work_copy = data.indices;
-        const f32 lod_scale =
-            meshopt_simplifyScale(&data.vertices[0].position.x, data.vertices.size(), sizeof(loader::vertex));
+        const f32 lod_scale = meshopt_simplifyScale(&data.vertices[0].px, data.vertices.size(), sizeof(loader::vertex));
 
         f32 curr_error = 0.0F;
         for (u32 j = 0; j < COUNT_OF(primitive.lod_array); ++j)
@@ -245,7 +244,7 @@ namespace
             ++primitive.lod_count;
             auto& curr_lod = primitive.lod_array[j];
 
-            curr_lod.lod_error = curr_error * lod_scale;
+            curr_lod.error = curr_error * lod_scale;
 
             curr_lod.meshlets_count = meshlets.size();
             curr_lod.base_meshlet   = (geometry_pool.meshlets.offset / sizeof(loader::meshlet)) + ctx.meshlets.size();
@@ -269,10 +268,10 @@ namespace
             const u64 indices_count = meshopt_simplifyWithAttributes(indices_work_copy.data(),
                                                                      indices_work_copy.data(),
                                                                      indices_work_copy.size(),
-                                                                     &data.vertices[0].position.x,
+                                                                     &data.vertices[0].px,
                                                                      data.vertices.size(),
                                                                      sizeof(data.vertices[0]),
-                                                                     &data.vertices[0].normal.x,
+                                                                     &data.vertices[0].nx,
                                                                      sizeof(data.vertices[0]),
                                                                      kSimplifyAttribWeights,
                                                                      COUNT_OF(kSimplifyAttribWeights),
@@ -296,13 +295,24 @@ namespace
         }
     }
 
+    u32 get_max_lod_meshlets(const loader::primitive& prim)
+    {
+        u32 res = 0;
+        for (u32 i = 0; i < prim.lod_count; ++i)
+        {
+            res = cpp::max(prim.lod_array[i].meshlets_count, res);
+        }
+
+        return res;
+    }
+
     vec4 compute_bounding_sphere(const loader::mesh_data& mesh)
     {
         ZoneScoped;
         vec3 center(0.0F);
         for (const auto& v : mesh.vertices)
         {
-            center += v.position;
+            center += vec3(v.px, v.py, v.pz);
         }
 
         f32 radius = 0.0F;
@@ -310,7 +320,7 @@ namespace
 
         for (const auto& v : mesh.vertices)
         {
-            radius = glm::max(radius, glm::distance(center, v.position));
+            radius = glm::max(radius, glm::distance(center, vec3(v.px, v.py, v.pz)));
         }
 
         return {center, radius};
@@ -389,9 +399,11 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
                 continue;
             }
 
-            auto prim_data = load_primitive(primitive);
+            auto prim_data     = load_primitive(primitive);
+            const auto bsphere = compute_bounding_sphere(prim_data);
             loader::primitive prim_desc {
-                .b_sphere    = compute_bounding_sphere(prim_data),
+                .center      = {bsphere.x, bsphere.y, bsphere.z},
+                .radius      = bsphere.w,
                 .base_vertex = static_cast<u32>((geometry_pool.vertex.offset / sizeof(vertex)) + ctx.vertices.size()),
             };
 
@@ -426,9 +438,10 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
 
     // TODO: refactor (moving objects?)
     // Also need to be careful with not writing anything to transfer in the meantime
-    u32 transforms_count = 0;
-    auto* transforms     = static_cast<transform_component*>(geometry_pool.transfer.mapped);
+    u32 instance_count = 0;
+    auto* instances    = static_cast<loader::instance*>(geometry_pool.transfer.mapped);
 
+    u32 visibility_offset = 0;
     for (size_t i = 0; i < data->nodes_count; ++i)
     {
         const cgltf_node* node = &data->nodes[i];
@@ -447,12 +460,16 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
             component.mesh_offset      = meshes[cgltf_mesh_index(data, node->mesh)].offset;
             component.primitives_count = meshes[cgltf_mesh_index(data, node->mesh)].prim_count;
 
-            auto& desc       = meshes[cgltf_mesh_index(data, node->mesh)];
-            transforms_count = cpp::max(desc.offset + desc.prim_count - 1, transforms_count);
+            auto& desc     = meshes[cgltf_mesh_index(data, node->mesh)];
+            instance_count = cpp::max(desc.offset + desc.prim_count - 1, instance_count);
 
             for (u32 j = 0; j < desc.prim_count; ++j)
             {
-                transforms[desc.offset + j] = transform_comp;
+                instances[desc.offset + j].pos_and_scale     = {transform_comp.position, transform_comp.uniform_scale};
+                instances[desc.offset + j].rotation_quat     = transform_comp.rotation;
+                instances[desc.offset + j].visibility_offset = visibility_offset;
+
+                visibility_offset += get_max_lod_meshlets(ctx.primitives[desc.offset + j]);
             }
         }
 
@@ -487,8 +504,8 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
 
     render::submit_transfer(geometry_pool.transfer,
                             geometry_pool.transforms.buffer,
-                            VkBufferCopy {.size = transforms_count * sizeof(transform_component)});
-    geometry_pool.transforms.offset += transforms_count * sizeof(transform_component);
+                            VkBufferCopy {.size = instance_count * sizeof(loader::instance)});
+    geometry_pool.transforms.offset += instance_count * sizeof(loader::instance);
     // TODO
 
     return stats;
@@ -501,10 +518,12 @@ loader::primitive loader::upload_primitive(const mesh_data& data, render::vk_sce
     assert2(geometry_pool.index.offset % sizeof(u32) == 0);
     assert2(geometry_pool.vertex.offset % sizeof(vertex) == 0);
 
-    loader::primitive prim;
-
-    prim.b_sphere    = compute_bounding_sphere(data);
-    prim.base_vertex = geometry_pool.vertex.offset / sizeof(vertex);
+    const auto bsphere = compute_bounding_sphere(data);
+    loader::primitive prim {
+        .center      = {bsphere.x, bsphere.y, bsphere.z},
+        .radius      = bsphere.w,
+        .base_vertex = static_cast<u32>(geometry_pool.vertex.offset / sizeof(vertex))
+    };
 
     loader_context ctx;
     generate_lods(data, geometry_pool, prim, ctx);

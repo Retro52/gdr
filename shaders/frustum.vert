@@ -1,7 +1,7 @@
 #version 450
 
 #extension GL_GOOGLE_include_directive: require
-#include "types.glsl"
+#include "include/shaders/types.h"
 
 layout (push_constant) uniform pc {
     mat4 renderer_vp;

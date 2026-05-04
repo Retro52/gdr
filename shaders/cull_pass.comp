@@ -2,8 +2,8 @@
 
 #extension GL_GOOGLE_include_directive: require
 
-#include "types.glsl"
 #include "common.glsl"
+#include "include/shaders/types.h"
 
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
@@ -12,9 +12,9 @@ layout (binding = 0) readonly buffer MeshesData
     MeshData meshes_data[];
 };
 
-layout (binding = 1) readonly buffer MeshesTransforms
+layout (scalar, binding = 1) readonly buffer MeshInstances
 {
-    MeshTransform meshes_transforms[];
+    MeshInstance mesh_instances[];
 };
 
 layout (binding = 2) buffer MeshesDrawCommandsCount
@@ -37,7 +37,7 @@ layout (binding = 4) readonly buffer FrameCullDataBuffer
 };
 
 #ifdef FOR_MESH_PIPELINE
-layout (binding = 5) writeonly buffer DrawMeshIndirects
+layout (binding = 5) writeonly buffer DrawMeshletsIndirects
 {
     DrawTaskCommandIndirect draw_indirect_cmds[];
 };
@@ -72,10 +72,10 @@ void main()
     }
 
     // draw only last frame occluders
-    vec3 center = transform_vec3(vec3(meshes_data[idx].center[0], meshes_data[idx].center[1], meshes_data[idx].center[2]), meshes_transforms[idx].pos_and_scale, meshes_transforms[idx].rotation_quat);
+    vec3 center = transform_vec3(vec3(meshes_data[idx].center[0], meshes_data[idx].center[1], meshes_data[idx].center[2]), mesh_instances[idx].pos_and_scale, mesh_instances[idx].rotation_quat);
     center = vec3(frame_cull.view * vec4(center, 1.0F));
 
-    float scale = meshes_transforms[idx].pos_and_scale.w;
+    float scale = mesh_instances[idx].pos_and_scale.w;
     float radius = meshes_data[idx].radius * scale;
 
     bool visible = true;
@@ -118,7 +118,7 @@ void main()
         }
 
         lod_base = GET_BIT(frame_cull.flags, kLodFlagBit) == 0 ? 0 : lod_base;
-        LODData selected_lod = meshes_data[idx].lod_array[lod_base];
+        MeshLod selected_lod = meshes_data[idx].lod_array[lod_base];
 
 #ifdef FOR_MESH_PIPELINE
         uint taskCount = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
@@ -129,6 +129,7 @@ void main()
             uint offset = kTaskWorkGroups * (taskCount - i);
             draw_indirect_cmds[dcii].mesh_id = idx;
             draw_indirect_cmds[dcii].meshlet_offset = selected_lod.base_meshlet + offset;
+            draw_indirect_cmds[dcii].visibility_offset = mesh_instances[idx].visibility_offset + offset;
             draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups);
         }
 #else

@@ -11,14 +11,15 @@ namespace render
     {
         enum flag : u32
         {
-            eValidation       = 1 << 0,
-            eMeshShading      = 1 << 1,
-            eDynamicRender    = 1 << 2,
-            eSynchronization2 = 1 << 3,
-            eDrawIndirect     = 1 << 4,
-            e8BitIntegers     = 1 << 5,
-            ePipelineStats    = 1 << 6,
-            eSamplerMinMax    = 1 << 7,
+            eValidation        = 1 << 0,
+            eMeshShading       = 1 << 1,
+            eDynamicRender     = 1 << 2,
+            eSynchronization2  = 1 << 3,
+            eDrawIndirect      = 1 << 4,
+            e8BitIntegers      = 1 << 5,
+            ePipelineStats     = 1 << 6,
+            eSamplerMinMax     = 1 << 7,
+            eScalarBlockLayout = 1 << 8,
             eCOUNT
         };
 

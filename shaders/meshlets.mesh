@@ -3,8 +3,8 @@
 #extension GL_EXT_mesh_shader: require
 #extension GL_GOOGLE_include_directive: require
 
-#include "types.glsl"
 #include "common.glsl"
+#include "include/shaders/types.h"
 
 // FIXME: for whatever reason passing 94 (our constant) is illegal for max_primitives, investigate?
 layout (local_size_x = kMeshWorkGroups, local_size_y = 1, local_size_z = 1) in;
@@ -30,9 +30,9 @@ layout (binding = 2) readonly buffer MeshletVertices
     uint meshlets_vertices[];
 };
 
-layout (binding = 4) readonly buffer MeshesTransforms
+layout (scalar, binding = 4) readonly buffer MeshInstances
 {
-    MeshTransform meshes_transforms[];
+    MeshInstance mesh_instances[];
 };
 
 layout (push_constant) uniform constants
@@ -47,7 +47,7 @@ out VS_OUT {
 #endif
 } vs_out[];
 
-taskPayloadSharedEXT MeshletTask meshlet_task;
+taskPayloadSharedEXT DrawMeshletsTask meshlet_task;
 
 void main()
 {
@@ -68,7 +68,7 @@ void main()
         const uint vid = meshlet_task.base_vertex + meshlets_vertices[base_vertex + i];
 
         vec3 local_pos = vec3(vertices[vid].px, vertices[vid].py, vertices[vid].pz);
-        vec4 world_pos = vec4(transform_vec3(local_pos, meshes_transforms[meshlet_task.mesh_id].pos_and_scale, meshes_transforms[meshlet_task.mesh_id].rotation_quat), 1.0);
+        vec4 world_pos = vec4(transform_vec3(local_pos, mesh_instances[meshlet_task.mesh_id].pos_and_scale, mesh_instances[meshlet_task.mesh_id].rotation_quat), 1.0);
         vs_out[i].normal = vec3(vertices[vid].nx, vertices[vid].ny, vertices[vid].nz);
 
 #if VISUALIZE_MESHLETS

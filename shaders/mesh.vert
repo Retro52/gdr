@@ -2,17 +2,17 @@
 
 #extension GL_GOOGLE_include_directive: require
 
-#include "types.glsl"
 #include "common.glsl"
+#include "include/shaders/types.h"
 
 layout (binding = 0) readonly buffer Vertices
 {
     Vertex vertices[];
 };
 
-layout (binding = 1) readonly buffer MeshesTransforms
+layout (scalar, binding = 1) readonly buffer MeshInstances
 {
-    MeshTransform meshes_transforms[];
+    MeshInstance mesh_instances[];
 };
 
 layout (binding = 2) readonly buffer DrawIndexedIndirects
@@ -39,7 +39,7 @@ void main()
     vec3 local_pos = vec3(v.px, v.py, v.pz);
     uint mesh_id = draw_cmds[gl_DrawID].mesh_id;
 
-    vec4 world_pos = vec4(transform_vec3(local_pos, meshes_transforms[mesh_id].pos_and_scale, meshes_transforms[mesh_id].rotation_quat), 1.0);
+    vec4 world_pos = vec4(transform_vec3(local_pos, mesh_instances[mesh_id].pos_and_scale, mesh_instances[mesh_id].rotation_quat), 1.0);
     vs_out.normal = vec3(v.nx, v.ny, v.nz);
 
 #if 0

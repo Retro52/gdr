@@ -2,8 +2,8 @@
 
 #extension GL_GOOGLE_include_directive: require
 
-#include "types.glsl"
 #include "common.glsl"
+#include "include/shaders/types.h"
 
 layout (local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 

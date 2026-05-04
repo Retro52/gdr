@@ -356,6 +356,7 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
     vkGetPhysicalDeviceFeatures2(device, &device_features2);
 
     features_table.set_supported(rendering_features_table::eDynamicRender, vk13_features.dynamicRendering);
+    features_table.set_supported(rendering_features_table::eScalarBlockLayout, vk12_features.scalarBlockLayout);
     features_table.set_supported(rendering_features_table::eSynchronization2, vk13_features.synchronization2);
     features_table.set_supported(rendering_features_table::eSamplerMinMax, vk12_features.samplerFilterMinmax);
 
@@ -520,6 +521,7 @@ VkResult create_vulkan_device(const rendering_features_table& rendering_features
         .drawIndirectCount       = rendering_features.wanted(rendering_features_table::eDrawIndirect),
         .storageBuffer8BitAccess = rendering_features.wanted(rendering_features_table::e8BitIntegers),
         .samplerFilterMinmax     = rendering_features.wanted(rendering_features_table::eSamplerMinMax),
+        .scalarBlockLayout       = rendering_features.wanted(rendering_features_table::eScalarBlockLayout),
     };
 
     VkPhysicalDeviceVulkan11Features vk11_features {
