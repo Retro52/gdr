@@ -1,0 +1,846 @@
+#include <volk.h>
+
+#include <types.hpp>
+
+#include <app/app.hpp>
+#include <app/gpu_stats.hpp>
+#include <app/pso.hpp>
+#include <app/render.hpp>
+#include <camera_controller.hpp>
+#include <codegen/render_settings.hpp>
+#include <editor/hierarchy.hpp>
+#include <events.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <imgui.h>
+#include <imgui/gpu_profile_data.hpp>
+#include <imgui/imex.hpp>
+#include <imgui/imgui_layer.hpp>
+#include <render/debug/frustum_renderer.hpp>
+#include <render/platform/vk/vk_barrier.hpp>
+#include <render/platform/vk/vk_image.hpp>
+#include <render/platform/vk/vk_pipeline.hpp>
+#include <render/platform/vk/vk_query.hpp>
+#include <render/platform/vk/vk_renderer.hpp>
+#include <scene/components.hpp>
+#include <scene/entity.hpp>
+#include <scene/loader.hpp>
+#include <scene/scene.hpp>
+#include <tracy/Tracy.hpp>
+#include <window.hpp>
+
+#include "editor/info.hpp"
+
+#define NO_EDITOR     0
+#define NO_PERF_QUERY 0
+
+namespace
+{
+    using frame_cull_data = shader_types::FrameCullData;
+
+    void build_frustum(frame_cull_data& data, const glm::mat4& iproj, const glm::mat4& iview)
+    {
+        ZoneScoped;
+
+        data.view          = iview;
+        data.p00           = iproj[0][0];
+        data.p11           = iproj[1][1];
+        data.lod_threshold = 2.0F / (data.viewport_size.y * glm::abs(data.p11));
+
+        auto t_pv = glm::transpose(iproj);
+
+        auto plane = [&](const vec4 eq)
+        {
+            return eq / glm::length(vec3(eq));
+        };
+
+        const vec4 hor_plane = plane(t_pv[3] + t_pv[0]);
+        const vec4 ver_plane = plane(t_pv[3] + t_pv[1]);
+
+        data.frustum[0] = hor_plane.x;
+        data.frustum[1] = hor_plane.z;
+
+        data.frustum[2] = glm::abs(ver_plane.y);
+        data.frustum[3] = ver_plane.z;
+
+        const auto w = t_pv[2].w;
+        const auto z = glm::max(t_pv[2].z, 1e-9F);
+
+        data.frustum[4] = w - z;
+        data.frustum[5] = w / z;
+    }
+
+    template<typename T>
+    T get_random(const T min, const T max)
+    {
+        ZoneScoped;
+        return min + (static_cast<T>(rand()) / RAND_MAX) * (max - min);
+    }
+
+    u64 populate_scene(const u32 draw_count, const cpp::heap_array<loader::mesh_data>& primitives, scene& scene,
+                       render::vk_scene_geometry_pool& geometry_pool)
+    {
+        ZoneScoped;
+
+        u64 scene_triangles_total     = 0;
+        const u32 kVolumeItemsPerSide = std::lroundl(std::cbrt(draw_count));
+
+        cpp::heap_array<loader::primitive> prims(primitives.size());
+        for (u32 i = 0; i < primitives.size(); ++i)
+        {
+            prims[i] = loader::upload_primitive(primitives[i], geometry_pool);
+        }
+
+        auto* instances_ptr  = static_cast<loader::instance*>(geometry_pool.transfer.mapped);
+        auto* primitives_ptr = reinterpret_cast<loader::primitive*>(static_cast<u8*>(geometry_pool.transfer.mapped)
+                                                                    + sizeof(loader::instance) * draw_count);
+
+        for (u32 i = 0; i < draw_count; ++i)
+        {
+            ZoneScopedN("create models within the scene");
+            primitives_ptr[i] = prims[get_random<i32>(0, prims.size() - 1)];
+            scene_triangles_total += primitives_ptr[i].lod_array[0].indices_count / 3;
+
+            auto entity = scene.create_entity();
+            entity.add_component<mesh_component>();
+            entity.add_component<id_component>();
+
+            auto& transform = instances_ptr[i];
+            vec3 position   = {
+                i % kVolumeItemsPerSide,
+                (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
+                i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
+            };
+
+            constexpr f32 kDensityInverse = 7.5F;
+            position *= vec3(1.5F);
+            position *= vec3(get_random<f32>(-kDensityInverse, kDensityInverse),
+                             get_random<f32>(-kDensityInverse, kDensityInverse),
+                             get_random<f32>(-kDensityInverse, kDensityInverse));
+            position += primitives_ptr[i].radius;
+
+            transform.pos_and_scale = {position, get_random<f32>(0.75F, 10.0F)};
+            transform.rotation_quat =
+                glm::quat(vec3(get_random<f32>(-180, 180), get_random<f32>(-180, 180), get_random<f32>(-180, 180)));
+        }
+
+        render::submit_transfer(geometry_pool.transfer,
+                                geometry_pool.transforms.buffer,
+                                VkBufferCopy {.size = draw_count * sizeof(loader::instance)});
+        render::submit_transfer(geometry_pool.transfer,
+                                geometry_pool.primitives.buffer,
+                                VkBufferCopy {.srcOffset = sizeof(loader::instance) * draw_count,
+                                              .size      = draw_count * sizeof(loader::primitive)});
+
+        return scene_triangles_total;
+    }
+}
+
+render::vk_renderer create_vk_renderer(window& app_window)
+{
+    ZoneScoped;
+    constexpr auto features_table = render::rendering_features_table()
+#if !defined(NDEBUG)
+                                        .request(render::rendering_features_table::eValidation)
+#endif
+                                        .request(render::rendering_features_table::eMeshShading)
+                                        .request(render::rendering_features_table::ePipelineStats)
+                                        .require(render::rendering_features_table::e8BitIntegers)
+                                        .require(render::rendering_features_table::eDrawIndirect)
+                                        .require(render::rendering_features_table::eDynamicRender)
+                                        .require(render::rendering_features_table::eSamplerMinMax)
+                                        .require(render::rendering_features_table::eScalarBlockLayout)
+                                        .require(render::rendering_features_table::eSynchronization2);
+
+    return {
+        render::instance_desc {
+                               .app_name        = "Vulkan renderer",
+                               .app_version     = 1,
+                               .device_features = features_table,
+                               },
+        app_window,
+        false
+    };
+}
+
+app::instance::instance()
+    : m_window("VK window", {1920, 960}, false)
+    , m_events_queue(m_window)
+    , m_renderer(create_vk_renderer(m_window))
+{
+}
+
+int app::instance::run(const int argc, char* argv[])
+{
+    if (argc < 2)
+    {
+        return -1;
+    }
+
+    render::vk_image depth_image = create_depth_image(m_window.get_size_in_px(),
+                                                      m_renderer.get_swapchain().depth_format,
+                                                      m_renderer.get_context().device,
+                                                      m_renderer.get_context().allocator);
+
+    depth_pyramid_data depth_pyramid = create_depth_pyramid(m_window.get_size_in_px(),
+                                                            VK_FORMAT_R32_SFLOAT,
+                                                            m_renderer.get_context().device,
+                                                            m_renderer.get_context().allocator);
+
+    bool exit = false;
+    bool mesh_shading_supported =
+        m_renderer.get_context().enabled_device_features.supported(render::rendering_features_table::eMeshShading);
+    bool pipeline_stats_supported =
+        m_renderer.get_context().enabled_device_features.supported(render::rendering_features_table::ePipelineStats);
+
+    m_events_queue.add_watcher(
+        event_type::request_close,
+        [](auto&, void* user_data)
+        {
+            *static_cast<bool*>(user_data) = true;
+        },
+        &exit);
+
+    m_events_queue.add_watcher(
+        event_type::key_pressed,
+        [](const event_payload& payload, void* user_data)
+        {
+            if (payload.keyboard.key == keycode::sc_escape)
+            {
+                *static_cast<bool*>(user_data) = true;
+            }
+        },
+        &exit);
+
+    struct resize_context
+    {
+        render::vk_renderer& renderer;
+        render::vk_image& depth_image;
+        depth_pyramid_data& depth_pyramid;
+    } resize_ctx(m_renderer, depth_image, depth_pyramid);
+
+    m_events_queue.add_watcher(
+        event_type::window_size_changed,
+        +[](const event_payload& payload, void* user_data)
+        {
+            auto& ctx = *static_cast<resize_context*>(user_data);
+
+            vkDeviceWaitIdle(ctx.renderer.get_context().device);
+            ctx.renderer.resize_swapchain(payload.window.size_px);
+
+            render::destroy_image(
+                ctx.renderer.get_context().device, ctx.renderer.get_context().allocator, ctx.depth_image);
+
+            ctx.depth_image = create_depth_image(payload.window.size_px,
+                                                 ctx.renderer.get_swapchain().depth_format,
+                                                 ctx.renderer.get_context().device,
+                                                 ctx.renderer.get_context().allocator);
+
+            destroy_depth_pyramid(
+                ctx.depth_pyramid, ctx.renderer.get_context().device, ctx.renderer.get_context().allocator);
+            ctx.depth_pyramid = create_depth_pyramid(payload.window.size_px,
+                                                     VK_FORMAT_R32_SFLOAT,
+                                                     ctx.renderer.get_context().device,
+                                                     ctx.renderer.get_context().allocator);
+        },
+        &resize_ctx);
+
+    pso_data pipelines;
+    pipelines.load(m_renderer);
+
+#if !NO_EDITOR
+    imgui_layer editor(m_window, m_renderer);
+#endif
+
+    // test scene stuff
+    scene client_scene;
+    auto camera = client_scene.create_entity();
+
+    camera.add_component<id_component>(DEBUG_ONLY(id_component("camera")));
+    camera.add_component<transform_component>();
+    camera.add_component<camera_component>(camera_component {
+        .near_plane     = 0.01F,
+        .aspect_ratio   = 16.0F / 9.0F,
+        .horizontal_fov = glm::radians(90.0F),
+    });
+
+    render::vk_scene_geometry_pool geometry_pool {
+        .index      = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+        .vertex     = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .primitives = render::vk_shared_buffer(m_renderer, 32_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .transforms = render::vk_shared_buffer(m_renderer, 16_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+
+        .transfer = *render::create_buffer_transfer(m_renderer.get_context().device,
+                                                    m_renderer.get_context().allocator,
+                                                    m_renderer.get_context().queues[render::queue_kind::eTransfer],
+                                                    128_MB)};
+
+    if (mesh_shading_supported)
+    {
+        geometry_pool.meshlets =
+            render::vk_shared_buffer(m_renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        geometry_pool.meshlets_payload =
+            render::vk_shared_buffer(m_renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    }
+
+    const bool load_as_scene = argc == 3 && cpp::cx_streq(argv[1], "--scene");
+
+    loader::stats stats;
+    if (load_as_scene)
+    {
+        stats = loader::load_scene(argv[2], client_scene, geometry_pool);
+    }
+    else
+    {
+        stats = loader::stats {
+            .meshes     = 1,
+            .primitives = 144'000,  // kRepeatDraws
+        };
+
+        cpp::heap_array<loader::mesh_data> meshes;
+
+        for (int i = 1; i < argc; ++i)
+        {
+            meshes.append(loader::load_mesh(argv[i]));
+        }
+
+        stats.triangles = populate_scene(stats.primitives, meshes, client_scene, geometry_pool);
+    }
+
+    constexpr u32 kQueryPoolCount = 64;
+    render::vk_query timestamp_query_pool =
+        *render::create_query_pool(m_renderer.get_context().device, kQueryPoolCount, VK_QUERY_TYPE_TIMESTAMP);
+
+    render::vk_query pipeline_statistics_query;
+    if (pipeline_stats_supported)
+    {
+        pipeline_statistics_query =
+            *render::create_pipeline_stat_query_pool(m_renderer.get_context().device,
+                                                     kQueryPoolCount,
+                                                     VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT
+                                                         | VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT
+                                                         | VK_QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT
+                                                         | VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT
+                                                         | VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT);
+    }
+
+    render::vk_buffer draw_count_buffer = *render::create_buffer(
+        sizeof(u32[3]),
+        VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        m_renderer.get_context().allocator,
+        0);
+
+    render::vk_buffer mesh_visibility_buffer = *render::create_buffer(
+        (stats.primitives + 31) / 8,
+        VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        m_renderer.get_context().allocator,
+        0);
+
+    render::vk_buffer meshlets_visibility_buffer = *render::create_buffer(
+        (stats.meshlets + 31) / 8,
+        VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        m_renderer.get_context().allocator,
+        0);
+
+    render::fill_buffer(geometry_pool.transfer, mesh_visibility_buffer, 0_u8);
+    render::fill_buffer(geometry_pool.transfer, meshlets_visibility_buffer, 0_u8);
+
+    render::vk_buffer indexed_draw_indirect_buffer = *render::create_buffer(
+        16 * 1024 * 1024,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        m_renderer.get_context().allocator,
+        0);
+
+    render::vk_buffer meshlets_draw_indirect_buffer = *render::create_buffer(
+        16 * 1024 * 1024,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        m_renderer.get_context().allocator,
+        0);
+
+    render::vk_mapped_buffer frame_cull_data_buffers[3];
+    for (u32 i = 0; i < 3; i++)
+    {
+        frame_cull_data_buffers[i] =
+            *render::create_buffer_mapped(sizeof(frame_cull_data),
+                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                          m_renderer.get_context().allocator,
+                                          VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+    }
+
+    gpu_profile_data profile_data;
+    render_settings client_render_settings;
+    pipeline_statistics_data pipeline_stats;
+
+    glm::mat4 camera_proj_view;
+
+    bool freeze_cull_data         = false;
+    bool enable_vsync             = m_renderer.get_vsync();
+    bool enable_fullscreen        = m_window.get_fullscreen();
+    bool enable_meshlets_pipeline = mesh_shading_supported;
+
+    auto get_time = []<typename T = f64>()
+    {
+        return static_cast<T>(SDL_GetPerformanceCounter()) / static_cast<T>(SDL_GetPerformanceFrequency());
+    };
+
+    f64 last_frame_time = get_time();
+    camera_controller controller(m_events_queue, camera);
+
+    render::debug::frustum_renderer frustum_renderer(m_renderer);
+
+#if !NO_EDITOR
+    editor::hierarchy_window_context hierarchy_window_context;
+    editor::info_widget_context info_widget_context {
+        .m_camera        = controller,
+        .m_gpu_profile   = profile_data,
+        .m_geometry_pool = geometry_pool,
+    };
+#endif
+
+    auto draw_scene = [&](VkCommandBuffer cmd, const render::vk_pipeline& pipeline, VkBuffer frame_cull_data)
+    {
+        ZoneScoped;
+        if (enable_meshlets_pipeline)
+        {
+            const render::vk_descriptor_info render_bindings[] = {
+                geometry_pool.vertex.buffer.buffer,
+                geometry_pool.meshlets.buffer.buffer,
+                geometry_pool.meshlets_payload.buffer.buffer,
+                geometry_pool.primitives.buffer.buffer,
+                geometry_pool.transforms.buffer.buffer,
+                meshlets_draw_indirect_buffer.buffer,
+                frame_cull_data,
+                meshlets_visibility_buffer.buffer,
+                render::vk_descriptor_info(depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL)};
+
+            pipeline.push_descriptor_set(cmd, render_bindings);
+            vkCmdDrawMeshTasksIndirectEXT(cmd, draw_count_buffer.buffer, 0, 1, 0);
+        }
+        else
+        {
+            const render::vk_descriptor_info render_bindings[] = {geometry_pool.vertex.buffer.buffer,
+                                                                  geometry_pool.transforms.buffer.buffer,
+                                                                  indexed_draw_indirect_buffer.buffer};
+            pipeline.push_descriptor_set(cmd, render_bindings);
+            vkCmdBindIndexBuffer(cmd, geometry_pool.index.buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexedIndirectCount(cmd,
+                                          indexed_draw_indirect_buffer.buffer,
+                                          0,
+                                          draw_count_buffer.buffer,
+                                          0,
+                                          stats.primitives,
+                                          sizeof(shader_types::DrawIndexedIndirect));
+        }
+    };
+
+    auto render_loop = [&]()
+    {
+        ZoneScoped;
+        const f64 current_time = get_time();
+        const f64 dt           = current_time - last_frame_time;
+
+        last_frame_time = current_time;
+
+        auto& camera_transform = camera.get_component<transform_component>();
+        auto& camera_data      = camera.get_component<camera_component>();
+        controller.update(camera_transform, camera_data, static_cast<f32>(dt));
+
+        if (m_renderer.get_vsync() != enable_vsync)
+        {
+            m_renderer.set_vsync(enable_vsync);
+            return;
+        }
+
+        if (!m_renderer.acquire_frame())
+        {
+            return;
+        }
+
+        m_renderer.submit(
+            [&](const VkCommandBuffer buffer)
+            {
+                ZoneScopedN("main.m_renderer.submit");
+                constexpr VkCommandBufferBeginInfo command_buffer_begin_info {
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = 0};
+
+                const auto viewport = m_renderer.get_viewport();
+                const auto scissor  = m_renderer.get_scissor();
+
+                vkBeginCommandBuffer(buffer, &command_buffer_begin_info);
+                TRACY_ONLY(TracyVkCollect(m_renderer.get_frame_tracy_context(), buffer));
+
+                timestamp_query_pool.reset(buffer, 0, kQueryPoolCount);
+                pipeline_statistics_query.reset(buffer, 0, kQueryPoolCount);
+
+                vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool.handle, 0);
+
+                auto& frame_cull_data_buffer = frame_cull_data_buffers[m_renderer.get_frame_index()];
+                if (!freeze_cull_data)
+                {
+                    auto projection = client_render_settings.render_distance > 0
+                                        ? camera_data.get_projection_matrix(client_render_settings.render_distance)
+                                        : camera_data.get_projection_matrix();
+
+                    auto view = camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
+
+                    frame_cull_data fcd {.pyramid_size  = depth_pyramid.base_size,
+                                         .viewport_size = m_window.get_size_in_px(),
+                                         .draw_count    = static_cast<u32>(stats.primitives),
+                                         .flags         = client_render_settings.flags};
+                    build_frustum(fcd, projection, view);
+                    (*static_cast<frame_cull_data*>(frame_cull_data_buffer.mapped)) = fcd;
+                }
+                else
+                {
+                    static_cast<frame_cull_data*>(frame_cull_data_buffer.mapped)->flags = client_render_settings.flags;
+                }
+
+                camera_proj_view = camera_data.get_projection_matrix()
+                                 * camera_data.get_view_matrix(camera_transform.position, camera_transform.rotation);
+
+                {
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "cull last frame occluders"));
+
+                    reset_draw_count_buffer(buffer, draw_count_buffer);
+                    const render::vk_descriptor_info cull_pass_bindings[] = {geometry_pool.primitives.buffer.buffer,
+                                                                             geometry_pool.transforms.buffer.buffer,
+                                                                             draw_count_buffer.buffer,
+                                                                             mesh_visibility_buffer.buffer,
+                                                                             frame_cull_data_buffer.buffer,
+                                                                             enable_meshlets_pipeline
+                                                                                 ? meshlets_draw_indirect_buffer.buffer
+                                                                                 : indexed_draw_indirect_buffer.buffer};
+
+                    const render::vk_pipeline& cull_pass = enable_meshlets_pipeline
+                                                             ? pipelines[pso_id::task_cull_pipeline]
+                                                             : pipelines[pso_id::indexed_cull_pipeline];
+                    cull_pass.bind(buffer);
+                    cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
+
+                    cull_pass.dispatch(buffer, static_cast<u32>(stats.primitives), 1, 1);
+
+                    render::cmd_stage_barrier(
+                        buffer,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                        VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                }
+
+                render::transition_image(buffer,
+                                         m_renderer.get_frame_swapchain_image().image,
+                                         VK_IMAGE_LAYOUT_UNDEFINED,
+                                         VK_IMAGE_LAYOUT_GENERAL);
+
+                render::transition_image(buffer,
+                                         depth_image.image,
+                                         VK_IMAGE_LAYOUT_UNDEFINED,
+                                         VK_IMAGE_LAYOUT_GENERAL,
+                                         VK_IMAGE_ASPECT_DEPTH_BIT);
+                begin_rendering(buffer,
+                                m_renderer.get_frame_swapchain_image().image_view,
+                                depth_image.view,
+                                VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                VK_ATTACHMENT_STORE_OP_STORE,
+                                m_renderer.get_scissor());
+
+                vkCmdSetScissor(buffer, 0, 1, &scissor);
+                vkCmdSetViewport(buffer, 0, 1, &viewport);
+
+                pipeline_statistics_query.begin(buffer, 0, 0);
+
+                {
+                    const auto& render_pipeline = enable_meshlets_pipeline ? pipelines[pso_id::task_render_pipeline]
+                                                                           : pipelines[pso_id::indexed_render_pipeline];
+                    render_pipeline.bind(buffer);
+                    render_pipeline.push_constant(buffer, camera_proj_view);
+
+                    ZoneScopedN("draw last frame occluders");
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw last frame occluders"));
+
+                    draw_scene(buffer, render_pipeline, frame_cull_data_buffer.buffer);
+                }
+
+                pipeline_statistics_query.end(buffer, 0);
+                vkCmdEndRendering(buffer);
+
+                // Reduce the depth buffer pyramid
+                if (!freeze_cull_data)
+                {
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "depth reduce"));
+
+                    render::transition_image(
+                        buffer, depth_pyramid.image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+                    const auto& depth_reduce_pipeline = pipelines[pso_id::depth_reduce_pipeline];
+                    depth_reduce_pipeline.bind(buffer);
+
+                    for (i32 i = 0; i < depth_pyramid.pyramid_count; ++i)
+                    {
+                        const render::vk_descriptor_info cull_pass_bindings[] = {
+                            render::vk_descriptor_info(depth_pyramid.sampler,
+                                                       i == 0 ? depth_image.view : depth_pyramid.views[i - 1],
+                                                       VK_IMAGE_LAYOUT_GENERAL),
+                            render::vk_descriptor_info(
+                                depth_pyramid.sampler, depth_pyramid.views[i], VK_IMAGE_LAYOUT_GENERAL),
+                        };
+
+                        depth_reduce_pipeline.push_descriptor_set(buffer, cull_pass_bindings);
+
+                        const ivec2 out_size = glm::max(depth_pyramid.base_size >> i, ivec2(1));
+                        depth_reduce_pipeline.push_constant(buffer, vec2(out_size));
+                        depth_reduce_pipeline.dispatch(buffer, out_size.x, out_size.y, 1);
+
+                        render::cmd_stage_barrier(buffer,
+                                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                                  VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                    }
+                }
+
+                {
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "cull new objects"));
+
+                    reset_draw_count_buffer(buffer, draw_count_buffer);
+                    const render::vk_descriptor_info cull_pass_bindings[] = {
+                        geometry_pool.primitives.buffer.buffer,
+                        geometry_pool.transforms.buffer.buffer,
+                        draw_count_buffer.buffer,
+                        mesh_visibility_buffer.buffer,
+                        frame_cull_data_buffer.buffer,
+                        enable_meshlets_pipeline ? meshlets_draw_indirect_buffer.buffer
+                                                 : indexed_draw_indirect_buffer.buffer,
+                        render::vk_descriptor_info(
+                            depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL)};
+
+                    const render::vk_pipeline& cull_pass = enable_meshlets_pipeline
+                                                             ? pipelines[pso_id::task_occlusion_cull_pipeline]
+                                                             : pipelines[pso_id::indexed_cull_occlusion_pipeline];
+
+                    cull_pass.bind(buffer);
+                    cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
+
+                    cull_pass.dispatch(buffer, static_cast<u32>(stats.primitives), 1, 1);
+
+                    render::cmd_stage_barrier(
+                        buffer,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                        VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                }
+
+                {
+                    const auto& render_pipeline = enable_meshlets_pipeline
+                                                    ? pipelines[pso_id::task_render_late_pipeline]
+                                                    : pipelines[pso_id::indexed_render_pipeline];
+                    render_pipeline.bind(buffer);
+                    render_pipeline.push_constant(buffer, camera_proj_view);
+
+                    ZoneScopedN("draw new objects");
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw new objects"));
+
+                    begin_rendering(buffer,
+                                    m_renderer.get_frame_swapchain_image().image_view,
+                                    depth_image.view,
+                                    VK_ATTACHMENT_LOAD_OP_LOAD,
+                                    VK_ATTACHMENT_STORE_OP_STORE,
+                                    m_renderer.get_scissor());
+                    draw_scene(buffer, render_pipeline, frame_cull_data_buffer.buffer);
+
+                    if (freeze_cull_data)
+                    {
+                        frustum_renderer.draw(buffer, camera_proj_view, frame_cull_data_buffer);
+                    }
+
+                    vkCmdEndRendering(buffer);
+                }
+
+#if !NO_EDITOR
+                {
+                    ZoneScopedN("main.draw.editor");
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "editor"));
+
+                    editor.begin_frame();
+
+                    hierarchy_window_context.draw(client_scene);
+
+                    if (ImGui::Begin("Render controls"))
+                    {
+                        info_widget_context.draw(pipeline_stats);
+                        ImGui::SeparatorText("render controls");
+
+                        const char* names[] = {
+                            "LODs",
+                            "Frustum cull",
+                            "Occlusion cull",
+                            "Meshlets cone cull",
+                            "Meshlets frustum cull",
+                            "Meshlets occlusion cull",
+                            "Small meshlets cull",
+                        };
+                        ImGuiEx::Bits(client_render_settings.flags, names, COUNT_OF(names));
+                        codegen::draw(client_render_settings);
+
+                        ImGui::BeginDisabled(!mesh_shading_supported);
+                        ImGui::Checkbox("Enable meshlets path", &enable_meshlets_pipeline);
+                        ImGui::EndDisabled();
+
+                        ImGui::Checkbox("Enable vsync", &enable_vsync);
+                        if (ImGui::Checkbox("Enable fullscreen", &enable_fullscreen))
+                        {
+                            m_window.set_fullscreen(enable_fullscreen);
+                        }
+
+                        {
+                            ImGuiEx::ScopedColor btn(ImGuiCol_Button,
+                                                     freeze_cull_data ? IM_COL32(180, 60, 60, 255)
+                                                                      : IM_COL32(60, 60, 65, 255));
+                            ImGuiEx::ScopedColor btn_hover(ImGuiCol_ButtonHovered,
+                                                           freeze_cull_data ? IM_COL32(210, 85, 85, 255)
+                                                                            : IM_COL32(80, 80, 85, 255));
+                            ImGuiEx::ScopedColor btn_active(ImGuiCol_ButtonActive,
+                                                            freeze_cull_data ? IM_COL32(230, 110, 110, 255)
+                                                                             : IM_COL32(100, 100, 105, 255));
+
+                            if (ImGui::Button(freeze_cull_data ? "Unfreeze cull data" : "Freeze cull data"))
+                            {
+                                freeze_cull_data = !freeze_cull_data;
+                            }
+                        }
+
+                        if (ImGui::CollapsingHeader("Render targets", ImGuiTreeNodeFlags_DefaultOpen))
+                        {
+                            static int img_in_line = 2;
+                            ImGui::SliderInt("Images in line", &img_in_line, 1, 2);
+
+                            const auto size_x = ImGui::GetContentRegionAvail().x / static_cast<f32>(img_in_line);
+                            const auto size_y = (ImGui::GetContentRegionAvail().x / static_cast<f32>(img_in_line))
+                                              / camera_data.aspect_ratio;
+
+                            editor.depth_image(depth_image.image,
+                                               depth_image.view,
+                                               VK_IMAGE_LAYOUT_GENERAL,
+                                               {0, 1, 1, 0},
+                                               {size_x, size_y});
+                            if (img_in_line > 1)
+                            {
+                                ImGui::SameLine();
+                            }
+
+                            editor.image(m_renderer.get_frame_swapchain_image().image,
+                                         m_renderer.get_frame_swapchain_image().image_view,
+                                         VK_IMAGE_LAYOUT_GENERAL,
+                                         {0, 1, 1, 0},
+                                         {size_x, size_y});
+                        }
+
+                        if (ImGui::CollapsingHeader("Depth pyramid"))
+                        {
+                            static int idx = 0;
+                            idx            = std::min(idx, static_cast<int>(depth_pyramid.pyramid_count) - 1);
+
+                            ImGui::SliderInt("Index", &idx, 0, static_cast<int>(depth_pyramid.pyramid_count) - 1);
+
+                            const auto size_x = ImGui::GetContentRegionAvail().x;
+                            const auto size_y = ImGui::GetContentRegionAvail().x / camera_data.aspect_ratio;
+
+                            editor.image(depth_pyramid.image.image,
+                                         depth_pyramid.views[idx],
+                                         VK_IMAGE_LAYOUT_GENERAL,
+                                         {0, 1, 1, 0},
+                                         {size_x, size_y},
+                                         1.0F);
+                        }
+                    }
+
+                    ImGui::End();
+                    editor.end_frame(m_renderer);
+                }
+#endif
+
+                render::transition_image(buffer,
+                                         m_renderer.get_frame_swapchain_image().image,
+                                         VK_IMAGE_LAYOUT_GENERAL,
+                                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+                vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool.handle, 1);
+
+                vkEndCommandBuffer(buffer);
+                m_renderer.present_frame(buffer);
+
+#if !NO_PERF_QUERY
+                vkDeviceWaitIdle(m_renderer.get_context().device);
+
+                auto frame_stats = query_frame_statistics_data(m_renderer.get_context().device, timestamp_query_pool);
+                pipeline_stats =
+                    query_pipeline_statistics_data(m_renderer.get_context().device, pipeline_statistics_query);
+
+                VkPhysicalDeviceProperties props = {};
+                vkGetPhysicalDeviceProperties(m_renderer.get_context().physical_device, &props);
+
+                profile_data.update(static_cast<f64>(frame_stats.frame_start) * props.limits.timestampPeriod * 1e-6,
+                                    static_cast<f64>(frame_stats.frame_end) * props.limits.timestampPeriod * 1e-6,
+                                    pipeline_stats.triangles_count,
+                                    stats.triangles);
+
+                const auto str = cpp::stack_string::make_formatted("CPU: %.3lfms; GPU: %.3lfms; Tris/s (B): %lf",
+                                                                   dt * 1000.0F,
+                                                                   profile_data.gpu_render_time,
+                                                                   profile_data.tris_per_second);
+                SDL_SetWindowTitle(m_window.get_native_handle().window, str.c_str());
+#endif
+
+                FrameMark;
+            });
+    };
+
+    std::function wrapper(render_loop);
+    m_events_queue.add_watcher(
+        event_type::request_draw,
+        [](auto&, void* user_data)
+        {
+            std::invoke(*static_cast<std::function<void()>*>(user_data));
+        },
+        &wrapper);
+
+    while (!exit)
+    {
+        m_events_queue.poll();
+    }
+
+    vkDeviceWaitIdle(m_renderer.get_context().device);
+
+    frustum_renderer.shutdown(m_renderer);
+
+    pipelines.shutdown(m_renderer);
+    render::destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, depth_image);
+    destroy_depth_pyramid(depth_pyramid, m_renderer.get_context().device, m_renderer.get_context().allocator);
+
+    render::destroy_query_pool(m_renderer.get_context().device, timestamp_query_pool);
+    render::destroy_query_pool(m_renderer.get_context().device, pipeline_statistics_query);
+
+    render::destroy_command_buffer(m_renderer.get_context().device, geometry_pool.transfer.staging_command_buffer);
+
+    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.index.buffer);
+    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.vertex.buffer);
+    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.meshlets.buffer);
+    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.primitives.buffer);
+    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.transforms.buffer);
+    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.meshlets_payload.buffer);
+
+    vmaUnmapMemory(m_renderer.get_context().allocator, geometry_pool.transfer.staging_buffer.allocation);
+    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.transfer.staging_buffer);
+
+    render::destroy_buffer(m_renderer.get_context().allocator, draw_count_buffer);
+    render::destroy_buffer(m_renderer.get_context().allocator, mesh_visibility_buffer);
+    render::destroy_buffer(m_renderer.get_context().allocator, meshlets_visibility_buffer);
+    render::destroy_buffer(m_renderer.get_context().allocator, indexed_draw_indirect_buffer);
+    render::destroy_buffer(m_renderer.get_context().allocator, meshlets_draw_indirect_buffer);
+
+    for (auto& buffer : frame_cull_data_buffers)
+    {
+        render::destroy_buffer_mapped(m_renderer.get_context().allocator, buffer);
+    }
+
+    return 0;
+}

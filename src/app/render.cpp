@@ -1,0 +1,143 @@
+#include <app/render.hpp>
+#include <render/platform/vk/vk_barrier.hpp>
+#include <tracy/Tracy.hpp>
+
+void app::begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView depth, VkAttachmentLoadOp load_op,
+                          VkAttachmentStoreOp store_op, const VkRect2D& vp)
+{
+    ZoneScoped;
+    VkRenderingInfo rendering_info {.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR, .renderArea = vp, .layerCount = 1};
+
+    VkRenderingAttachmentInfo color_attachment_info {};
+    VkRenderingAttachmentInfo depth_attachment_info {};
+    if (color != VK_NULL_HANDLE)
+    {
+        color_attachment_info = {
+            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView   = color,
+            .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+            .loadOp      = load_op,
+            .storeOp     = store_op,
+            .clearValue  = {
+                            .color = {0.0F, 0.0F, 0.0F, 1.0F},
+                            }
+        };
+
+        rendering_info.colorAttachmentCount = 1;
+        rendering_info.pColorAttachments    = &color_attachment_info;
+    }
+
+    if (depth != VK_NULL_HANDLE)
+    {
+        depth_attachment_info = {
+            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView   = depth,
+            .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .loadOp      = load_op,
+            .storeOp     = store_op,
+            .clearValue  = {
+                            .depthStencil = {0.0F, 0},
+                            }
+        };
+
+        rendering_info.pDepthAttachment = &depth_attachment_info;
+    }
+
+    vkCmdBeginRendering(cmd, &rendering_info);
+}
+
+void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& draw_count_buffer)
+{
+    ZoneScoped;
+    vkCmdFillBuffer(cmd, draw_count_buffer.buffer, 0, sizeof(u32), 0);
+    vkCmdFillBuffer(cmd, draw_count_buffer.buffer, sizeof(u32), sizeof(u32[2]), 1);
+
+    render::cmd_buffer_barrier(cmd,
+                               draw_count_buffer.buffer,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_ACCESS_TRANSFER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+}
+
+render::vk_image app::create_depth_image(const ivec2& size, const VkFormat format, VkDevice device,
+                                         VmaAllocator allocator)
+{
+    ZoneScoped;
+    const VkImageCreateInfo image_create_info {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = format,
+        .extent        = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    return *render::create_image(device, image_create_info, VK_IMAGE_ASPECT_DEPTH_BIT, allocator);
+}
+
+void app::destroy_depth_pyramid(depth_pyramid_data& pyramid, VkDevice device, VmaAllocator allocator)
+{
+    for (u32 i = 0; i < pyramid.pyramid_count; ++i)
+    {
+        vkDestroyImageView(device, pyramid.views[i], nullptr);
+    }
+
+    pyramid.pyramid_count = 0;
+    render::destroy_image(device, allocator, pyramid.image);
+    vkDestroySampler(device, pyramid.sampler, nullptr);
+}
+
+app::depth_pyramid_data app::create_depth_pyramid(const ivec2& size, const VkFormat format, VkDevice device,
+                                                  VmaAllocator allocator)
+{
+    ZoneScoped;
+    depth_pyramid_data depth_pyramid {
+        .base_size     = {1 << static_cast<i32>(std::log2(size.x)), 1 << static_cast<i32>(std::log2(size.y))},
+        .pyramid_count = 1,
+    };
+
+    ivec2 size_cpy = depth_pyramid.base_size;
+    while (size_cpy.x > 1 || size_cpy.y > 1)
+    {
+        size_cpy /= 2;
+        ++depth_pyramid.pyramid_count;
+    }
+
+    depth_pyramid.pyramid_count =
+        std::min(depth_pyramid.pyramid_count, static_cast<u32>(COUNT_OF(depth_pyramid.views)));
+
+    const VkImageCreateInfo image_create_info {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = format,
+        .extent        = {static_cast<u32>(depth_pyramid.base_size.x), static_cast<u32>(depth_pyramid.base_size.y), 1},
+        .mipLevels     = depth_pyramid.pyramid_count,
+        .arrayLayers   = 1,
+        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    depth_pyramid.image   = *render::create_image(device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, allocator);
+    depth_pyramid.sampler = *render::create_sampler(device,
+                                                    VK_FILTER_LINEAR,
+                                                    VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                                                    VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                                                    VK_SAMPLER_REDUCTION_MODE_MIN);
+
+    for (u32 i = 0; i < depth_pyramid.pyramid_count; ++i)
+    {
+        depth_pyramid.views[i] =
+            *render::create_image_view(device, depth_pyramid.image.image, format, VK_IMAGE_ASPECT_COLOR_BIT, i, 1);
+    }
+
+    return depth_pyramid;
+}

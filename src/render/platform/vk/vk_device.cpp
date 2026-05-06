@@ -9,12 +9,6 @@
 
 using namespace render;
 
-#define VK_DO_IF_NOT_NULL(VK_OBJ, EXPR) \
-    if ((VK_OBJ) != VK_NULL_HANDLE)     \
-    {                                   \
-        EXPR;                           \
-    }
-
 bool inst_ext_available(const char* name)
 {
     u32 n = 0;
@@ -401,7 +395,7 @@ ext_array build_extensions_from_feature_table(const rendering_features_table& fe
             case rendering_features_table::e8BitIntegers :
                 array.emplace_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
                 break;
-            case rendering_features_table::ePortabilitySubset:
+            case rendering_features_table::ePortabilitySubset :
                 array.emplace_back("VK_KHR_portability_subset");
                 break;
             default :
@@ -770,11 +764,11 @@ void render::destroy_swapchain(const context& vk_context, swapchain& swapchain)
     {
         for (auto& img : swapchain.images)
         {
-            vkDestroyImageView(vk_context.device, img.image_view, nullptr);
-            vkDestroySemaphore(vk_context.device, img.release_semaphore, nullptr);
+            VK_DESTROY(img.image_view, vkDestroyImageView, vk_context.device);
+            VK_DESTROY(img.release_semaphore, vkDestroySemaphore, vk_context.device);
         }
 
-        vkDestroySwapchainKHR(vk_context.device, swapchain.vk_swapchain, nullptr);
+        VK_DESTROY(swapchain.vk_swapchain, vkDestroySwapchainKHR, vk_context.device);
     }
 
     swapchain.vk_swapchain = VK_NULL_HANDLE;
@@ -871,11 +865,12 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
 void render::destroy_context(context& ctx)
 {
     ZoneScoped;
-    VK_DO_IF_NOT_NULL(ctx.device, vkDeviceWaitIdle(ctx.device));
 
+    VK_DO_IF_NOT_NULL(ctx.device, vkDeviceWaitIdle(ctx.device));
     VK_DO_IF_NOT_NULL(ctx.allocator, vmaDestroyAllocator(ctx.allocator));
-    VK_DO_IF_NOT_NULL(ctx.surface, vkDestroySurfaceKHR(ctx.instance, ctx.surface, nullptr));
-    VK_DO_IF_NOT_NULL(ctx.debug_messenger, vkDestroyDebugUtilsMessengerEXT(ctx.instance, ctx.debug_messenger, nullptr));
+
+    VK_DESTROY(ctx.surface, vkDestroySurfaceKHR, ctx.instance);
+    VK_DESTROY(ctx.debug_messenger, vkDestroyDebugUtilsMessengerEXT, ctx.instance);
 
     VK_DO_IF_NOT_NULL(ctx.device, vkDestroyDevice(ctx.device, nullptr));
     VK_DO_IF_NOT_NULL(ctx.instance, vkDestroyInstance(ctx.instance, nullptr));

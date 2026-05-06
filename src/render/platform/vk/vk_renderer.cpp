@@ -36,6 +36,20 @@ vk_renderer::vk_renderer(const render::instance_desc& desc, const window& window
     }
 }
 
+vk_renderer::~vk_renderer()
+{
+    for (auto& frame : m_in_flight_frames)
+    {
+        vkDestroyFence(m_context.device, frame.fence, nullptr);
+        vkDestroySemaphore(m_context.device, frame.acquire_semaphore, nullptr);
+
+        render::destroy_command_buffer(m_context.device, frame.command_buffer);
+    }
+
+    render::destroy_swapchain(m_context, m_swapchain);
+    render::destroy_context(m_context);
+}
+
 [[nodiscard]] const render::context& vk_renderer::get_context() const
 {
     return m_context;

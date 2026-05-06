@@ -1,7 +1,7 @@
 #pragma once
 
-#include <fs/path.hpp>
 #include <bytes.hpp>
+#include <fs/path.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
 #include <result.hpp>
 
@@ -39,9 +39,8 @@ namespace render
         }
     };
 
-    class vk_shader
+    struct vk_shader
     {
-    public:
         struct shader_meta
         {
             VkDescriptorType bindings[32];
@@ -50,18 +49,20 @@ namespace render
             u32 push_constant_struct_size {0};
             VkShaderStageFlagBits stage {VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM};
 
-            shader_meta() { cpp::cx_fill(bindings + 0, bindings + COUNT_OF(bindings), VK_DESCRIPTOR_TYPE_MAX_ENUM); }
+            shader_meta()
+                : work_group_size {}
+            {
+                cpp::cx_fill(bindings + 0, bindings + COUNT_OF(bindings), VK_DESCRIPTOR_TYPE_MAX_ENUM);
+            }
         };
 
-    public:
-        static result<vk_shader> load(const vk_renderer& renderer, const fs::path& path);
-
-    private:
-        static shader_meta parse_spirv(const bytes& spv);
-
-    public:
         VkShaderModule module {VK_NULL_HANDLE};
         shader_meta meta;
+
+    public:
+        static shader_meta parse_spirv(const bytes& spv);
+
+        static result<vk_shader> load(const vk_renderer& renderer, const fs::path& path);
     };
 
     struct vk_pipeline
@@ -95,4 +96,8 @@ namespace render
             push_constant(command_buffer, sizeof(T), &data);
         }
     };
+
+    void destroy_shader(VkDevice device, vk_shader& shader);
+
+    void destroy_pipeline(VkDevice device, vk_pipeline& pso);
 }

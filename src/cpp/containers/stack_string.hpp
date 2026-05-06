@@ -159,6 +159,12 @@ namespace cpp
             return *this;
         }
 
+        constexpr auto& operator+=(const char other)
+        {
+            append_value(&other, 1, this->length());
+            return *this;
+        }
+
         constexpr auto& operator+=(const char* other)
         {
             append_value(other, cpp::cx_strlen(other), this->length());

@@ -157,3 +157,11 @@
         VK_FAIL_HANDLE(EXPR, return error)        \
     }
 
+#define VK_DO_IF_NOT_NULL(VK_OBJ, EXPR) \
+    if ((VK_OBJ) != VK_NULL_HANDLE)     \
+    {                                   \
+        EXPR;                           \
+    }
+
+#define VK_DESTROY_ALLOC(VK_OBJ, VK_FUNK, DEVICE, ALLOC) VK_DO_IF_NOT_NULL(VK_OBJ, VK_FUNK(DEVICE, VK_OBJ, ALLOC))
+#define VK_DESTROY(VK_OBJ, VK_FUNK, DEVICE)              VK_DESTROY_ALLOC(VK_OBJ, VK_FUNK, DEVICE, nullptr)

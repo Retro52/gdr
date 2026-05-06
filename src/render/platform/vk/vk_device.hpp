@@ -24,44 +24,44 @@ namespace render
             eCOUNT
         };
 
-        [[nodiscard]] bool required(rendering_features_table::flag flag) const noexcept
+        [[nodiscard]] constexpr bool required(rendering_features_table::flag flag) const noexcept
         {
             return (flag & required_features) > 0;
         }
 
-        [[nodiscard]] bool requested(rendering_features_table::flag flag) const noexcept
+        [[nodiscard]] constexpr bool requested(rendering_features_table::flag flag) const noexcept
         {
             return (flag & requested_features) > 0 || required(flag);
         }
 
-        [[nodiscard]] bool supported(rendering_features_table::flag flag) const noexcept
+        [[nodiscard]] constexpr bool supported(rendering_features_table::flag flag) const noexcept
         {
             return (flag & supported_features) > 0;
         }
 
-        [[nodiscard]] bool wanted(rendering_features_table::flag flag) const noexcept
+        [[nodiscard]] constexpr bool wanted(rendering_features_table::flag flag) const noexcept
         {
             return (flag & supported_features) > 0 && requested(flag);
         }
 
-        rendering_features_table& require(rendering_features_table::flag flag) noexcept
+        constexpr rendering_features_table& require(rendering_features_table::flag flag) noexcept
         {
             required_features |= flag;
             return *this;
         }
 
-        rendering_features_table& request(rendering_features_table::flag flag) noexcept
+        constexpr rendering_features_table& request(rendering_features_table::flag flag) noexcept
         {
             requested_features |= flag;
             return *this;
         }
 
-        void set_supported(rendering_features_table::flag flag, bool supported = true) noexcept
+        constexpr void set_supported(rendering_features_table::flag flag, bool supported = true) noexcept
         {
             supported_features = supported ? supported_features | flag : supported_features & ~flag;
         }
 
-        [[nodiscard]] bool all_required_supported() const noexcept
+        [[nodiscard]] constexpr bool all_required_supported() const noexcept
         {
             bool result = true;
             for (u32 i = 0; i < cpp::cx_get_enum_bit_count(rendering_features_table::eCOUNT); ++i)
@@ -124,7 +124,7 @@ namespace render
 
     struct context
     {
-        rendering_features_table enabled_device_features;
+        queue_data queues[queue_kind::COUNT];
 
         ext_array instance_extensions;
         ext_array enabled_device_extensions;
@@ -137,7 +137,7 @@ namespace render
 
         VmaAllocator allocator = VK_NULL_HANDLE;
 
-        queue_data queues[queue_kind::COUNT];
+        rendering_features_table enabled_device_features;
     };
 
     void destroy_swapchain(const context& vk_context, swapchain& swapchain);

@@ -9,6 +9,15 @@ void render::destroy_buffer(VmaAllocator allocator, vk_buffer& buffer)
     vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
 }
 
+
+void render::destroy_buffer_mapped(VmaAllocator allocator, vk_mapped_buffer& buffer)
+{
+    ZoneScoped;
+    buffer.size = 0;
+    vmaUnmapMemory(allocator, buffer.allocation);
+    vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
+}
+
 result<render::vk_buffer> render::create_buffer(u64 size, VkBufferUsageFlags usage, VmaAllocator allocator,
                                                 VmaAllocationCreateFlags allocation_flags)
 {

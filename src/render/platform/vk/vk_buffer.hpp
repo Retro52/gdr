@@ -1,7 +1,6 @@
 #pragma once
 
 #include <pod_types.hpp>
-
 #include <render/platform/vk/vma.hpp>
 #include <result.hpp>
 
@@ -24,6 +23,8 @@ namespace render
 
     void destroy_buffer(VmaAllocator allocator, vk_buffer& buffer);
 
+    void destroy_buffer_mapped(VmaAllocator allocator, vk_mapped_buffer& buffer);
+
     result<vk_buffer> create_buffer(u64 size, VkBufferUsageFlags usage, VmaAllocator allocator,
                                     VmaAllocationCreateFlags allocation_flags);
 
@@ -31,10 +32,10 @@ namespace render
                                     VmaAllocationCreateFlags allocation_flags);
 
     result<vk_mapped_buffer> create_buffer_mapped(u64 size, VkBufferUsageFlags usage, VmaAllocator allocator,
-                                    VmaAllocationCreateFlags allocation_flags);
+                                                  VmaAllocationCreateFlags allocation_flags);
 
     result<vk_mapped_buffer> create_buffer_mapped(const VkBufferCreateInfo& buffer_create_info, VmaAllocator allocator,
-                                VmaAllocationCreateFlags allocation_flags);
+                                                  VmaAllocationCreateFlags allocation_flags);
 
     result<VkBufferView> create_buffer_view(VkDevice device, VkBuffer buffer, VkFormat format, u64 offset, u64 range);
 }

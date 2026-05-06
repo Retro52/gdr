@@ -24,6 +24,8 @@ namespace render
     public:
         vk_renderer(const render::instance_desc& desc, const window& window, bool vsync);
 
+        ~vk_renderer();
+
         [[nodiscard]] const render::context& get_context() const;
 
         [[nodiscard]] const render::swapchain& get_swapchain() const;

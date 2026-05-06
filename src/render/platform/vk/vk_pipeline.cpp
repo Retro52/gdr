@@ -694,3 +694,21 @@ void vk_pipeline::dispatch(VkCommandBuffer command_buffer, u32 global_x, u32 glo
                   align_wg(global_y, work_group_size[1]),
                   align_wg(global_z, work_group_size[2]));
 }
+
+void render::destroy_shader(VkDevice device, vk_shader& shader)
+{
+    vkDestroyShaderModule(device, shader.module, nullptr);
+    shader.module = VK_NULL_HANDLE;
+}
+
+void render::destroy_pipeline(VkDevice device, vk_pipeline& pso)
+{
+    vkDestroyPipelineLayout(device, pso.m_pipeline_layout, nullptr);
+    vkDestroyDescriptorUpdateTemplate(device, pso.m_descriptor_update_template, nullptr);
+
+    vkDestroyPipeline(device, pso.m_pipeline, nullptr);
+
+    pso.m_pipeline                   = VK_NULL_HANDLE;
+    pso.m_pipeline_layout            = VK_NULL_HANDLE;
+    pso.m_descriptor_update_template = VK_NULL_HANDLE;
+}

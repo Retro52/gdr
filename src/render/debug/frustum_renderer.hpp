@@ -25,6 +25,14 @@ namespace render::debug
 
             m_pipeline = *render::vk_pipeline::create_graphics(
                 renderer, shaders, COUNT_OF(shaders), VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+
+            render::destroy_shader(renderer.get_context().device, shaders[0]);
+            render::destroy_shader(renderer.get_context().device, shaders[1]);
+        }
+
+        void shutdown(const vk_renderer& renderer)
+        {
+            render::destroy_pipeline(renderer.get_context().device, m_pipeline);
         }
 
         void draw(VkCommandBuffer cmd, const glm::mat4& camera_vp, const render::vk_mapped_buffer& cull_data) const
