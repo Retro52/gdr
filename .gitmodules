@@ -34,3 +34,6 @@
 [submodule "vendors/cgltf"]
 	path = vendors/cgltf
 	url = https://github.com/jkuhlmann/cgltf.git
+[submodule "vendors/ddspp"]
+	path = vendors/ddspp
+	url = https://github.com/redorav/ddspp.git
