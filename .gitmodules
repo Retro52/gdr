@@ -37,3 +37,6 @@
 [submodule "vendors/ddspp"]
 	path = vendors/ddspp
 	url = https://github.com/redorav/ddspp.git
+[submodule "vendors/ImGuizmo"]
+	path = vendors/ImGuizmo
+	url = https://github.com/CedricGuillemet/ImGuizmo.git
