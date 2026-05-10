@@ -19,13 +19,8 @@ namespace loader
     using lod       = shader_types::MeshLod;
     using meshlet   = shader_types::Meshlet;
     using primitive = shader_types::MeshData;
+    using material  = shader_types::MeshMaterial;
     using instance  = shader_types::MeshInstance;
-
-    struct mesh_desc
-    {
-        u32 offset;
-        u32 prim_count;
-    };
 
     struct mesh_data
     {
@@ -43,7 +38,7 @@ namespace loader
 
     cpp::heap_array<mesh_data> load_mesh(const fs::path& path);
 
-    stats load_scene(const fs::path& path, scene& scene, render::vk_scene_geometry_pool& geometry_pool);
+    stats load_scene(const fs::path& path, scene& scene, const render::vk_renderer& renderer, render::vk_scene_geometry_pool& geometry_pool);
 
     primitive upload_primitive(const mesh_data& data, render::vk_scene_geometry_pool& geometry_pool);
 }

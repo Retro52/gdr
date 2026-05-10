@@ -17,6 +17,7 @@ namespace
 {
     std::string parse_spv_string(const u32* raw)
     {
+        ZoneScoped;
         std::string result;
         const char* stream = reinterpret_cast<const char*>(raw);
         while (*stream)
@@ -73,6 +74,7 @@ namespace
                                     const vk_shader* shaders, u32 shaders_count,
                                     VkDescriptorUpdateTemplate* update_template)
     {
+        ZoneScoped;
         u32 entries_count = 0;
         VkDescriptorUpdateTemplateEntry entries[COUNT_OF(vk_shader::shader_meta::bindings)] {};
 
@@ -115,6 +117,7 @@ namespace
 
     VkPushConstantRange parse_push_constant_range(const vk_shader* shaders, u32 shaders_count)
     {
+        ZoneScoped;
         VkPushConstantRange pc_range {};
 
         for (u32 i = 0; i < shaders_count; ++i)
@@ -131,8 +134,10 @@ namespace
     }
 
     VkResult create_pipeline_layout(VkDevice device, const vk_shader* shaders, u32 shaders_count,
-                                    const VkPushConstantRange& push_constant_range, VkPipelineLayout* layout)
+                                    const VkPushConstantRange& push_constant_range, VkPipelineLayout* layout,
+                                    VkDescriptorSetLayout* desc_set_layout)
     {
+        ZoneScoped;
         u32 entries_count = 0;
         VkDescriptorSetLayoutBinding entries[COUNT_OF(vk_shader::shader_meta::bindings)] {};
 
@@ -159,8 +164,7 @@ namespace
             .bindingCount = entries_count,
             .pBindings    = entries};
 
-        VkDescriptorSetLayout desc_set_layout;
-        VK_ASSERT_ON_FAIL(vkCreateDescriptorSetLayout(device, &desc_set_layout_info, nullptr, &desc_set_layout));
+        VK_ASSERT_ON_FAIL(vkCreateDescriptorSetLayout(device, &desc_set_layout_info, nullptr, desc_set_layout));
 
         const u32 push_constant_count                   = push_constant_range.size > 0 ? 1 : 0;
         const VkPushConstantRange* push_constant_ranges = push_constant_count > 0 ? &push_constant_range : nullptr;
@@ -168,13 +172,12 @@ namespace
         const VkPipelineLayoutCreateInfo pipeline_layout_create_info {
             .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .setLayoutCount         = 1,
-            .pSetLayouts            = &desc_set_layout,
+            .pSetLayouts            = desc_set_layout,
             .pushConstantRangeCount = push_constant_count,
             .pPushConstantRanges    = push_constant_ranges,
         };
 
         // FIXME: memory leak
-        // vkDestroyDescriptorSetLayout(device, desc_set_layout, nullptr);
         return vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, layout);
     }
 
@@ -467,12 +470,15 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
 
 result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, const vk_shader& shader)
 {
+    ZoneScoped;
     assert2(shader.meta.stage == VK_SHADER_STAGE_COMPUTE_BIT);
 
     const auto pc_range = parse_push_constant_range(&shader, 1);
 
     VkPipelineLayout pipeline_layout;
-    VK_RETURN_ON_FAIL(create_pipeline_layout(renderer.get_context().device, &shader, 1, pc_range, &pipeline_layout));
+    VkDescriptorSetLayout descriptor_set_layout;
+    VK_RETURN_ON_FAIL(create_pipeline_layout(
+        renderer.get_context().device, &shader, 1, pc_range, &pipeline_layout, &descriptor_set_layout));
 
     VkDescriptorUpdateTemplate update_template;
     VK_RETURN_ON_FAIL(create_update_template(
@@ -495,6 +501,7 @@ result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, con
     return vk_pipeline {
         pipeline,
         pipeline_layout,
+        descriptor_set_layout,
         update_template,
         VK_PIPELINE_BIND_POINT_COMPUTE,
         VK_SHADER_STAGE_COMPUTE_BIT,
@@ -610,9 +617,15 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     };
 
     VkPipelineLayout pipeline_layout;
+    VkDescriptorSetLayout descriptor_set_layout;
+
     VkPushConstantRange push_constant_range = parse_push_constant_range(shaders, shaders_count);
-    create_pipeline_layout(
-        renderer.get_context().device, shaders, shaders_count, push_constant_range, &pipeline_layout);
+    create_pipeline_layout(renderer.get_context().device,
+                           shaders,
+                           shaders_count,
+                           push_constant_range,
+                           &pipeline_layout,
+                           &descriptor_set_layout);
 
     const VkGraphicsPipelineCreateInfo pipeline_create_info {
         .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -663,6 +676,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     return vk_pipeline {
         vk_handle,
         pipeline_layout,
+        descriptor_set_layout,
         update_template,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
         push_constant_range.stageFlags,
@@ -673,22 +687,26 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
 
 void vk_pipeline::bind(VkCommandBuffer command_buffer) const
 {
+    ZoneScoped;
     vkCmdBindPipeline(command_buffer, m_pipeline_bind_point, m_pipeline);
 }
 
 void vk_pipeline::push_constant(VkCommandBuffer command_buffer, u32 size, const void* data) const
 {
+    ZoneScoped;
     DEBUG_ONLY(assert2(m_push_constants_max_size >= size));
     vkCmdPushConstants(command_buffer, m_pipeline_layout, m_push_constant_stages, 0, size, data);
 }
 
 void vk_pipeline::push_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_info* updates) const
 {
+    ZoneScoped;
     vkCmdPushDescriptorSetWithTemplateKHR(command_buffer, m_descriptor_update_template, m_pipeline_layout, 0, updates);
 }
 
 void vk_pipeline::dispatch(VkCommandBuffer command_buffer, u32 global_x, u32 global_y, u32 global_z) const
 {
+    ZoneScoped;
     vkCmdDispatch(command_buffer,
                   align_wg(global_x, work_group_size[0]),
                   align_wg(global_y, work_group_size[1]),
@@ -697,16 +715,19 @@ void vk_pipeline::dispatch(VkCommandBuffer command_buffer, u32 global_x, u32 glo
 
 void render::destroy_shader(VkDevice device, vk_shader& shader)
 {
+    ZoneScoped;
     vkDestroyShaderModule(device, shader.module, nullptr);
     shader.module = VK_NULL_HANDLE;
 }
 
 void render::destroy_pipeline(VkDevice device, vk_pipeline& pso)
 {
+    ZoneScoped;
     vkDestroyPipelineLayout(device, pso.m_pipeline_layout, nullptr);
     vkDestroyDescriptorUpdateTemplate(device, pso.m_descriptor_update_template, nullptr);
 
     vkDestroyPipeline(device, pso.m_pipeline, nullptr);
+    vkDestroyDescriptorSetLayout(device, pso.m_desc_set_layout, nullptr);
 
     pso.m_pipeline                   = VK_NULL_HANDLE;
     pso.m_pipeline_layout            = VK_NULL_HANDLE;

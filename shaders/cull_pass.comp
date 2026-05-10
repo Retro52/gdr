@@ -61,9 +61,9 @@ void main()
     bool inv_visibility_bit = (GET_BIT(mesh_visibility_buffer[idx >> 5], idx & 31u) == 0);
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-    const bool early_out = false;
+    const bool early_out = GET_BIT(frame_cull.flags, kOcclusionCullBit) == 0;
 #else
-    bool early_out = inv_visibility_bit;
+    bool early_out = inv_visibility_bit && GET_BIT(frame_cull.flags, kOcclusionCullBit) == 1;
 #endif
 
     if (idx >= frame_cull.draw_count || early_out)
@@ -72,11 +72,12 @@ void main()
     }
 
     // draw only last frame occluders
-    vec3 center = transform_vec3(vec3(meshes_data[idx].center[0], meshes_data[idx].center[1], meshes_data[idx].center[2]), mesh_instances[idx].pos_and_scale, mesh_instances[idx].rotation_quat);
+    uint mesh_idx = mesh_instances[idx].mesh_data_index;
+    vec3 center = transform_vec3(vec3(meshes_data[mesh_idx].center[0], meshes_data[mesh_idx].center[1], meshes_data[mesh_idx].center[2]), mesh_instances[idx].pos_and_scale, mesh_instances[idx].rotation_quat);
     center = vec3(frame_cull.view * vec4(center, 1.0F));
 
     float scale = mesh_instances[idx].pos_and_scale.w;
-    float radius = meshes_data[idx].radius * scale;
+    float radius = meshes_data[mesh_idx].radius * scale;
 
     bool visible = true;
     visible = visible && center.z * frame_cull.frustum[1] - abs(center.x) * frame_cull.frustum[0] > -radius;
@@ -109,16 +110,16 @@ void main()
         uint lod_base = 0;
         float dist = max(length(center) - radius, 0);
 
-        for (uint i = 1; i < meshes_data[idx].lod_count; ++i)
+        for (uint i = 1; i < meshes_data[mesh_idx].lod_count; ++i)
         {
-            if ((meshes_data[idx].lod_array[i].error * scale / dist) <= frame_cull.lod_threshold)
+            if ((meshes_data[mesh_idx].lod_array[i].error * scale / dist) <= frame_cull.lod_threshold)
                 lod_base = i;
             else
                 break;
         }
 
         lod_base = GET_BIT(frame_cull.flags, kLodFlagBit) == 0 ? 0 : lod_base;
-        MeshLod selected_lod = meshes_data[idx].lod_array[lod_base];
+        MeshLod selected_lod = meshes_data[mesh_idx].lod_array[lod_base];
 
 #ifdef FOR_MESH_PIPELINE
         uint taskCount = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
@@ -127,7 +128,7 @@ void main()
         {
             uint dcii = dci + taskCount - i;
             uint offset = kTaskWorkGroups * (taskCount - i);
-            draw_indirect_cmds[dcii].mesh_id = idx;
+            draw_indirect_cmds[dcii].instance_id = idx;
             draw_indirect_cmds[dcii].meshlet_offset = selected_lod.base_meshlet + offset;
             draw_indirect_cmds[dcii].visibility_offset = mesh_instances[idx].visibility_offset + offset;
             draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups);
@@ -136,9 +137,9 @@ void main()
         uint dci = atomicAdd(draw_commands_count, 1);
         draw_indirect_cmds[dci].instance_count = 1;
         draw_indirect_cmds[dci].first_instance = 0;
-        draw_indirect_cmds[dci].vertex_offset = int(meshes_data[idx].base_vertex);
+        draw_indirect_cmds[dci].vertex_offset = int(meshes_data[mesh_idx].base_vertex);
 
-        draw_indirect_cmds[dci].mesh_id = idx;
+        draw_indirect_cmds[dci].instance_id = idx;
         draw_indirect_cmds[dci].first_index = selected_lod.base_index;
         draw_indirect_cmds[dci].index_count = selected_lod.indices_count;
 #endif

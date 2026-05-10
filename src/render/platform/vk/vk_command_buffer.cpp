@@ -28,6 +28,7 @@ result<render::vk_command_buffer> render::create_command_buffer(VkDevice device,
 
 void render::destroy_command_buffer(VkDevice device, const vk_command_buffer& cmd_buffer)
 {
+    ZoneScoped;
     vkFreeCommandBuffers(device, cmd_buffer.cmd_pool, 1, &cmd_buffer.cmd_buffer);
     vkDestroyCommandPool(device, cmd_buffer.cmd_pool, nullptr);
 }

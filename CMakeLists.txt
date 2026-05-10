@@ -49,6 +49,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 
         imgui
         cgltf
+        ddspp
         meshoptimizer
         nlohmann_json
 )

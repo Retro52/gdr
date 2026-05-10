@@ -2,6 +2,8 @@
 #include <backends/imgui_impl_vulkan.h>
 #include <imgui.h>
 #include <imgui/imgui_layer.hpp>
+#include <ImGuizmo.h>
+
 #include <cmath>
 
 imgui_layer::imgui_layer(const window& window, const render::vk_renderer& renderer)
@@ -77,6 +79,9 @@ imgui_layer::imgui_layer(const window& window, const render::vk_renderer& render
     };
 
     m_blit_pipeline = *render::vk_pipeline::create_graphics(renderer, shaders, COUNT_OF(shaders));
+
+    render::destroy_shader(renderer.get_context().device, shaders[0]);
+    render::destroy_shader(renderer.get_context().device, shaders[1]);
 }
 
 imgui_layer::~imgui_layer()
@@ -85,6 +90,8 @@ imgui_layer::~imgui_layer()
 
     ImGui_ImplVulkan_RemoveTexture(m_atlas_data.imgui_descriptor);
     vkDestroySampler(context.device, m_atlas_data.sampler, nullptr);
+
+    render::destroy_pipeline(context.device, m_blit_pipeline);
     render::destroy_image(context.device, context.allocator, m_atlas_data.atlas_image);
 
     ImGui_ImplVulkan_Shutdown();
@@ -99,6 +106,7 @@ void imgui_layer::begin_frame()
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
+    ImGuizmo::BeginFrame();
 }
 
 void imgui_layer::end_frame(const render::vk_renderer& renderer)

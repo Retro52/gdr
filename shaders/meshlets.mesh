@@ -68,7 +68,7 @@ void main()
         const uint vid = meshlet_task.base_vertex + meshlets_vertices[base_vertex + i];
 
         vec3 local_pos = vec3(vertices[vid].px, vertices[vid].py, vertices[vid].pz);
-        vec4 world_pos = vec4(transform_vec3(local_pos, mesh_instances[meshlet_task.mesh_id].pos_and_scale, mesh_instances[meshlet_task.mesh_id].rotation_quat), 1.0);
+        vec4 world_pos = vec4(transform_vec3(local_pos, mesh_instances[meshlet_task.instance_id].pos_and_scale, mesh_instances[meshlet_task.instance_id].rotation_quat), 1.0);
         vs_out[i].normal = vec3(vertices[vid].nx, vertices[vid].ny, vertices[vid].nz);
 
 #if VISUALIZE_MESHLETS

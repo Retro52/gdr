@@ -34,14 +34,10 @@ out VS_OUT {
 
 void main()
 {
-    Vertex v = vertices[gl_VertexIndex];
+    vec3 vpos = vec3(vertices[gl_VertexIndex].px, vertices[gl_VertexIndex].py, vertices[gl_VertexIndex].pz);
+    vec3 vnorm = vec3(vertices[gl_VertexIndex].nx, vertices[gl_VertexIndex].ny, vertices[gl_VertexIndex].nz);
 
-    vec3 local_pos = vec3(v.px, v.py, v.pz);
-    uint mesh_id = draw_cmds[gl_DrawID].mesh_id;
-
-    vec4 world_pos = vec4(transform_vec3(local_pos, mesh_instances[mesh_id].pos_and_scale, mesh_instances[mesh_id].rotation_quat), 1.0);
-    vs_out.normal = vec3(v.nx, v.ny, v.nz);
-
+    vs_out.normal = vnorm;
 #if 0
     vs_out.uv = vec2(v.ux, v.uy);
     vs_out.tangent = vec3(v.tx, v.ty, v.tz);
@@ -51,6 +47,9 @@ void main()
 #if VISUALIZE_MESHLETS
     vs_out.meshlet_id = gl_VertexIndex;
 #endif
+
+    uint instance_id = draw_cmds[gl_DrawID].instance_id;
+    vec4 world_pos = vec4(transform_vec3(vpos, mesh_instances[instance_id].pos_and_scale, mesh_instances[instance_id].rotation_quat), 1.0);
 
     gl_Position = pc.vp * world_pos;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <assert2.hpp>
+#include <cpp/alg_constexpr.hpp>
 #include <pod_types.hpp>
 #include <tracy/Tracy.hpp>
 
@@ -16,7 +17,7 @@ struct bytes
         : bytes(size)
     {
         ZoneScoped;
-        std::copy_n(static_cast<const u8*>(data), size, m_memory);
+        cpp::cx_copy_n(m_memory, static_cast<const u8*>(data), size);
     }
 
     ~bytes() { delete[] m_memory; }
@@ -25,7 +26,7 @@ struct bytes
         : bytes(other.size())
     {
         ZoneScoped;
-        std::copy_n(other.get<u8>(), other.size(), m_memory);
+        cpp::cx_copy_n(m_memory, other.get<u8>(), other.size());
     }
 
     bytes(bytes&& other) noexcept
@@ -71,7 +72,7 @@ struct bytes
 
         m_size   = other.m_size;
         m_memory = new u8[m_size];
-        std::copy_n(other.get<u8>(), other.size(), m_memory);
+        cpp::cx_copy_n(m_memory, other.get<u8>(), other.size());
 
         return *this;
     }
@@ -93,7 +94,6 @@ struct bytes
 
     template<typename T>
     [[nodiscard]] const T* get() const noexcept
-        requires(std::is_integral_v<T> || std::is_void_v<T>)
     {
         return reinterpret_cast<T*>(m_memory);
     }

@@ -1,7 +1,9 @@
 #include <assert2.hpp>
 #include <cgltf.h>
+#include <ddspp.h>
 #include <janitor.hpp>
 #include <meshoptimizer.h>
+#include <render/platform/vk/vk_utils.hpp>
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 #include <scene/loader.hpp>
@@ -18,6 +20,12 @@
 
 namespace
 {
+    struct mesh_desc
+    {
+        u32 offset;
+        u32 prim_count;
+    };
+
     struct loader_context
     {
         cpp::heap_array<loader::vertex> vertices;
@@ -26,6 +34,7 @@ namespace
         cpp::heap_array<loader::meshlet> meshlets;
         cpp::heap_array<u8> meshlets_data;
 
+        cpp::heap_array<loader::material> materials;
         cpp::heap_array<loader::primitive> primitives;
     };
 
@@ -295,6 +304,17 @@ namespace
         }
     }
 
+    u32 get_max_lod_tris(const loader::primitive& prim)
+    {
+        u32 res = 0;
+        for (u32 i = 0; i < prim.lod_count; ++i)
+        {
+            res = cpp::max(prim.lod_array[i].indices_count / 3, res);
+        }
+
+        return res;
+    }
+
     u32 get_max_lod_meshlets(const loader::primitive& prim)
     {
         u32 res = 0;
@@ -324,6 +344,104 @@ namespace
         }
 
         return {center, radius};
+    }
+
+    loader::material build_material(const cgltf_data* data, const cgltf_material* material, const u32 base_texture = 1)
+    {
+        loader::material mat {};
+
+        auto tex_idx = [&](const cgltf_texture* texture) -> u32
+        {
+            if (!texture)
+            {
+                return 0;
+            }
+
+            return base_texture + static_cast<u32>(cgltf_texture_index(data, texture));
+        };
+
+        assert2(material);
+        if (material->has_pbr_specular_glossiness)
+        {
+            mat.albedo_idx     = tex_idx(material->pbr_specular_glossiness.diffuse_texture.texture);
+            mat.diffuse_factor = vec4(material->pbr_specular_glossiness.diffuse_factor[0],
+                                      material->pbr_specular_glossiness.diffuse_factor[1],
+                                      material->pbr_specular_glossiness.diffuse_factor[2],
+                                      material->pbr_specular_glossiness.diffuse_factor[3]);
+
+            mat.specular_idx    = tex_idx(material->pbr_specular_glossiness.specular_glossiness_texture.texture);
+            mat.specular_factor = vec4(material->pbr_specular_glossiness.specular_factor[0],
+                                       material->pbr_specular_glossiness.specular_factor[1],
+                                       material->pbr_specular_glossiness.specular_factor[2],
+                                       material->pbr_specular_glossiness.glossiness_factor);
+        }
+        else if (material->has_pbr_metallic_roughness)
+        {
+            mat.albedo_idx     = tex_idx(material->pbr_metallic_roughness.base_color_texture.texture);
+            mat.diffuse_factor = vec4(material->pbr_metallic_roughness.base_color_factor[0],
+                                      material->pbr_metallic_roughness.base_color_factor[1],
+                                      material->pbr_metallic_roughness.base_color_factor[2],
+                                      material->pbr_metallic_roughness.base_color_factor[3]);
+
+            mat.specular_idx    = tex_idx(material->pbr_metallic_roughness.metallic_roughness_texture.texture);
+            mat.specular_factor = vec4(1, 1, 1, 1 - material->pbr_metallic_roughness.roughness_factor);
+        }
+
+        mat.normal_idx = tex_idx(material->normal_texture.texture);
+        return mat;
+    }
+
+    result<render::vk_image> load_texture(const fs::path& path, const render::vk_renderer& renderer,
+                                          const render::vk_buffer_transfer& scratch)
+    {
+        const auto r_data = fs::read_file(path);
+        if (!r_data)
+        {
+            return error("failed to open file");
+        }
+
+        ddspp::Descriptor desc {};
+        ddspp::Result decode_r = ddspp::decode_header(r_data->get<u8>(), desc);
+
+        if (decode_r != ddspp::Result::Success)
+        {
+            return error("failed to read texture as DDS");
+        }
+
+        const VkImageCreateInfo image_create_info = {
+            .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .pNext       = nullptr,
+            .imageType   = desc.type == ddspp::Texture2D ? VK_IMAGE_TYPE_2D : VK_IMAGE_TYPE_3D,
+            .format      = render::vk_format_from_dxgi(desc.format),
+            .extent      = {desc.width, desc.height, desc.depth},
+            .mipLevels   = desc.numMips,
+            .arrayLayers = desc.arraySize,
+            .samples     = VK_SAMPLE_COUNT_1_BIT,
+            .tiling      = VK_IMAGE_TILING_OPTIMAL,
+            .usage       = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        };
+
+        const auto image_r = render::create_image(renderer.get_context().device,
+                                                  image_create_info,
+                                                  VK_IMAGE_ASPECT_COLOR_BIT,
+                                                  renderer.get_context().allocator);
+
+        if (!image_r)
+        {
+            return error(image_r.message);
+        }
+
+        const u8* data_bytes = r_data->get<u8>() + desc.headerSize;
+        render::upload_image(scratch,
+                             *image_r,
+                             data_bytes,
+                             r_data->length<u8>() - desc.headerSize,
+                             desc.width,
+                             desc.height,
+                             desc.numMips,
+                             desc.blockHeight,
+                             desc.bitsPerPixelOrBlock);
+        return *image_r;
     }
 }
 
@@ -366,7 +484,8 @@ cpp::heap_array<loader::mesh_data> loader::load_mesh(const fs::path& path)
     return meshes;
 }
 
-loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_scene_geometry_pool& geometry_pool)
+loader::stats loader::load_scene(const fs::path& path, scene& scene, const render::vk_renderer& renderer,
+                                 render::vk_scene_geometry_pool& geometry_pool)
 {
     ZoneScoped;
     if (path.extension() != ".gltf" && path.extension() != ".glb")
@@ -384,7 +503,25 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
     CHECK(cgltf_validate(data));
 
     loader_context ctx;
-    cpp::heap_array<loader::mesh_desc> meshes(data->meshes_count);
+    cpp::heap_array<mesh_desc> meshes(data->meshes_count);
+    cpp::heap_array<render::vk_image> textures(data->textures_count);
+
+    for (u64 i = 0; i < data->textures_count; ++i)
+    {
+        const auto texture = data->textures[i];
+        if (!texture.image->uri)
+        {
+            continue;
+        }
+
+        const auto tex_path = fs::path(texture.image->uri);
+        const auto ext_swap = tex_path.stem().append(".dds");
+        if (const auto tex_r =
+                load_texture(path.parent() / tex_path.parent() / ext_swap, renderer, geometry_pool.transfer))
+        {
+            textures[i] = *tex_r;
+        }
+    }
 
     for (u64 i = 0; i < data->meshes_count; ++i)
     {
@@ -409,6 +546,10 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
 
             ctx.vertices.append(prim_data.vertices);
             generate_lods(prim_data, geometry_pool, prim_desc, ctx);
+            if (primitive.material)
+            {
+                ctx.materials.emplace_back(build_material(data, primitive.material));
+            }
 
             ctx.primitives.emplace_back(prim_desc);
         }
@@ -424,13 +565,6 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
     upload_data(
         geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
 
-    loader::stats stats = {
-        .meshes     = meshes.size(),
-        .meshlets   = ctx.meshlets.size(),
-        .triangles  = ctx.indices.size() / 3,
-        .primitives = ctx.primitives.size(),
-    };
-
 #if !defined(NDEBUG)
     auto& hierarchy = scene.hierarchy;
     hierarchy.nodes.resize(data->nodes_count);
@@ -438,10 +572,12 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
 
     // TODO: refactor (moving objects?)
     // Also need to be careful with not writing anything to transfer in the meantime
-    u32 instance_count = 0;
-    auto* instances    = static_cast<loader::instance*>(geometry_pool.transfer.mapped);
+    auto* instances = static_cast<loader::instance*>(geometry_pool.transfer.mapped);
 
+    u32 triangles_max     = 0;
+    u32 instance_count    = 0;
     u32 visibility_offset = 0;
+
     for (size_t i = 0; i < data->nodes_count; ++i)
     {
         const cgltf_node* node = &data->nodes[i];
@@ -455,20 +591,17 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
 
         if (node->mesh)
         {
-            auto& component = entity.emplace_component<mesh_component>();
-
-            component.mesh_offset      = meshes[cgltf_mesh_index(data, node->mesh)].offset;
-            component.primitives_count = meshes[cgltf_mesh_index(data, node->mesh)].prim_count;
-
-            auto& desc     = meshes[cgltf_mesh_index(data, node->mesh)];
-            instance_count = cpp::max(desc.offset + desc.prim_count - 1, instance_count);
+            auto& desc = meshes[cgltf_mesh_index(data, node->mesh)];
 
             for (u32 j = 0; j < desc.prim_count; ++j)
             {
-                instances[desc.offset + j].pos_and_scale     = {transform_comp.position, transform_comp.uniform_scale};
-                instances[desc.offset + j].rotation_quat     = transform_comp.rotation;
-                instances[desc.offset + j].visibility_offset = visibility_offset;
+                instances[instance_count].pos_and_scale     = {transform_comp.position, transform_comp.uniform_scale};
+                instances[instance_count].rotation_quat     = transform_comp.rotation;
+                instances[instance_count].visibility_offset = visibility_offset;
+                instances[instance_count].mesh_data_index   = desc.offset + j;
 
+                ++instance_count;
+                triangles_max += get_max_lod_tris(ctx.primitives[desc.offset + j]);
                 visibility_offset += get_max_lod_meshlets(ctx.primitives[desc.offset + j]);
             }
         }
@@ -503,12 +636,17 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, render::vk_
     }
 
     render::submit_transfer(geometry_pool.transfer,
-                            geometry_pool.transforms.buffer,
+                            geometry_pool.instances.buffer,
                             VkBufferCopy {.size = instance_count * sizeof(loader::instance)});
-    geometry_pool.transforms.offset += instance_count * sizeof(loader::instance);
+    geometry_pool.instances.offset += instance_count * sizeof(loader::instance);
     // TODO
 
-    return stats;
+    return {
+        .meshes     = meshes.size(),
+        .meshlets   = visibility_offset,
+        .triangles  = triangles_max,
+        .primitives = instance_count,
+    };
 }
 
 loader::primitive loader::upload_primitive(const mesh_data& data, render::vk_scene_geometry_pool& geometry_pool)

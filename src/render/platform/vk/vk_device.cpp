@@ -7,6 +7,8 @@
 #include <render/platform/vk/vk_error.hpp>
 #include <tracy/Tracy.hpp>
 
+#include <algorithm>
+
 using namespace render;
 
 bool inst_ext_available(const char* name)

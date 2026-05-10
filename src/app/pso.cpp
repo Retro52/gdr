@@ -109,6 +109,7 @@ void app::pso_data::load(const render::vk_renderer& renderer)
 
 void app::pso_data::destroy(const render::vk_renderer& renderer, const pso_id id)
 {
+    ZoneScoped;
     auto& pso         = this->operator[](id);
     const auto device = renderer.get_context().device;
 
@@ -117,6 +118,7 @@ void app::pso_data::destroy(const render::vk_renderer& renderer, const pso_id id
 
 void app::pso_data::shutdown(const render::vk_renderer& renderer)
 {
+    ZoneScoped;
     for (auto& [_, pso] : m_pipelines)
     {
         render::destroy_pipeline(renderer.get_context().device, pso);

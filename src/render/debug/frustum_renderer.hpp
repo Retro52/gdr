@@ -18,6 +18,7 @@ namespace render::debug
     public:
         explicit frustum_renderer(const vk_renderer& renderer)
         {
+            ZoneScoped;
             render::vk_shader shaders[] = {
                 *render::vk_shader::load(renderer, "../shaders/bin/frustum.vert.spv"),
                 *render::vk_shader::load(renderer, "../shaders/bin/frustum.frag.spv"),
@@ -32,11 +33,13 @@ namespace render::debug
 
         void shutdown(const vk_renderer& renderer)
         {
+            ZoneScoped;
             render::destroy_pipeline(renderer.get_context().device, m_pipeline);
         }
 
         void draw(VkCommandBuffer cmd, const glm::mat4& camera_vp, const render::vk_mapped_buffer& cull_data) const
         {
+            ZoneScoped;
             const frustum_pc_data pc {
                 .renderer_vp = camera_vp,
             };

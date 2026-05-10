@@ -61,13 +61,15 @@ namespace fs
 
         [[nodiscard]] constexpr path extension() const { return ::fs::extension(m_path); }
 
+        [[nodiscard]] constexpr path append(const char* other) const { return m_path + other; }
+
+        [[nodiscard]] constexpr path append(const path& other) const { return m_path + other.m_path; }
+
         [[nodiscard]] static path current_path() { return std::filesystem::current_path(); }
 
         constexpr path operator/(const path& other) const { return ::fs::join(m_path, other.m_path); }
 
         path operator/(const std::filesystem::path& other) const { return *this / path(other); }
-
-        constexpr path operator/(const std::string& other) const { return *this / path(other.c_str()); }
 
         constexpr path& operator+=(const path& other)
         {

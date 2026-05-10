@@ -38,10 +38,15 @@ vk_renderer::vk_renderer(const render::instance_desc& desc, const window& window
 
 vk_renderer::~vk_renderer()
 {
+    ZoneScoped;
     for (auto& frame : m_in_flight_frames)
     {
         vkDestroyFence(m_context.device, frame.fence, nullptr);
         vkDestroySemaphore(m_context.device, frame.acquire_semaphore, nullptr);
+
+#if TRACY_ENABLE
+        TracyVkDestroy(frame.tracy_ctx);
+#endif
 
         render::destroy_command_buffer(m_context.device, frame.command_buffer);
     }

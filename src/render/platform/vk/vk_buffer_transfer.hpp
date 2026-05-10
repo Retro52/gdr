@@ -3,7 +3,6 @@
 #include <volk.h>
 
 #include <pod_types.hpp>
-
 #include <render/platform/vk/vk_buffer.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
 #include <result.hpp>
@@ -27,6 +26,9 @@ namespace render
 
     void upload_data(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* data,
                      const VkBufferCopy& region);
+
+    void upload_image(const vk_buffer_transfer& transfer, const vk_image& dst, const u8* data, u64 data_size, u32 width, u32 height,
+                      u32 mips, u32 block_size, u32 bits_per_block);
 
     void fill_buffer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* value_ptr, u64 value_size,
                      const VkBufferCopy& region);

@@ -47,10 +47,10 @@ namespace
     {
         ZoneScoped;
         u64 acc_size = buffer.primitives.size + buffer.meshlets.size + buffer.index.size + buffer.meshlets_payload.size
-                     + buffer.transforms.size + buffer.vertex.size;
+                     + buffer.instances.size + buffer.vertex.size;
 
         u64 acc_offset = buffer.primitives.offset + buffer.meshlets.offset + buffer.index.offset
-                       + buffer.meshlets_payload.offset + buffer.transforms.offset + buffer.vertex.offset;
+                       + buffer.meshlets_payload.offset + buffer.instances.offset + buffer.vertex.offset;
 
         const auto fraction = static_cast<f32>(acc_offset) / static_cast<f32>(acc_size);
 
@@ -64,35 +64,42 @@ namespace
     }
 }
 
-void editor::info_widget_context::draw(const app::pipeline_statistics_data& pipeline_stats) const
+void editor::info_widget_context::draw() const
 {
     ImGui::SeparatorText("camera controller");
     codegen::draw(m_camera);
 
     ImGui::SeparatorText("gpu timings");
     codegen::draw(m_gpu_profile);
-    ImGui::Text("Total triangless rendered:");
-    ImGui::ProgressBar(m_gpu_profile.tris_from_max);
+    ImGui::ProgressBar(static_cast<f32>(m_gpu_profile.tris_from_max), ImVec2(0.0F, 0.0F), "Total triangles rendered");
     ImGui::Text("Tris Max: %s", format_big_number(m_gpu_profile.tris_in_scene_max).c_str());
     ImGui::Text("Tris Drawn: %s", format_big_number(m_gpu_profile.tris_in_scene_total).c_str());
 
-    if (ImGui::CollapsingHeader("gpu stats"))
+    if (ImGui::CollapsingHeader("Geometry pool stats"))
     {
         draw_shared_buffer_stats("Vertices", m_geometry_pool.vertex);
         draw_shared_buffer_stats("Indices", m_geometry_pool.index);
         draw_shared_buffer_stats("Meshlets", m_geometry_pool.meshlets);
-        draw_shared_buffer_stats("Transform", m_geometry_pool.transforms);
+        draw_shared_buffer_stats("Instances", m_geometry_pool.instances);
         draw_shared_buffer_stats("Primitives", m_geometry_pool.primitives);
         draw_shared_buffer_stats("Meshlets payload", m_geometry_pool.meshlets_payload);
         draw_scene_geometry_pool(m_geometry_pool);
     }
+}
+
+void editor::info_widget_context::draw(const char* label, const app::pipeline_statistics_data& pipeline_stats) const
+{
 #if !NO_PERF_QUERY
-    ImGui::SeparatorText("Last frame pipeline stats");
-    ImGui::Text("input_assembly_vertices: %s", format_big_number(pipeline_stats.input_assembly_vertices).c_str());
-    ImGui::Text("input_assembly_primitives: %s", format_big_number(pipeline_stats.input_assembly_primitives).c_str());
-    ImGui::Text("vertex_shader_invocations: %s", format_big_number(pipeline_stats.vertex_shader_invocations).c_str());
-    ImGui::Text("triangles_count: %s", format_big_number(pipeline_stats.triangles_count).c_str());
-    ImGui::Text("fragment_shader_invocations: %s",
-                format_big_number(pipeline_stats.fragment_shader_invocations).c_str());
+    if (ImGui::CollapsingHeader(label))
+    {
+        ImGui::Text("input_assembly_vertices: %s", format_big_number(pipeline_stats.input_assembly_vertices).c_str());
+        ImGui::Text("input_assembly_primitives: %s",
+                    format_big_number(pipeline_stats.input_assembly_primitives).c_str());
+        ImGui::Text("vertex_shader_invocations: %s",
+                    format_big_number(pipeline_stats.vertex_shader_invocations).c_str());
+        ImGui::Text("triangles_count: %s", format_big_number(pipeline_stats.triangles_count).c_str());
+        ImGui::Text("fragment_shader_invocations: %s",
+                    format_big_number(pipeline_stats.fragment_shader_invocations).c_str());
+    }
 #endif
 }

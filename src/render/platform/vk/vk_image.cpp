@@ -2,14 +2,17 @@
 
 #include <render/platform/vk/vk_error.hpp>
 #include <render/platform/vk/vk_image.hpp>
+#include <tracy/Tracy.hpp>
 
 VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspect_flag)
 {
+    ZoneScoped;
     return render::image_subresource_range(aspect_flag, 0, VK_REMAINING_MIP_LEVELS);
 }
 
 VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspect_flag, u32 mip_level, u32 levels_count)
 {
+    ZoneScoped;
     return VkImageSubresourceRange {
         .aspectMask     = aspect_flag,
         .baseMipLevel   = mip_level,
@@ -22,6 +25,7 @@ VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspec
 void render::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout,
                               VkImageLayout new_layout)
 {
+    ZoneScoped;
     const VkImageAspectFlags aspect_flag = (new_layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
                                              ? VK_IMAGE_ASPECT_DEPTH_BIT
                                              : VK_IMAGE_ASPECT_COLOR_BIT;
@@ -32,6 +36,7 @@ void render::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout 
 void render::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout,
                               VkImageLayout new_layout, VkImageAspectFlags aspect_flags)
 {
+    ZoneScoped;
     const VkImageMemoryBarrier2 image_barrier {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
         .pNext            = nullptr,
@@ -57,6 +62,7 @@ void render::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout 
 
 void render::destroy_image(VkDevice device, VmaAllocator allocator, const vk_image& image)
 {
+    ZoneScoped;
     vkDestroyImageView(device, image.view, nullptr);
     vmaDestroyImage(allocator, image.image, image.allocation);
 }
@@ -64,6 +70,7 @@ void render::destroy_image(VkDevice device, VmaAllocator allocator, const vk_ima
 result<render::vk_image> render::create_image(VkDevice device, const VkImageCreateInfo& image_create_info,
                                               VkImageAspectFlags aspect_flags, VmaAllocator allocator)
 {
+    ZoneScoped;
     vk_image image;
     constexpr VmaAllocationCreateInfo alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO};
     VK_RETURN_ON_FAIL(
@@ -76,12 +83,14 @@ result<render::vk_image> render::create_image(VkDevice device, const VkImageCrea
 result<VkImageView> render::create_image_view(VkDevice device, VkImage image, VkFormat format,
                                               VkImageAspectFlags aspect_flags)
 {
+    ZoneScoped;
     return render::create_image_view(device, image, format, aspect_flags, 0, VK_REMAINING_MIP_LEVELS);
 }
 
 result<VkImageView> render::create_image_view(VkDevice device, VkImage image, VkFormat format,
                                               VkImageAspectFlags aspect_flags, u32 mip_level, u32 levels_count)
 {
+    ZoneScoped;
     const VkImageViewCreateInfo image_view_create_info {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .pNext            = nullptr,
@@ -100,6 +109,7 @@ result<VkSampler> render::create_sampler(VkDevice device, VkFilter filter, VkSam
                                          VkSamplerAddressMode sampler_address_mode,
                                          VkSamplerReductionMode reduction_mode)
 {
+    ZoneScoped;
     VkSamplerCreateInfo sampler_info {
         .sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter    = filter,

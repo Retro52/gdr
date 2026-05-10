@@ -1,12 +1,14 @@
 // ReSharper disable once CppMissingIncludeGuard
 #ifdef __cplusplus
 #pragma once
+#include <cpp/f16.hpp>
 #include <glm/fwd.hpp>
 #include <glm/mat4x4.hpp>
 #include <pod_types.hpp>
 #include <shaders/constants.h>
 #else
 #extension GL_EXT_shader_8bit_storage : require
+#extension GL_EXT_shader_16bit_storage: require
 #extension GL_EXT_scalar_block_layout : require
 #include "include/shaders/constants.h"
 #endif
@@ -17,8 +19,9 @@ namespace shader_types
     using glm::mat4;
     using glm::vec2;
 
-    using uint8_t = u8;
-    using uint    = unsigned int;
+    using uint8_t   = u8;
+    using float16_t = cpp::f16;
+    using uint      = unsigned int;
 
     using shader_constants::kLODCount;
     using shader_constants::kMaxVerticesPerMeshlet;
@@ -33,8 +36,8 @@ namespace shader_types
         float px, py, pz;
         float nx, ny, nz;
 #if 0
-    float ux, uy;
-    float tx, ty, tz;
+        float ux, uy;
+        float tx, ty, tz;
 #endif
     };
 
@@ -51,7 +54,7 @@ namespace shader_types
 
     struct DrawMeshletsTask
     {
-        uint mesh_id;
+        uint instance_id;
         uint base_vertex;
         uint meshlet_ids[kMaxVerticesPerMeshlet];
     };
@@ -78,7 +81,19 @@ namespace shader_types
     {
         vec4 pos_and_scale;  // xyz - position, w - uniform scale
         QUAT rotation_quat;  // quaternion representing object position
+        uint material_index;
+        uint mesh_data_index;
         uint visibility_offset;
+    };
+
+    struct MeshMaterial
+    {
+        uint albedo_idx;
+        uint normal_idx;
+        uint specular_idx;
+
+        vec4 diffuse_factor;
+        vec4 specular_factor;
     };
 
     struct DrawIndexedIndirect
@@ -88,12 +103,12 @@ namespace shader_types
         uint first_index;
         int vertex_offset;
         uint first_instance;
-        uint mesh_id;
+        uint instance_id;
     };
 
     struct DrawTaskCommandIndirect
     {
-        uint mesh_id;
+        uint instance_id;
         uint meshlet_count;
         uint meshlet_offset;
         uint visibility_offset;

@@ -56,7 +56,7 @@ glm::mat4 camera_component::get_projection_matrix(f32 far_plane) const noexcept
     // clang-format on
 }
 
-glm::mat4 camera_component::get_view_matrix(const vec3& position, const glm::quat& rotation) const noexcept
+glm::mat4 camera_component::get_view_matrix(const vec3& position, const glm::quat& rotation) noexcept
 {
     return glm::inverse(glm::translate(glm::mat4(1.0F), position) * glm::mat4_cast(rotation));
 }

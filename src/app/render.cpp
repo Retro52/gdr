@@ -83,6 +83,7 @@ render::vk_image app::create_depth_image(const ivec2& size, const VkFormat forma
 
 void app::destroy_depth_pyramid(depth_pyramid_data& pyramid, VkDevice device, VmaAllocator allocator)
 {
+    ZoneScoped;
     for (u32 i = 0; i < pyramid.pyramid_count; ++i)
     {
         vkDestroyImageView(device, pyramid.views[i], nullptr);

@@ -22,13 +22,6 @@ struct transform_component
 };
 
 /// @imgui
-struct mesh_component
-{
-    u32 mesh_offset;
-    u32 primitives_count;
-};
-
-/// @imgui
 struct id_component
 {
     /// @readonly
@@ -59,5 +52,5 @@ struct camera_component
 
     [[nodiscard]] glm::mat4 get_projection_matrix() const noexcept;
     [[nodiscard]] glm::mat4 get_projection_matrix(f32 far_plane) const noexcept;
-    [[nodiscard]] glm::mat4 get_view_matrix(const vec3& position, const glm::quat& rotation) const noexcept;
+    [[nodiscard]] static glm::mat4 get_view_matrix(const vec3& position, const glm::quat& rotation) noexcept;
 };

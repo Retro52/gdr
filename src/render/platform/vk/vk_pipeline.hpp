@@ -69,6 +69,7 @@ namespace render
     {
         VkPipeline m_pipeline {VK_NULL_HANDLE};
         VkPipelineLayout m_pipeline_layout {VK_NULL_HANDLE};
+        VkDescriptorSetLayout m_desc_set_layout {VK_NULL_HANDLE};
         VkDescriptorUpdateTemplate m_descriptor_update_template {VK_NULL_HANDLE};
 
         VkPipelineBindPoint m_pipeline_bind_point {VK_PIPELINE_BIND_POINT_GRAPHICS};
