@@ -178,7 +178,7 @@ namespace cpp
             return *this;
         }
 
-        constexpr stack_string operator+(const char* other)
+        constexpr stack_string operator+(const char* other) const
         {
             stack_string result;
             result += *this;
@@ -187,7 +187,7 @@ namespace cpp
         }
 
         template<u64 No>
-        constexpr stack_string operator+(const stack_string_base<No>& other)
+        constexpr stack_string operator+(const stack_string_base<No>& other) const
         {
             stack_string result;
             result += *this;
