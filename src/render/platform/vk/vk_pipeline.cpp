@@ -133,24 +133,28 @@ namespace
         return pc_range;
     }
 
-    VkResult create_pipeline_layout(VkDevice device, const vk_shader* shaders, u32 shaders_count,
+    VkResult create_pipeline_layout(VkDevice device, const vk_shader* shaders, const u32 shaders_count,
+                                    const vk_descriptor_set* desc_set, u32 desc_set_count,
                                     const VkPushConstantRange& push_constant_range, VkPipelineLayout* layout,
                                     VkDescriptorSetLayout* desc_set_layout)
     {
         ZoneScoped;
-        u32 entries_count = 0;
+        u32 entries_count   = 0;
+        u32 max_desc_in_use = 0;
         VkDescriptorSetLayoutBinding entries[COUNT_OF(vk_shader::shader_meta::bindings)] {};
 
         for (u32 i = 0; i < shaders_count; ++i)
         {
             const auto& shader_meta = shaders[i].meta;
+            max_desc_in_use         = std::max(max_desc_in_use, shader_meta.max_binding_set_used);
+
             for (u32 j = 0; j < shader_meta.bindings_count; ++j)
             {
+                entries[j].binding = j;
                 if (shader_meta.bindings[j] != VK_DESCRIPTOR_TYPE_MAX_ENUM)
                 {
                     entries_count = std::max(entries_count, j + 1);
 
-                    entries[j].binding         = j;
                     entries[j].descriptorType  = shader_meta.bindings[j];
                     entries[j].descriptorCount = 1;
                     entries[j].stageFlags |= shader_meta.stage;
@@ -169,15 +173,27 @@ namespace
         const u32 push_constant_count                   = push_constant_range.size > 0 ? 1 : 0;
         const VkPushConstantRange* push_constant_ranges = push_constant_count > 0 ? &push_constant_range : nullptr;
 
+        const u32 set_layout_count = max_desc_in_use + 1;
+        cpp::heap_array<VkDescriptorSetLayout> desc_set_layouts(set_layout_count);
+
+        for (u32 i = 0; i < set_layout_count; ++i)
+        {
+            if (i > 0 && (!desc_set || i - 1 == desc_set_count))
+            {
+                break;
+            }
+
+            desc_set_layouts[i] = i == 0 ? *desc_set_layout : desc_set[i - 1].descriptor_set_layout;
+        }
+
         const VkPipelineLayoutCreateInfo pipeline_layout_create_info {
             .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            .setLayoutCount         = 1,
-            .pSetLayouts            = desc_set_layout,
+            .setLayoutCount         = set_layout_count,
+            .pSetLayouts            = desc_set_layouts.data(),
             .pushConstantRangeCount = push_constant_count,
             .pPushConstantRanges    = push_constant_ranges,
         };
 
-        // FIXME: memory leak
         return vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, layout);
     }
 
@@ -332,10 +348,10 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     const u32* end = static_cast<const u32*>(spv.end());
     while (inst < end)
     {
-        u32 word = inst[0];
+        const u32 word = inst[0];
 
-        u16 op_code       = static_cast<u16>(word);
-        u16 op_word_count = static_cast<u16>(word >> 16);
+        const u16 op_code       = static_cast<u16>(word);
+        const u16 op_word_count = static_cast<u16>(word >> 16);
 
         switch (op_code)
         {
@@ -434,6 +450,12 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
 
     for (const auto& [_, push_desc] : push_descriptors)
     {
+        if (push_desc.set > 0)
+        {
+            result.max_binding_set_used |= cpp::max(result.max_binding_set_used, push_desc.set);
+            continue;
+        }
+
         assert2(push_desc.binding < COUNT_OF(result.bindings) && "binding id too high?");
 
         // find the root type declaration
@@ -478,7 +500,7 @@ result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, con
     VkPipelineLayout pipeline_layout;
     VkDescriptorSetLayout descriptor_set_layout;
     VK_RETURN_ON_FAIL(create_pipeline_layout(
-        renderer.get_context().device, &shader, 1, pc_range, &pipeline_layout, &descriptor_set_layout));
+        renderer.get_context().device, &shader, 1, nullptr, 0, pc_range, &pipeline_layout, &descriptor_set_layout));
 
     VkDescriptorUpdateTemplate update_template;
     VK_RETURN_ON_FAIL(create_update_template(
@@ -511,7 +533,8 @@ result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, con
 }
 
 result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
-                                                 u32 shaders_count, VkPrimitiveTopology topology)
+                                                 u32 shaders_count, const vk_descriptor_set* desc_set,
+                                                 u32 desc_set_count, VkPrimitiveTopology topology)
 {
     ZoneScoped;
     cpp::heap_array<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
@@ -591,11 +614,8 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
 
     const VkPipelineColorBlendStateCreateInfo color_blend_state_create_info {
         .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .logicOpEnable   = VK_FALSE,
-        .logicOp         = VK_LOGIC_OP_COPY,
         .attachmentCount = 1,
         .pAttachments    = &color_blend_attachment_state,
-        .blendConstants  = {0.0f, 0.0f, 0.0f, 0.0f},
     };
 
     const VkPipelineRenderingCreateInfo pipeline_rendering_create_info {
@@ -623,6 +643,8 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     create_pipeline_layout(renderer.get_context().device,
                            shaders,
                            shaders_count,
+                           desc_set,
+                           desc_set_count,
                            push_constant_range,
                            &pipeline_layout,
                            &descriptor_set_layout);
@@ -696,6 +718,13 @@ void vk_pipeline::push_constant(VkCommandBuffer command_buffer, u32 size, const 
     ZoneScoped;
     DEBUG_ONLY(assert2(m_push_constants_max_size >= size));
     vkCmdPushConstants(command_buffer, m_pipeline_layout, m_push_constant_stages, 0, size, data);
+}
+
+void vk_pipeline::bind_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_set& set) const
+{
+    ZoneScoped;
+    vkCmdBindDescriptorSets(
+        command_buffer, m_pipeline_bind_point, m_pipeline_layout, 1, 1, &set.descriptor_set, 0, nullptr);
 }
 
 void vk_pipeline::push_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_info* updates) const

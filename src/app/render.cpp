@@ -19,7 +19,7 @@ void app::begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView de
             .loadOp      = load_op,
             .storeOp     = store_op,
             .clearValue  = {
-                            .color = {0.0F, 0.0F, 0.0F, 1.0F},
+                            .color = {0.53F, 0.81F, 0.92F, 1.0F},
                             }
         };
 
@@ -49,15 +49,25 @@ void app::begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView de
 void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& draw_count_buffer)
 {
     ZoneScoped;
+
+    render::cmd_buffer_barrier(cmd,
+                               draw_count_buffer.buffer,
+                               VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT
+                                   | VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                               VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+                                   | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                               VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                               VK_ACCESS_2_TRANSFER_WRITE_BIT);
+
     vkCmdFillBuffer(cmd, draw_count_buffer.buffer, 0, sizeof(u32), 0);
     vkCmdFillBuffer(cmd, draw_count_buffer.buffer, sizeof(u32), sizeof(u32[2]), 1);
 
     render::cmd_buffer_barrier(cmd,
                                draw_count_buffer.buffer,
-                               VK_PIPELINE_STAGE_TRANSFER_BIT,
-                               VK_ACCESS_TRANSFER_WRITE_BIT,
-                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+                               VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                               VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 }
 
 render::vk_image app::create_depth_image(const ivec2& size, const VkFormat format, VkDevice device,

@@ -25,7 +25,7 @@ namespace render::debug
             };
 
             m_pipeline = *render::vk_pipeline::create_graphics(
-                renderer, shaders, COUNT_OF(shaders), VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+                renderer, shaders, COUNT_OF(shaders), nullptr, 0, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
 
             render::destroy_shader(renderer.get_context().device, shaders[0]);
             render::destroy_shader(renderer.get_context().device, shaders[1]);

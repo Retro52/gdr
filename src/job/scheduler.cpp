@@ -30,7 +30,7 @@ namespace
 
 scheduler::scheduler()
 {
-    resize_thread_pool(std::thread::hardware_concurrency());
+    resize_thread_pool(std::thread::hardware_concurrency() - 1);
 }
 
 scheduler::scheduler(const u64 thread_count)
@@ -185,7 +185,7 @@ void scheduler::resize_thread_pool(u64 thread_count)
         m_stop = false;
 
         m_thread_states.resize(thread_count);
-        m_queues = std::vector<queue_t>(thread_count);
+        m_queues = std::vector<task_queue>(thread_count);
 
         for (u32 i = 0; i < thread_count; i++)
         {

@@ -7,7 +7,11 @@ class entity;
 class scene
 {
 public:
+    entity empty();
+
     entity create_entity();
+
+    entity create_ref(entt::entity id);
 
     void delete_entity(entity& entity);
 

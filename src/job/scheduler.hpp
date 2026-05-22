@@ -39,11 +39,11 @@ namespace job
         void resize_thread_pool(u64 thread_count);
 
     private:
-        struct queue_t
+        struct task_queue
         {
             std::mutex mutex;
             std::condition_variable cv;
-            std::queue<std::function<void()>> tasks;           ///< FIFO of plain tasks.
+            std::queue<std::function<void()>> tasks;     ///< FIFO of plain tasks.
             std::queue<cpp::ref<fiber>> idle_fibers;     ///< Fibers parked after yielding.
             std::queue<cpp::ref<fiber>> waiting_fibers;  ///< Fibers ready to resume.
         };
@@ -78,7 +78,7 @@ namespace job
         std::unordered_map<std::thread::id, u32> m_sys_tid_to_worker_id;
 
         // Arrays indexed by worker id.
-        std::vector<queue_t> m_queues;
+        std::vector<task_queue> m_queues;
         std::vector<std::thread> m_threads;
         std::vector<thread_state> m_thread_states;
 

@@ -37,13 +37,30 @@ void render::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout 
                               VkImageLayout new_layout, VkImageAspectFlags aspect_flags)
 {
     ZoneScoped;
+    transition_image(cmd,
+                     image,
+                     current_layout,
+                     new_layout,
+                     VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                     VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                     VK_ACCESS_2_MEMORY_WRITE_BIT,
+                     VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
+                     aspect_flags);
+}
+
+void render::transition_image(VkCommandBuffer cmd, VkImage image, const VkImageLayout current_layout,
+                              const VkImageLayout new_layout, const VkPipelineStageFlags2 src_stage_flags,
+                              const VkPipelineStageFlags2 dst_stage_flags, const VkAccessFlags2 src_access_mask,
+                              const VkAccessFlags2 dst_access_mask, const VkImageAspectFlags aspect_flags)
+{
+    ZoneScoped;
     const VkImageMemoryBarrier2 image_barrier {
         .sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
         .pNext            = nullptr,
-        .srcStageMask     = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-        .srcAccessMask    = VK_ACCESS_2_MEMORY_WRITE_BIT,
-        .dstStageMask     = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-        .dstAccessMask    = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
+        .srcStageMask     = src_stage_flags,
+        .srcAccessMask    = src_access_mask,
+        .dstStageMask     = dst_stage_flags,
+        .dstAccessMask    = dst_access_mask,
         .oldLayout        = current_layout,
         .newLayout        = new_layout,
         .image            = image,

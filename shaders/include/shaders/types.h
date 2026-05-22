@@ -8,9 +8,9 @@
 #include <shaders/constants.h>
 #else
 #extension GL_EXT_shader_8bit_storage : require
-#extension GL_EXT_shader_16bit_storage: require
+#extension GL_EXT_shader_16bit_storage : require
 #extension GL_EXT_scalar_block_layout : require
-#include "include/shaders/constants.h"
+#include "constants.h"
 #endif
 
 #ifdef __cplusplus
@@ -35,8 +35,8 @@ namespace shader_types
     {
         float px, py, pz;
         float nx, ny, nz;
-#if 0
         float ux, uy;
+#if 0
         float tx, ty, tz;
 #endif
     };
@@ -44,10 +44,10 @@ namespace shader_types
     struct Meshlet
     {
         uint data_offset;  // offset (in bytes) into a shader vertices/indices array
-        float cone_axis[3];
-        float cone_cutoff;
-        float sphere_center[3];
-        float sphere_radius;
+        float16_t cone_axis[3];
+        float16_t cone_cutoff;
+        float16_t sphere_center[3];
+        float16_t sphere_radius;
         uint8_t vertices_count;
         uint8_t triangles_count;
     };
@@ -88,12 +88,13 @@ namespace shader_types
 
     struct MeshMaterial
     {
+        vec4 diffuse_factor;
+        vec4 specular_factor;
+
         uint albedo_idx;
         uint normal_idx;
         uint specular_idx;
-
-        vec4 diffuse_factor;
-        vec4 specular_factor;
+        uint padding[1];
     };
 
     struct DrawIndexedIndirect

@@ -2,7 +2,7 @@
 #include <fs/fs.hpp>
 #include <tracy/Tracy.hpp>
 
-void app::pso_data::load(const render::vk_renderer& renderer)
+void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_descriptor_set& textures_set)
 {
     ZoneScoped;
     auto data = fs::read_file("../shaders/pipelines.cfg");
@@ -49,9 +49,9 @@ void app::pso_data::load(const render::vk_renderer& renderer)
         if (compiled.size() == shaders.size())
         {
             // stupid...
-            auto pso = (shaders.size() == 1)
-                         ? render::vk_pipeline::create_compute(renderer, compiled[0])
-                         : render::vk_pipeline::create_graphics(renderer, compiled.data(), compiled.size());
+            auto pso = (shaders.size() == 1) ? render::vk_pipeline::create_compute(renderer, compiled[0])
+                                             : render::vk_pipeline::create_graphics(
+                                                   renderer, compiled.data(), compiled.size(), &textures_set, 1);
 
             assert2m(pso && key, pso.message);
             if (pso)

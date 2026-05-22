@@ -7,13 +7,15 @@
 
 struct bytes
 {
+    explicit bytes() = default;
+
     explicit bytes(const u64 size)
         : m_size(size)
         , m_memory(new u8[size])
     {
     }
 
-    bytes(const u64 size, const void* data)
+    bytes(const void* data, const u64 size)
         : bytes(size)
     {
         ZoneScoped;
@@ -115,6 +117,6 @@ struct bytes
     operator bool() const noexcept { return !empty(); }
 
 private:
-    u64 m_size {0};
-    u8* m_memory {nullptr};
+    u64 m_size   = 0;
+    u8* m_memory = nullptr;
 };

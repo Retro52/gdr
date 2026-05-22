@@ -50,9 +50,9 @@ namespace cpp
             }
         }
 
-        [[nodiscard]] u64 reference_add() const noexcept { return ++(m_ref_control_block->strong_ref_counter); }
+        u64 reference_add() const noexcept { return ++(m_ref_control_block->strong_ref_counter); }
 
-        [[nodiscard]] u64 reference_remove() const noexcept
+        u64 reference_remove() const noexcept
         {
             const u64 cnt = --(m_ref_control_block->strong_ref_counter);
 

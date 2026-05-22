@@ -5,9 +5,9 @@
 #include <pod_types.hpp>
 #include <tracy/Tracy.hpp>
 
+#include <cstring>
 #include <type_traits>
 #include <utility>
-#include <cstring>
 
 namespace cpp
 {
@@ -26,7 +26,7 @@ namespace cpp
         {
             ZoneScoped;
             resize(size);
-            assert2(m_data != nullptr);
+            assert2(size == 0 || m_data != nullptr);
         }
 
         heap_array(const heap_array& other)
@@ -280,10 +280,15 @@ namespace cpp
 
         static T* alloc(const u64 size)
         {
+            ZoneScoped;
             return static_cast<T*>(::operator new(sizeof(T) * size, std::align_val_t {alignof(T)}));
         }
 
-        static void dealloc(T* ptr) { ::operator delete(ptr, std::align_val_t {alignof(T)}); }
+        static void dealloc(T* ptr)
+        {
+            ZoneScoped;
+            ::operator delete(ptr, std::align_val_t {alignof(T)});
+        }
 
         template<typename U>
         constexpr static void fast_copy_n(U* dest, const U* src, u64 count)

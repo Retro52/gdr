@@ -6,6 +6,7 @@
 result<render::vk_buffer_transfer> render::create_buffer_transfer(VkDevice device, VmaAllocator allocator,
                                                                   const queue_data& queue, u64 staging_memory_size)
 {
+    ZoneScoped;
     const auto cmd_buffer = render::create_command_buffer(device, queue.family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
     if (!cmd_buffer)
     {
@@ -67,6 +68,7 @@ void render::submit_transfer(const vk_buffer_transfer& transfer, const vk_buffer
 void render::fill_buffer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* value_ptr, u64 value_size,
                          const VkBufferCopy& region)
 {
+    ZoneScoped;
     assert2((region.size % value_size) == 0);
     const u64 count = region.size / value_size;
 
@@ -97,7 +99,8 @@ void render::upload_image(const vk_buffer_transfer& transfer, const vk_image& ds
     {
         if (block_size > 1)
         {
-            return ((width + block_size - 1) / block_size) * ((height + block_size - 1) / block_size) * bits_per_block / 8;
+            return ((width + block_size - 1) / block_size) * ((height + block_size - 1) / block_size) * bits_per_block
+                 / 8;
         }
 
         return width * height * bits_per_block / 8;

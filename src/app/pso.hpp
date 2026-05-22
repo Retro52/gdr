@@ -4,6 +4,7 @@
 #include <pod_types.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
+#include <render/platform/vk/vk_descriptor_set.hpp>
 
 #include <unordered_map>
 
@@ -31,7 +32,7 @@ namespace app
     public:
         render::vk_pipeline& operator[](const pso_id id) { return m_pipelines[static_cast<u32>(id)]; }
 
-        void load(const render::vk_renderer& renderer);
+        void load(const render::vk_renderer& renderer, const render::vk_descriptor_set& textures_set);
 
         void shutdown(const render::vk_renderer& renderer);
 

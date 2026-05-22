@@ -4,6 +4,8 @@
 #include <entt/entt.hpp>
 #include <tracy/Tracy.hpp>
 
+#include <functional>
+
 class entity
 {
 public:
@@ -11,35 +13,35 @@ public:
     void add_component(Args&&... args) const
     {
         ZoneScoped;
-        m_registry.emplace<T>(m_entity, std::forward<Args>(args)...);
+        m_registry.get().emplace<T>(m_entity, std::forward<Args>(args)...);
     }
 
     template<typename T, typename... Args>
     T& emplace_component(Args&&... args) const
     {
         ZoneScoped;
-        return m_registry.emplace<T>(m_entity, std::forward<Args>(args)...);
+        return m_registry.get().emplace<T>(m_entity, std::forward<Args>(args)...);
     }
 
     template<typename T>
     [[nodiscard]] bool has_component() const
     {
         ZoneScoped;
-        return m_registry.all_of<T>(m_entity);
+        return m_registry.get().all_of<T>(m_entity);
     }
 
     template<typename T>
     [[nodiscard]] T& get_component() const
     {
         ZoneScoped;
-        return m_registry.get<T>(m_entity);
+        return m_registry.get().get<T>(m_entity);
     }
 
     template<typename... Components>
     [[nodiscard]] entity shallow_clone(const entity& source)
     {
         ZoneScoped;
-        entity clone(source.m_registry.create(), source.m_registry);
+        entity clone(source.m_registry.get().create(), source.m_registry);
         detail::for_each_type<std::tuple<Components...>>(
             [&]<typename T>()
             {
@@ -52,9 +54,15 @@ public:
         return clone;
     }
 
-    [[nodiscard]] entt::entity get_native() const noexcept
+    [[nodiscard]] entt::entity get_native() const noexcept { return m_entity; }
+
+    [[nodiscard]] operator bool() const noexcept { return m_entity != entt::null; }
+
+    [[nodiscard]] bool operator==(const entt::entity id) const noexcept { return m_entity == id; }
+
+    [[nodiscard]] bool operator==(const entity& other) const noexcept
     {
-        return m_entity;
+        return m_entity == other.m_entity && &m_registry == &other.m_registry;
     }
 
 private:
@@ -68,5 +76,5 @@ private:
 
 private:
     entt::entity m_entity;
-    entt::registry& m_registry;
+    std::reference_wrapper<entt::registry> m_registry;
 };

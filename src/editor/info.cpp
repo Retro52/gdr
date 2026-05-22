@@ -71,7 +71,10 @@ void editor::info_widget_context::draw() const
 
     ImGui::SeparatorText("gpu timings");
     codegen::draw(m_gpu_profile);
-    ImGui::ProgressBar(static_cast<f32>(m_gpu_profile.tris_from_max), ImVec2(0.0F, 0.0F), "Total triangles rendered");
+
+    const auto str = cpp::stack_string::make_formatted("Total triangles rendered: %.3F%%",
+                                                       static_cast<f32>(m_gpu_profile.tris_from_max) * 100.0F);
+    ImGui::ProgressBar(static_cast<f32>(m_gpu_profile.tris_from_max), ImVec2(0.0F, 0.0F), str.c_str());
     ImGui::Text("Tris Max: %s", format_big_number(m_gpu_profile.tris_in_scene_max).c_str());
     ImGui::Text("Tris Drawn: %s", format_big_number(m_gpu_profile.tris_in_scene_total).c_str());
 
@@ -82,6 +85,7 @@ void editor::info_widget_context::draw() const
         draw_shared_buffer_stats("Meshlets", m_geometry_pool.meshlets);
         draw_shared_buffer_stats("Instances", m_geometry_pool.instances);
         draw_shared_buffer_stats("Primitives", m_geometry_pool.primitives);
+        draw_shared_buffer_stats("Materials data", m_geometry_pool.materials);
         draw_shared_buffer_stats("Meshlets payload", m_geometry_pool.meshlets_payload);
         draw_scene_geometry_pool(m_geometry_pool);
     }

@@ -10,7 +10,7 @@ int main(const int argc, char* argv[])
 
 #if TRACY_ENABLE
     using namespace std::chrono_literals;
-    std::this_thread::sleep_for(1250ms);
+    std::this_thread::sleep_for(500ms);
 #endif
 
     app::instance application;

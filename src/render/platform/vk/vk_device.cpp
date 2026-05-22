@@ -9,9 +9,29 @@
 
 #include <algorithm>
 
+#include "cpp/containers/stack_string.hpp"
+
 using namespace render;
 
-bool inst_ext_available(const char* name)
+#define ENABLE_SYNC_VALIDATION 0
+
+static cpp::stack_string format_bytes_number(u64 number)
+{
+    ZoneScoped;
+
+    if (number < 1024)
+    {
+        return cpp::stack_string::make_formatted("%d", number);
+    }
+
+    const char* magnitudes_per_thousand[] = {"KB", "MB", "GB", "TB"};
+
+    auto magnitude     = static_cast<i32>(std::log2(number) / 10);
+    const f64 fraction = static_cast<f64>(number) / std::pow(1024, magnitude);
+    return cpp::stack_string::make_formatted("%.3lf%s", fraction, magnitudes_per_thousand[magnitude - 1]);
+}
+
+static bool inst_ext_available(const char* name)
 {
     u32 n = 0;
     vkEnumerateInstanceExtensionProperties(nullptr, &n, nullptr);
@@ -30,7 +50,7 @@ bool inst_ext_available(const char* name)
     return false;
 }
 
-bool layer_available(const char* name)
+static bool layer_available(const char* name)
 {
     u32 n = 0;
     vkEnumerateInstanceLayerProperties(&n, nullptr);
@@ -52,7 +72,7 @@ bool layer_available(const char* name)
     return false;
 }
 
-void insert_video_driver_extensions(const window& window, cpp::heap_array<const char*>& extensions_array)
+static void insert_video_driver_extensions(const window& window, cpp::heap_array<const char*>& extensions_array)
 {
     extensions_array.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
     switch (window.get_native_handle().type)
@@ -83,7 +103,7 @@ void insert_video_driver_extensions(const window& window, cpp::heap_array<const 
     }
 }
 
-VkResult video_driver_create_surface(const window& window, VkInstance instance, VkSurfaceKHR* surface)
+static VkResult video_driver_create_surface(const window& window, VkInstance instance, VkSurfaceKHR* surface)
 {
     ZoneScoped;
     const auto native = window.get_native_handle();
@@ -150,9 +170,9 @@ VkResult video_driver_create_surface(const window& window, VkInstance instance, 
     return VK_ERROR_FEATURE_NOT_PRESENT;
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
-                                        VkDebugUtilsMessageTypeFlagsEXT,
-                                        const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void*)
+static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+                                               VkDebugUtilsMessageTypeFlagsEXT,
+                                               const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void*)
 {
     if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
@@ -174,7 +194,8 @@ void load_instance_layers_and_extensions(const window& window, const instance_de
     insert_video_driver_extensions(window, extensions);
 }
 
-bool choose_queue_families(VkPhysicalDevice phys, VkSurfaceKHR surface, u32& gfx, u32& cmp, u32& transfer, u32& present)
+static bool choose_queue_families(VkPhysicalDevice phys, VkSurfaceKHR surface, u32& gfx, u32& cmp, u32& transfer,
+                                  u32& present)
 {
     ZoneScoped;
     u32 count = 0;
@@ -242,7 +263,7 @@ bool choose_queue_families(VkPhysicalDevice phys, VkSurfaceKHR surface, u32& gfx
         && transfer != VK_QUEUE_FAMILY_IGNORED;
 }
 
-cpp::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysicalDevice device, VkSurfaceKHR surface)
+static cpp::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysicalDevice device, VkSurfaceKHR surface)
 {
     ZoneScoped;
     // 1st - gfx, 2nd - compute, 3rd - transfer.
@@ -283,8 +304,9 @@ cpp::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysicalDevice 
     return create_infos;
 }
 
-bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR surface,
-                                         const ext_array& required_extensions, rendering_features_table& features_table)
+static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR surface,
+                                                const ext_array& required_extensions,
+                                                rendering_features_table& features_table)
 {
     ZoneScoped;
     u32 families[queue_kind::COUNT];
@@ -371,11 +393,22 @@ bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR s
     features_table.set_supported(rendering_features_table::ePipelineStats,
                                  device_features2.features.pipelineStatisticsQuery);
 
+    features_table.set_supported(rendering_features_table::eBindlessTextures,
+                                 vk12_features.descriptorIndexing && vk12_features.runtimeDescriptorArray
+                                     && vk12_features.descriptorBindingPartiallyBound
+                                     && vk12_features.descriptorBindingVariableDescriptorCount
+                                     && vk12_features.shaderSampledImageArrayNonUniformIndexing
+                                     && vk12_features.descriptorBindingSampledImageUpdateAfterBind);
+
+    features_table.set_supported(rendering_features_table::e16BitFloats,
+                                 vk11_features.storageBuffer16BitAccess
+                                     && vk11_features.uniformAndStorageBuffer16BitAccess);
+
     return not_found_extensions.empty() && features_table.all_required_supported();
 }
 
-ext_array build_extensions_from_feature_table(const rendering_features_table& features_table,
-                                              bool required_only = false)
+static ext_array build_extensions_from_feature_table(const rendering_features_table& features_table,
+                                                     bool required_only = false)
 {
     ext_array array;
     array.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
@@ -409,7 +442,7 @@ ext_array build_extensions_from_feature_table(const rendering_features_table& fe
     return array;
 }
 
-u32 rate_device(VkPhysicalDevice physical_device)
+static u32 rate_device(VkPhysicalDevice physical_device)
 {
     ZoneScoped;
     VkPhysicalDeviceProperties device_properties;
@@ -424,8 +457,9 @@ u32 rate_device(VkPhysicalDevice physical_device)
     return score;
 }
 
-VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface, const ext_array& required_extensions,
-                                      rendering_features_table& required_features)
+static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
+                                             const ext_array& required_extensions,
+                                             rendering_features_table& required_features)
 {
     ZoneScoped;
     u32 device_count = 0;
@@ -455,8 +489,8 @@ VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
     return current_pick;
 }
 
-VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhysicalDevice physical_device,
-                              VmaAllocator* allocator)
+static VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhysicalDevice physical_device,
+                                     VmaAllocator* allocator)
 {
     ZoneScoped;
     const VmaVulkanFunctions vma_vulkan_functions = {
@@ -489,10 +523,60 @@ VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhysicalDe
         .vkGetMemoryWin32HandleKHR               = nullptr,
     };
 
+#if TRACY_ENABLE
+    constexpr const char* kPlotName = "GPU memory";
+
+    PFN_vmaAllocateDeviceMemoryFunction alloc_callback = +[](VmaAllocator VMA_NOT_NULL allocator,
+                                                             uint32_t memoryType,
+                                                             VkDeviceMemory VMA_NOT_NULL_NON_DISPATCHABLE memory,
+                                                             VkDeviceSize size,
+                                                             void* VMA_NULLABLE pUserData)
+    {
+        if (pUserData)
+        {
+            auto& gpu_total_taken = *static_cast<u64*>(pUserData);
+            gpu_total_taken += size;
+            const auto msg =
+                cpp::stack_string::make_formatted("vkAllocateMemory: %s bytes", format_bytes_number(size).c_str());
+            TracyMessage(msg.c_str(), msg.length());
+
+            TracyPlotConfig(kPlotName, tracy::PlotFormatType::Memory, true, true, 0);
+            TracyPlot(kPlotName, static_cast<i64>(gpu_total_taken));
+        }
+    };
+
+    PFN_vmaAllocateDeviceMemoryFunction free_callback = +[](VmaAllocator VMA_NOT_NULL allocator,
+                                                            uint32_t memoryType,
+                                                            VkDeviceMemory VMA_NOT_NULL_NON_DISPATCHABLE memory,
+                                                            VkDeviceSize size,
+                                                            void* VMA_NULLABLE pUserData)
+    {
+        if (pUserData)
+        {
+            auto& gpu_total_taken = *static_cast<u64*>(pUserData);
+            gpu_total_taken -= size;
+            const auto msg =
+                cpp::stack_string::make_formatted("vkFreeMemory: %s bytes", format_bytes_number(size).c_str());
+            TracyMessage(msg.c_str(), msg.length());
+
+            TracyPlotConfig(kPlotName, tracy::PlotFormatType::Memory, true, true, 0);
+            TracyPlot(kPlotName, static_cast<i64>(gpu_total_taken));
+        }
+    };
+
+    static u64 s_gpu_mem_taken = 0;
+
+    const VmaDeviceMemoryCallbacks callbacks {
+        .pfnAllocate = alloc_callback, .pfnFree = free_callback, .pUserData = &s_gpu_mem_taken};
+#endif
+
     const VmaAllocatorCreateInfo allocator_create_info = {
-        .flags            = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
-        .physicalDevice   = physical_device,
-        .device           = device,
+        .flags          = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
+        .physicalDevice = physical_device,
+        .device         = device,
+#if TRACY_ENABLE
+        .pDeviceMemoryCallbacks = &callbacks,
+#endif
         .pVulkanFunctions = &vma_vulkan_functions,
         .instance         = instance,
         .vulkanApiVersion = VK_API_VERSION_1_3,
@@ -501,10 +585,18 @@ VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhysicalDe
     return vmaCreateAllocator(&allocator_create_info, allocator);
 }
 
-VkResult create_vulkan_device(const rendering_features_table& rendering_features, const ext_array& device_extensions,
-                              VkPhysicalDevice phys_device, VkSurfaceKHR surface, VkDevice* device)
+static VkResult create_vulkan_device(const rendering_features_table& rendering_features,
+                                     const ext_array& device_extensions, VkPhysicalDevice phys_device,
+                                     VkSurfaceKHR surface, VkDevice* device)
 {
     const auto queue_create_info = get_queue_create_info(phys_device, surface);
+
+    void** pNext = nullptr;
+    auto prepend = [&](void* desc)
+    {
+        *pNext = desc;
+        pNext  = reinterpret_cast<void**>(static_cast<u8*>(desc) + sizeof(void*));
+    };
 
     VkPhysicalDeviceVulkan13Features vk13_features {
         .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
@@ -512,28 +604,31 @@ VkResult create_vulkan_device(const rendering_features_table& rendering_features
         .dynamicRendering = rendering_features.wanted(rendering_features_table::eDynamicRender),
         .maintenance4     = rendering_features.wanted(rendering_features_table::eMeshShading)};
 
-    VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features {};
-    if (rendering_features.wanted(rendering_features_table::eMeshShading))
-    {
-        mesh_features       = {.sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
-                               .taskShader = true,
-                               .meshShader = true};
-        vk13_features.pNext = &mesh_features;
-    }
-
     VkPhysicalDeviceVulkan12Features vk12_features {
         .sType                   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
         .pNext                   = &vk13_features,
         .drawIndirectCount       = rendering_features.wanted(rendering_features_table::eDrawIndirect),
         .storageBuffer8BitAccess = rendering_features.wanted(rendering_features_table::e8BitIntegers),
-        .samplerFilterMinmax     = rendering_features.wanted(rendering_features_table::eSamplerMinMax),
-        .scalarBlockLayout       = rendering_features.wanted(rendering_features_table::eScalarBlockLayout),
+        .descriptorIndexing      = rendering_features.wanted(rendering_features_table::eBindlessTextures),
+        .shaderSampledImageArrayNonUniformIndexing =
+            rendering_features.wanted(rendering_features_table::eBindlessTextures),
+        .descriptorBindingSampledImageUpdateAfterBind =
+            rendering_features.wanted(rendering_features_table::eBindlessTextures),
+        .descriptorBindingPartiallyBound = rendering_features.wanted(rendering_features_table::eBindlessTextures),
+        .descriptorBindingVariableDescriptorCount =
+            rendering_features.wanted(rendering_features_table::eBindlessTextures),
+        .runtimeDescriptorArray = rendering_features.wanted(rendering_features_table::eBindlessTextures),
+        .samplerFilterMinmax    = rendering_features.wanted(rendering_features_table::eSamplerMinMax),
+        .scalarBlockLayout      = rendering_features.wanted(rendering_features_table::eScalarBlockLayout),
     };
 
     VkPhysicalDeviceVulkan11Features vk11_features {
-        .sType                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-        .pNext                = &vk12_features,
-        .shaderDrawParameters = rendering_features.wanted(rendering_features_table::eDrawIndirect)};
+        .sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .pNext                              = &vk12_features,
+        .storageBuffer16BitAccess           = rendering_features.wanted(rendering_features_table::e16BitFloats),
+        .uniformAndStorageBuffer16BitAccess = rendering_features.wanted(rendering_features_table::e16BitFloats),
+        .shaderDrawParameters               = rendering_features.wanted(rendering_features_table::eDrawIndirect),
+    };
 
     VkPhysicalDeviceFeatures2 device_features {
         .sType    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
@@ -554,10 +649,25 @@ VkResult create_vulkan_device(const rendering_features_table& rendering_features
         .pEnabledFeatures        = nullptr,
     };
 
+    pNext = &device_features.pNext;
+    prepend(&vk11_features);
+    prepend(&vk12_features);
+    prepend(&vk13_features);
+
+    // Optional structs
+    VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features {};
+    if (rendering_features.wanted(rendering_features_table::eMeshShading))
+    {
+        mesh_features = {.sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
+                         .taskShader = true,
+                         .meshShader = true};
+        prepend(&mesh_features);
+    }
+
     return vkCreateDevice(phys_device, &device_create_info, nullptr, device);
 }
 
-result<context> create_vk_context(const window& window, const instance_desc& desc)
+static result<context> create_vk_context(const window& window, const instance_desc& desc)
 {
     ZoneScoped;
     VK_RETURN_ON_FAIL(volkInitialize())
@@ -574,8 +684,21 @@ result<context> create_vk_context(const window& window, const instance_desc& des
     cpp::heap_array<const char*> layers;
     load_instance_layers_and_extensions(window, desc, layers, context.instance_extensions);
 
+#if ENABLE_SYNC_VALIDATION
+    constexpr VkValidationFeatureEnableEXT enabled_validation_features[] = {
+        VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT,
+    };
+
+    VkValidationFeaturesEXT validation_features       = {VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
+    validation_features.enabledValidationFeatureCount = COUNT_OF(enabled_validation_features);
+    validation_features.pEnabledValidationFeatures    = enabled_validation_features;
+#endif
+
     const VkInstanceCreateInfo ici {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+#if ENABLE_SYNC_VALIDATION
+        .pNext = &validation_features,
+#endif
 #if defined(VK_USE_PLATFORM_METAL_EXT)
         .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
 #endif
@@ -649,13 +772,13 @@ result<context> create_vk_context(const window& window, const instance_desc& des
     return context;
 }
 
-VkExtent2D choose_extent(const VkSurfaceCapabilitiesKHR& caps, VkExtent2D requested)
+static VkExtent2D choose_extent(const VkSurfaceCapabilitiesKHR& caps, VkExtent2D requested)
 {
     return {.width  = std::clamp(requested.width, caps.minImageExtent.width, caps.maxImageExtent.width),
             .height = std::clamp(requested.height, caps.minImageExtent.height, caps.maxImageExtent.height)};
 }
 
-VkPresentModeKHR choose_present_mode(VkPhysicalDevice device, VkSurfaceKHR surface, bool vsync)
+static VkPresentModeKHR choose_present_mode(VkPhysicalDevice device, VkSurfaceKHR surface, bool vsync)
 {
     ZoneScoped;
     if (vsync)
@@ -680,7 +803,7 @@ VkPresentModeKHR choose_present_mode(VkPhysicalDevice device, VkSurfaceKHR surfa
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-VkFormat choose_depth_format(VkPhysicalDevice device)
+static VkFormat choose_depth_format(VkPhysicalDevice device)
 {
     ZoneScoped;
     constexpr VkFormatFeatureFlags features = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
@@ -699,12 +822,12 @@ VkFormat choose_depth_format(VkPhysicalDevice device)
     return VK_FORMAT_UNDEFINED;
 }
 
-bool format_has_stencil_component(VkFormat format)
+static bool format_has_stencil_component(VkFormat format)
 {
     return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
-VkSurfaceFormatKHR choose_swapchain_format(VkPhysicalDevice device, VkSurfaceKHR surface, VkFormat format)
+static VkSurfaceFormatKHR choose_swapchain_format(VkPhysicalDevice device, VkSurfaceKHR surface, VkFormat format)
 {
     ZoneScoped;
     u32 surface_formats = 0;

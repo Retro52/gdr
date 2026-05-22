@@ -8,42 +8,42 @@
 
 layout (local_size_x = kTaskWorkGroups, local_size_y = 1, local_size_z = 1) in;
 
-layout (binding = 1) readonly buffer Meshlets
+layout (binding = 3) readonly buffer Meshlets
 {
     Meshlet meshlets[];
 };
 
-layout (binding = 3) readonly buffer MeshesData
+layout (binding = 5) readonly buffer MeshesData
 {
     MeshData meshes_data[];
 };
 
-layout (scalar, binding = 4) readonly buffer MeshInstances
+layout (scalar, binding = 6) readonly buffer MeshInstances
 {
     MeshInstance mesh_instances[];
 };
 
-layout (binding = 5) readonly buffer DrawMeshletsIndirects
+layout (binding = 7) readonly buffer DrawMeshletsIndirects
 {
     DrawTaskCommandIndirect draw_mesh_cmds[];
 };
 
-layout (binding = 6) buffer FrameCullDataBuffer
+layout (binding = 8) buffer FrameCullDataBuffer
 {
     FrameCullData frame_cull;
 };
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-layout (binding = 7) buffer MeshletsVisibilityBuffer
+layout (binding = 9) buffer MeshletsVisibilityBuffer
 #else
-layout (binding = 7) readonly buffer MeshletsVisibilityBuffer
+layout (binding = 9) readonly buffer MeshletsVisibilityBuffer
 #endif
 {
     uint meshlets_visibility_buffer[];
 };
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-layout (binding = 8) uniform sampler2D depth_pyramid;
+layout (binding = 10) uniform sampler2D depth_pyramid;
 #endif
 
 layout (push_constant) uniform constants
@@ -72,7 +72,6 @@ void main()
     meshlets[meshlet_id].cone_axis[1],
     meshlets[meshlet_id].cone_axis[2]
     );
-    float cull_cutoff = meshlets[meshlet_id].cone_cutoff;
 
     vec3 sphere_center = vec3(
     meshlets[meshlet_id].sphere_center[0],
@@ -80,13 +79,13 @@ void main()
     meshlets[meshlet_id].sphere_center[2]
     );
 
-    float sphere_radius = meshlets[meshlet_id].sphere_radius * mesh_instances[instance_id].pos_and_scale.w;
+    float sphere_radius = float(meshlets[meshlet_id].sphere_radius) * mesh_instances[instance_id].pos_and_scale.w;
 
     vec3 view_axis = (frame_cull.view * vec4(quat_rotate_vec3(cull_cone_axis, mesh_instances[instance_id].rotation_quat), 0.0F)).xyz;
     vec3 view_center = (frame_cull.view * vec4(transform_vec3(sphere_center, mesh_instances[instance_id].pos_and_scale, mesh_instances[instance_id].rotation_quat), 1.0F)).xyz;
 
     bool visible = true;
-    visible = GET_BIT(frame_cull.flags, kMeshletConeCullBit) == 0 || (dot(view_center, view_axis) < cull_cutoff * length(view_center) + sphere_radius);
+    visible = GET_BIT(frame_cull.flags, kMeshletConeCullBit) == 0 || (dot(view_center, view_axis) < float(meshlets[meshlet_id].cone_cutoff) * length(view_center) + sphere_radius);
 
     if (GET_BIT(frame_cull.flags, kMeshletFrustumCullBit) == 1)
     {

@@ -1,13 +1,12 @@
 #include <SDL3/SDL.h>
 
-#include <pod_types.hpp>
-
 #include <assert2.hpp>
 #include <cpp/hash/hashed_string.hpp>
 #include <debug.hpp>
+#include <pod_types.hpp>
 
-#include <string>
 #include <algorithm>
+#include <string>
 
 static SDL_Window* g_window = nullptr;
 
@@ -86,19 +85,22 @@ void debug::assert2_show_assert_popup(const char* message)
         eSkipAll,
         eBreak,
         eAbort,
+        eCopy,
     };
 
-    SDL_MessageBoxButtonData kNoDebuggerButtons[3] = {
+    SDL_MessageBoxButtonData kNoDebuggerButtons[] = {
         SDL_MessageBoxButtonData {.buttonID = eSkip,    .text = "Skip"    },
         SDL_MessageBoxButtonData {.buttonID = eSkipAll, .text = "Skip All"},
         SDL_MessageBoxButtonData {.buttonID = eAbort,   .text = "Abort"   },
+        SDL_MessageBoxButtonData {.buttonID = eCopy,    .text = "Copy"    },
     };
 
-    SDL_MessageBoxButtonData kDebuggerPresentButtons[4] = {
+    SDL_MessageBoxButtonData kDebuggerPresentButtons[] = {
         SDL_MessageBoxButtonData {.buttonID = eSkip,    .text = "Skip"    },
         SDL_MessageBoxButtonData {.buttonID = eSkipAll, .text = "Skip All"},
         SDL_MessageBoxButtonData {.buttonID = eBreak,   .text = "Break"   },
         SDL_MessageBoxButtonData {.buttonID = eAbort,   .text = "Abort"   },
+        SDL_MessageBoxButtonData {.buttonID = eCopy,    .text = "Copy"    },
     };
 
     const int buttons_count =
@@ -127,6 +129,9 @@ void debug::assert2_show_assert_popup(const char* message)
     case eAbort :
         g_last_skipped = kEmptySkip;
         std::abort();
+    case eCopy :
+        SDL_SetClipboardText(message);
+        break;
     default :
     case eSkipAll :
         g_last_skipped = cpp::hashed_string(message);

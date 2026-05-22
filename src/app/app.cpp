@@ -19,6 +19,7 @@
 #include <imgui/imwidgets.hpp>
 #include <render/debug/frustum_renderer.hpp>
 #include <render/platform/vk/vk_barrier.hpp>
+#include <render/platform/vk/vk_descriptor_set.hpp>
 #include <render/platform/vk/vk_image.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_query.hpp>
@@ -26,6 +27,7 @@
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 #include <scene/loader.hpp>
+#include <scene/mesh_load.hpp>
 #include <scene/scene.hpp>
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
@@ -76,7 +78,8 @@ namespace
         return min + (static_cast<T>(rand()) / RAND_MAX) * (max - min);
     }
 
-    u64 populate_scene(const u32 draw_count, const cpp::heap_array<loader::mesh_data>& primitives, scene& scene,
+#if 0
+    u64 populate_scene(const u32 draw_count, const cpp::heap_array<mesh::raw_mesh>& primitives, scene& scene,
                        render::vk_scene_geometry_pool& geometry_pool)
     {
         ZoneScoped;
@@ -87,7 +90,7 @@ namespace
         cpp::heap_array<loader::primitive> prims(primitives.size());
         for (u32 i = 0; i < primitives.size(); ++i)
         {
-            prims[i] = loader::upload_primitive(primitives[i], geometry_pool);
+            prims[i] = loader::encode_raw_mesh(primitives[i], geometry_pool);
         }
 
         auto* instances_ptr  = static_cast<loader::instance*>(geometry_pool.transfer.mapped);
@@ -132,11 +135,13 @@ namespace
 
         return scene_triangles_total;
     }
+#endif
 }
 
 render::vk_renderer create_vk_renderer(window& app_window)
 {
     ZoneScoped;
+
     constexpr auto features_table = render::rendering_features_table()
 #if !defined(NDEBUG)
                                         .request(render::rendering_features_table::eValidation)
@@ -144,12 +149,13 @@ render::vk_renderer create_vk_renderer(window& app_window)
                                         .request(render::rendering_features_table::eMeshShading)
                                         .request(render::rendering_features_table::ePipelineStats)
                                         .require(render::rendering_features_table::e8BitIntegers)
+                                        .require(render::rendering_features_table::e16BitFloats)
                                         .require(render::rendering_features_table::eDrawIndirect)
                                         .require(render::rendering_features_table::eDynamicRender)
                                         .require(render::rendering_features_table::eSamplerMinMax)
+                                        .require(render::rendering_features_table::eBindlessTextures)
                                         .require(render::rendering_features_table::eScalarBlockLayout)
                                         .require(render::rendering_features_table::eSynchronization2);
-
     return {
         render::instance_desc {
                                .app_name        = "Vulkan renderer",
@@ -243,30 +249,27 @@ int app::instance::run(const int argc, char* argv[])
         },
         &resize_ctx);
 
+    render::vk_descriptor_set bindless_textures_desc_set =
+        *render::create_bindless_textures_set(m_renderer.get_context().device, 65536);
+    VkSampler bindless_textures_sampler = *render::create_sampler(m_renderer.get_context().device,
+                                                                  VK_FILTER_LINEAR,
+                                                                  VK_SAMPLER_MIPMAP_MODE_LINEAR,
+                                                                  VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                                                                  VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE);
+
     pso_data pipelines;
-    pipelines.load(m_renderer);
+    pipelines.load(m_renderer, bindless_textures_desc_set);
 
 #if !NO_EDITOR
     imgui_layer editor(m_window, m_renderer);
 #endif
 
-    // test scene stuff
-    scene client_scene;
-    auto camera = client_scene.create_entity();
-
-    camera.add_component<id_component>(DEBUG_ONLY(id_component("camera")));
-    camera.add_component<transform_component>();
-    camera.add_component<camera_component>(camera_component {
-        .near_plane     = 0.01F,
-        .aspect_ratio   = 16.0F / 9.0F,
-        .horizontal_fov = glm::radians(90.0F),
-    });
-
     render::vk_scene_geometry_pool geometry_pool {
         .index      = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
         .vertex     = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-        .primitives = render::vk_shared_buffer(m_renderer, 32_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-        .instances = render::vk_shared_buffer(m_renderer, 16_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .primitives = render::vk_shared_buffer(m_renderer, 1_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .instances  = render::vk_shared_buffer(m_renderer, 1_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .materials  = render::vk_shared_buffer(m_renderer, 1_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
 
         .transfer = *render::create_buffer_transfer(m_renderer.get_context().device,
                                                     m_renderer.get_context().allocator,
@@ -275,8 +278,7 @@ int app::instance::run(const int argc, char* argv[])
 
     if (mesh_shading_supported)
     {
-        geometry_pool.meshlets =
-            render::vk_shared_buffer(m_renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        geometry_pool.meshlets = render::vk_shared_buffer(m_renderer, 16_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         geometry_pool.meshlets_payload =
             render::vk_shared_buffer(m_renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     }
@@ -284,9 +286,13 @@ int app::instance::run(const int argc, char* argv[])
     const bool load_as_scene = argc == 3 && cpp::cx_streq(argv[1], "--scene");
 
     loader::stats stats;
+    cpp::heap_array<render::vk_image> textures;
+
+    // test scene stuff
+    scene client_scene;
     if (load_as_scene)
     {
-        stats = loader::load_scene(argv[2], client_scene, m_renderer, geometry_pool);
+        stats = loader::load_scene(argv[2], client_scene, m_renderer, geometry_pool, textures);
     }
     else
     {
@@ -295,14 +301,57 @@ int app::instance::run(const int argc, char* argv[])
             .primitives = 144'000,  // kRepeatDraws
         };
 
-        cpp::heap_array<loader::mesh_data> meshes;
-
+        cpp::heap_array<mesh::raw_mesh> meshes;
         for (int i = 1; i < argc; ++i)
         {
-            meshes.append(loader::load_mesh(argv[i]));
+            // meshes.append(mesh::build_mesh(argv[i]));
         }
 
-        stats.triangles = populate_scene(stats.primitives, meshes, client_scene, geometry_pool);
+        // stats.triangles = populate_scene(stats.primitives, meshes, client_scene, geometry_pool);
+    }
+
+    entity camera = client_scene.empty();
+    if (const auto loaded_camera = client_scene.get_view<entt::entity, camera_component>().front();
+        loaded_camera != entt::null)
+    {
+        camera = client_scene.create_ref(loaded_camera);
+    }
+
+    entity editor_camera = client_scene.create_entity();
+    editor_camera.add_component<id_component>(DEBUG_ONLY(id_component("editor camera")));
+    editor_camera.add_component<transform_component>();
+    editor_camera.add_component<camera_component>(camera_component {
+        .near_plane     = 0.01F,
+        .aspect_ratio   = 16.0F / 9.0F,
+        .horizontal_fov = glm::radians(90.0F),
+    });
+
+    if (!camera)
+    {
+        camera = editor_camera;
+    }
+
+    for (u32 i = 0; i < textures.size(); ++i)
+    {
+        auto& tex = textures[i];
+        if (tex.image == VK_NULL_HANDLE)
+        {
+            continue;
+        }
+
+        const VkDescriptorImageInfo img_info = {.imageView = tex.view, .imageLayout = VK_IMAGE_LAYOUT_GENERAL};
+
+        const VkWriteDescriptorSet desc_write {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = bindless_textures_desc_set.descriptor_set,
+            .dstBinding      = 0,
+            .dstArrayElement = i + 1,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            .pImageInfo      = &img_info,
+        };
+
+        vkUpdateDescriptorSets(m_renderer.get_context().device, 1, &desc_write, 0, nullptr);
     }
 
     constexpr u32 kQueryPoolCount = 64;
@@ -402,28 +451,46 @@ int app::instance::run(const int argc, char* argv[])
     auto draw_scene = [&](VkCommandBuffer cmd, const render::vk_pipeline& pipeline, VkBuffer frame_cull_data)
     {
         ZoneScopedN("app.instance.run.draw_scene");
+
+        constexpr u32 kMaxSetZeroBindings = 12;
+        render::vk_descriptor_info render_bindings[kMaxSetZeroBindings];
+
+        u32 curr_bind  = 0;
+        auto bind_next = [&](const render::vk_descriptor_info& next)
+        {
+            assert2(curr_bind < kMaxSetZeroBindings);
+            render_bindings[curr_bind++] = next;
+        };
+
+        bind_next(geometry_pool.materials.buffer.buffer);
+        bind_next(render::vk_descriptor_info(bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED));
+        bind_next(geometry_pool.vertex.buffer.buffer);
+
         if (enable_meshlets_pipeline)
         {
-            const render::vk_descriptor_info render_bindings[] = {
-                geometry_pool.vertex.buffer.buffer,
-                geometry_pool.meshlets.buffer.buffer,
-                geometry_pool.meshlets_payload.buffer.buffer,
-                geometry_pool.primitives.buffer.buffer,
-                geometry_pool.instances.buffer.buffer,
-                meshlets_draw_indirect_buffer.buffer,
-                frame_cull_data,
-                meshlets_visibility_buffer.buffer,
-                render::vk_descriptor_info(depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL)};
+            bind_next(geometry_pool.meshlets.buffer.buffer);
+            bind_next(geometry_pool.meshlets_payload.buffer.buffer);
+            bind_next(geometry_pool.primitives.buffer.buffer);
+            bind_next(geometry_pool.instances.buffer.buffer);
+            bind_next(meshlets_draw_indirect_buffer.buffer);
+            bind_next(frame_cull_data);
+            bind_next(meshlets_visibility_buffer.buffer);
+            bind_next(
+                render::vk_descriptor_info(depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL));
 
             pipeline.push_descriptor_set(cmd, render_bindings);
+            pipeline.bind_descriptor_set(cmd, bindless_textures_desc_set);
+
             vkCmdDrawMeshTasksIndirectEXT(cmd, draw_count_buffer.buffer, 0, 1, 0);
         }
         else
         {
-            const render::vk_descriptor_info render_bindings[] = {geometry_pool.vertex.buffer.buffer,
-                                                                  geometry_pool.instances.buffer.buffer,
-                                                                  indexed_draw_indirect_buffer.buffer};
+            bind_next(geometry_pool.instances.buffer.buffer);
+            bind_next(indexed_draw_indirect_buffer.buffer);
+
             pipeline.push_descriptor_set(cmd, render_bindings);
+            pipeline.bind_descriptor_set(cmd, bindless_textures_desc_set);
+
             vkCmdBindIndexBuffer(cmd, geometry_pool.index.buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
             vkCmdDrawIndexedIndirectCount(cmd,
                                           indexed_draw_indirect_buffer.buffer,
@@ -558,7 +625,8 @@ int app::instance::run(const int argc, char* argv[])
                     const auto& render_pipeline = enable_meshlets_pipeline ? pipelines[pso_id::task_render_pipeline]
                                                                            : pipelines[pso_id::indexed_render_pipeline];
                     render_pipeline.bind(buffer);
-                    render_pipeline.push_constant(buffer, camera_proj_view);
+                    render_pipeline.push_constant(
+                        buffer, freeze_cull_data ? camera_proj * debug_camera_view : camera_proj_view);
 
                     ZoneScopedN("draw last frame occluders");
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw last frame occluders"));
@@ -570,7 +638,6 @@ int app::instance::run(const int argc, char* argv[])
                 vkCmdEndRendering(buffer);
 
                 // Reduce the depth buffer pyramid
-                if (!freeze_cull_data)
                 {
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "depth reduce"));
 
@@ -602,6 +669,29 @@ int app::instance::run(const int argc, char* argv[])
                                                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
                     }
+                }
+
+                if (freeze_cull_data)
+                {
+                    ZoneScopedN("draw last frame occluders from an actual perspective");
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(),
+                                           buffer,
+                                           "draw last frame occluders from an actual perspective"));
+
+                    begin_rendering(buffer,
+                                    m_renderer.get_frame_swapchain_image().image_view,
+                                    depth_image.view,
+                                    VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                    VK_ATTACHMENT_STORE_OP_STORE,
+                                    m_renderer.get_scissor());
+
+                    const auto& render_pipeline = enable_meshlets_pipeline ? pipelines[pso_id::task_render_pipeline]
+                                                                           : pipelines[pso_id::indexed_render_pipeline];
+                    render_pipeline.bind(buffer);
+                    render_pipeline.push_constant(buffer, camera_proj_view);
+
+                    draw_scene(buffer, render_pipeline, frame_cull_data_buffer.buffer);
+                    vkCmdEndRendering(buffer);
                 }
 
                 {
@@ -729,6 +819,45 @@ int app::instance::run(const int argc, char* argv[])
                             }
                         }
 
+                        if (ImGui::CollapsingHeader("Camera controls", ImGuiTreeNodeFlags_DefaultOpen))
+                        {
+                            client_scene.get_view<entt::entity, camera_component>().each(
+                                [&](entt::entity id, camera_component& camera_comp)
+                                {
+                                    cpp::stack_string name;
+                                    bool selected = camera == id;
+
+                                    if (const auto comp_id = client_scene.try_get_component<id_component>(id))
+                                    {
+#if !defined(NDEBUG)
+                                        name = comp_id->name;
+#else
+                                        name = std::to_string(comp_id->id);
+#endif
+                                    }
+                                    else
+                                    {
+                                        name = cpp::stack_string::make_formatted("unknown camera #%d",
+                                                                                 static_cast<int>(id));
+                                    }
+
+                                    if (ImGui::TreeNode(name.c_str()))
+                                    {
+                                        if (ImGui::Checkbox("Selected", &selected) && selected)
+                                        {
+                                            camera = client_scene.create_ref(id);
+                                        }
+
+                                        auto euler = glm::degrees(camera_comp.horizontal_fov);
+                                        ImGui::DragFloat("FOV", &euler);
+                                        camera_comp.horizontal_fov = glm::radians(euler);
+
+                                        ImGui::DragFloat("Near plane", &camera_comp.near_plane);
+                                        ImGui::TreePop();
+                                    }
+                                });
+                        }
+
                         if (ImGui::CollapsingHeader("Render targets", ImGuiTreeNodeFlags_DefaultOpen))
                         {
                             static int img_in_line = 2;
@@ -782,7 +911,12 @@ int app::instance::run(const int argc, char* argv[])
                 render::transition_image(buffer,
                                          m_renderer.get_frame_swapchain_image().image,
                                          VK_IMAGE_LAYOUT_GENERAL,
-                                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+                                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                         VK_PIPELINE_STAGE_2_NONE,
+                                         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                                         VK_ACCESS_2_NONE);
+
                 vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool.handle, 1);
 
                 vkEndCommandBuffer(buffer);
@@ -805,6 +939,15 @@ int app::instance::run(const int argc, char* argv[])
                                     static_cast<f64>(frame_stats.frame_end) * props.limits.timestampPeriod * 1e-6,
                                     pipeline_stats_early.triangles_count + pipeline_stats_late.triangles_count,
                                     stats.triangles);
+
+                TracyPlotConfig("Total GPU time", tracy::PlotFormatType::Number, false, true, 0);
+                TracyPlot("Total GPU time", profile_data.gpu_render_time);
+
+                TracyPlotConfig("Fraction tris drawn", tracy::PlotFormatType::Percentage, false, true, 0);
+                TracyPlot("Fraction tris drawn", profile_data.tris_from_max * 100.0);
+
+                TracyPlotConfig("Total tris drawn", tracy::PlotFormatType::Number, false, true, 0);
+                TracyPlot("Total tris drawn", static_cast<i64>(profile_data.tris_in_scene_total));
 
                 const auto str = cpp::stack_string::make_formatted("CPU: %.3lfms; GPU: %.3lfms; Tris/s (B): %lf",
                                                                    dt * 1000.0F,
@@ -849,6 +992,7 @@ int app::instance::run(const int argc, char* argv[])
     render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.meshlets.buffer);
     render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.primitives.buffer);
     render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.instances.buffer);
+    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.materials.buffer);
     render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.meshlets_payload.buffer);
 
     vmaUnmapMemory(m_renderer.get_context().allocator, geometry_pool.transfer.staging_buffer.allocation);
@@ -860,9 +1004,17 @@ int app::instance::run(const int argc, char* argv[])
     render::destroy_buffer(m_renderer.get_context().allocator, indexed_draw_indirect_buffer);
     render::destroy_buffer(m_renderer.get_context().allocator, meshlets_draw_indirect_buffer);
 
+    render::destroy_descriptor_set(m_renderer.get_context().device, bindless_textures_desc_set);
+
     for (auto& buffer : frame_cull_data_buffers)
     {
         render::destroy_buffer_mapped(m_renderer.get_context().allocator, buffer);
+    }
+
+    vkDestroySampler(m_renderer.get_context().device, bindless_textures_sampler, nullptr);
+    for (auto& texture : textures)
+    {
+        render::destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, texture);
     }
 
     return 0;

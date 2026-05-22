@@ -21,42 +21,41 @@ namespace render
             eSamplerMinMax     = 1 << 7,
             eScalarBlockLayout = 1 << 8,
             ePortabilitySubset = 1 << 9,
+            eBindlessTextures  = 1 << 10,
+            e16BitFloats       = 1 << 11,
             eCOUNT
         };
 
-        [[nodiscard]] constexpr bool required(rendering_features_table::flag flag) const noexcept
-        {
-            return (flag & required_features) > 0;
-        }
+        [[nodiscard]] constexpr bool required(const flag flag) const noexcept { return (flag & required_features) > 0; }
 
-        [[nodiscard]] constexpr bool requested(rendering_features_table::flag flag) const noexcept
+        [[nodiscard]] constexpr bool requested(const flag flag) const noexcept
         {
             return (flag & requested_features) > 0 || required(flag);
         }
 
-        [[nodiscard]] constexpr bool supported(rendering_features_table::flag flag) const noexcept
+        [[nodiscard]] constexpr bool supported(const flag flag) const noexcept
         {
             return (flag & supported_features) > 0;
         }
 
-        [[nodiscard]] constexpr bool wanted(rendering_features_table::flag flag) const noexcept
+        [[nodiscard]] constexpr bool wanted(const flag flag) const noexcept
         {
             return (flag & supported_features) > 0 && requested(flag);
         }
 
-        constexpr rendering_features_table& require(rendering_features_table::flag flag) noexcept
+        constexpr rendering_features_table& require(const flag flag) noexcept
         {
             required_features |= flag;
             return *this;
         }
 
-        constexpr rendering_features_table& request(rendering_features_table::flag flag) noexcept
+        constexpr rendering_features_table& request(const flag flag) noexcept
         {
             requested_features |= flag;
             return *this;
         }
 
-        constexpr void set_supported(rendering_features_table::flag flag, bool supported = true) noexcept
+        constexpr void set_supported(const flag flag, const bool supported = true) noexcept
         {
             supported_features = supported ? supported_features | flag : supported_features & ~flag;
         }
@@ -73,15 +72,15 @@ namespace render
             return result;
         }
 
-        u32 required_features {0};
-        u32 requested_features {0};
-        u32 supported_features {0};
+        u32 required_features  = 0;
+        u32 requested_features = 0;
+        u32 supported_features = 0;
     };
 
     struct instance_desc
     {
-        const char* app_name {""};
-        u32 app_version {0};
+        const char* app_name = "";
+        u32 app_version      = 0;
         rendering_features_table device_features;
     };
 
@@ -97,14 +96,14 @@ namespace render
         cpp::heap_array<swapchain_image> images;
         VkSurfaceFormatKHR surface_format;
 
-        VkSwapchainKHR vk_swapchain {VK_NULL_HANDLE};
-        VkFormat depth_format {VK_FORMAT_UNDEFINED};
+        VkSwapchainKHR vk_swapchain = VK_NULL_HANDLE;
+        VkFormat depth_format       = VK_FORMAT_UNDEFINED;
     };
 
     struct queue_data
     {
-        VkQueue queue {VK_NULL_HANDLE};
-        u32 family {VK_QUEUE_FAMILY_IGNORED};
+        VkQueue queue = VK_NULL_HANDLE;
+        u32 family    = VK_QUEUE_FAMILY_IGNORED;
     };
 
     // Did not want to use enum class cause I would need to constantly cast to the <int> to use it as an array accessor,

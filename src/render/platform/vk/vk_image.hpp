@@ -1,8 +1,8 @@
 #pragma once
 
+#include <pod_types.hpp>
 #include <render/platform/vk/vma.hpp>
 #include <result.hpp>
-#include <pod_types.hpp>
 
 namespace render
 {
@@ -21,6 +21,11 @@ namespace render
 
     void transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout, VkImageLayout new_layout,
                           VkImageAspectFlags aspect_flags);
+
+    void transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout, VkImageLayout new_layout,
+                          VkPipelineStageFlags2 src_stage_flags, VkPipelineStageFlags2 dst_stage_flags,
+                          VkAccessFlags2 src_access_mask, VkAccessFlags2 dst_access_mask,
+                          VkImageAspectFlags aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT);
 
     void destroy_image(VkDevice device, VmaAllocator allocator, const vk_image& image);
 

@@ -2,6 +2,7 @@
 
 #include <bytes.hpp>
 #include <fs/path.hpp>
+#include <render/platform/vk/vk_descriptor_set.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
 #include <result.hpp>
 
@@ -45,9 +46,10 @@ namespace render
         {
             VkDescriptorType bindings[32];
             u32 work_group_size[3];
-            u32 bindings_count {0};
-            u32 push_constant_struct_size {0};
-            VkShaderStageFlagBits stage {VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM};
+            u32 bindings_count            = 0;
+            u32 max_binding_set_used      = 0;
+            u32 push_constant_struct_size = 0;
+            VkShaderStageFlagBits stage   = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
 
             shader_meta()
                 : work_group_size {}
@@ -80,12 +82,15 @@ namespace render
         static result<vk_pipeline> create_compute(const vk_renderer& renderer, const vk_shader& shader);
 
         static result<vk_pipeline> create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
-                                                   u32 shaders_count,
+                                                   u32 shaders_count, const vk_descriptor_set* desc_set = nullptr,
+                                                   u32 desc_set_count           = 0,
                                                    VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
         void bind(VkCommandBuffer command_buffer) const;
 
         void push_constant(VkCommandBuffer command_buffer, u32 size, const void* data) const;
+
+        void bind_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_set& set) const;
 
         void push_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_info* updates) const;
 
