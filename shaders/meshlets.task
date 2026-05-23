@@ -57,7 +57,7 @@ taskPayloadSharedEXT DrawMeshletsTask meshlet_task;
 void main()
 {
     uint instance_id = draw_mesh_cmds[gl_WorkGroupID.x].instance_id;
-    uint meshlets_in_task = draw_mesh_cmds[gl_WorkGroupID.x].meshlet_count;
+    uint meshlets_in_task = draw_mesh_cmds[gl_WorkGroupID.x].meshlet_count & 64;
     uint meshlet_id = draw_mesh_cmds[gl_WorkGroupID.x].meshlet_offset + gl_LocalInvocationID.x;
     uint visibility_bit = draw_mesh_cmds[gl_WorkGroupID.x].visibility_offset + gl_LocalInvocationID.x;
 
@@ -109,7 +109,7 @@ void main()
     bool emit = visible && gl_LocalInvocationID.x < meshlets_in_task;
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-    bool drawn_in_early = was_visible_last_frame && visible;
+    bool drawn_in_early = was_visible_last_frame && visible && GET_BIT(draw_mesh_cmds[gl_WorkGroupID.x].meshlet_count, 31) == 1;
     if (visible && GET_BIT(frame_cull.flags, kMeshletOcclusionCullBit) == 1 && project_sphere(view_center, sphere_radius, frame_cull.frustum[4], frame_cull.p00, frame_cull.p11, p_aabb))
     {
         vec2 pmd_size = vec2(p_aabb.z - p_aabb.x, p_aabb.w - p_aabb.y) * frame_cull.pyramid_size;

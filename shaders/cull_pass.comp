@@ -131,7 +131,12 @@ void main()
             draw_indirect_cmds[dcii].instance_id = idx;
             draw_indirect_cmds[dcii].meshlet_offset = selected_lod.base_meshlet + offset;
             draw_indirect_cmds[dcii].visibility_offset = mesh_instances[idx].visibility_offset + offset;
+#ifdef FOR_LATE_OCCLUSION_TEST
+            uint drawn_in_early_bit = !inv_visibility_bit ? 1 : 0;
+            draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups) | drawn_in_early_bit << 31;
+#else
             draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups);
+#endif
         }
 #else
         uint dci = atomicAdd(draw_commands_count, 1);
