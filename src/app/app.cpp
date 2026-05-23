@@ -3,6 +3,7 @@
 #include <types.hpp>
 
 #include <app/app.hpp>
+#include <app/argv.hpp>
 #include <app/gpu_stats.hpp>
 #include <app/pso.hpp>
 #include <app/render.hpp>
@@ -38,6 +39,13 @@
 namespace
 {
     using frame_cull_data = shader_types::FrameCullData;
+
+    struct render_pc_data
+    {
+        glm::mat4 vp;
+        vec3 sun_direction;
+        vec3 sun_color;
+    };
 
     void build_frustum(frame_cull_data& data, const glm::mat4& iproj, const glm::mat4& iview)
     {
@@ -78,36 +86,81 @@ namespace
         return min + (static_cast<T>(rand()) / RAND_MAX) * (max - min);
     }
 
-#if 0
-    u64 populate_scene(const u32 draw_count, const cpp::heap_array<mesh::raw_mesh>& primitives, scene& scene,
-                       render::vk_scene_geometry_pool& geometry_pool)
+    loader::stats populate_scene(const u32 draw_count, const cpp::heap_array<mesh::raw_mesh>& primitives, scene& scene,
+                                 render::vk_scene_geometry_pool& geometry_pool)
     {
         ZoneScoped;
 
-        u64 scene_triangles_total     = 0;
         const u32 kVolumeItemsPerSide = std::lroundl(std::cbrt(draw_count));
 
-        cpp::heap_array<loader::primitive> prims(primitives.size());
-        for (u32 i = 0; i < primitives.size(); ++i)
+        loader::loader_context ctx;
+        cpp::heap_array<loader::prim_layout> layouts(primitives.size());
+
+        u64 total_vertices = 0;
+        u64 total_indices  = 0;
+        u64 total_meshlets = 0;
+        u64 total_payload  = 0;
+        for (u32 p = 0; p < primitives.size(); ++p)
         {
-            prims[i] = loader::encode_raw_mesh(primitives[i], geometry_pool);
+            auto& layout         = layouts[p];
+            layout.prim_index    = p + geometry_pool.primitives.offset / sizeof(loader::primitive);
+            layout.vertex_offset = total_vertices + (geometry_pool.vertex.offset / sizeof(loader::vertex));
+
+            total_vertices += primitives[p].raw_vertices.size();
+
+            for (u32 i = 0; i < primitives[p].lod_count; ++i)
+            {
+                const auto& lod     = primitives[p].lod_array[i];
+                layout.lod_array[i] = {total_indices + (geometry_pool.index.offset / sizeof(u32)),
+                                       total_meshlets + (geometry_pool.meshlets.offset / sizeof(loader::meshlet)),
+                                       total_payload + geometry_pool.meshlets_payload.offset};
+
+                total_indices += lod.raw_indices.size();
+                total_meshlets += lod.raw_meshlets.size();
+                total_payload += lod.raw_meshlets_payload.size();
+            }
         }
 
-        auto* instances_ptr  = static_cast<loader::instance*>(geometry_pool.transfer.mapped);
-        auto* primitives_ptr = reinterpret_cast<loader::primitive*>(static_cast<u8*>(geometry_pool.transfer.mapped)
-                                                                    + sizeof(loader::instance) * draw_count);
+        ctx.primitives.resize(primitives.size());
+        ctx.vertices.resize(total_vertices);
+        ctx.indices.resize(total_indices);
+        ctx.meshlets.resize(total_meshlets);
+        ctx.meshlets_data.resize(total_payload);
+
+        for (u32 i = 0; i < primitives.size(); ++i)
+        {
+            loader::encode_raw_mesh(ctx, primitives[i], layouts[i]);
+        }
+
+        auto& mat          = ctx.materials.emplace_back();
+        mat.diffuse_factor = vec4(0.9, 0.4, 0.9, 1.0);
+
+        render::upload_data(geometry_pool.transfer, geometry_pool.index, ctx.indices.data(), ctx.indices.size());
+        render::upload_data(
+            geometry_pool.transfer, geometry_pool.primitives, ctx.primitives.data(), ctx.primitives.size());
+        render::upload_data(geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
+        render::upload_data(geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
+        render::upload_data(
+            geometry_pool.transfer, geometry_pool.materials, ctx.materials.data(), ctx.materials.size());
+        render::upload_data(
+            geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
+
+        auto* instances_ptr = static_cast<loader::instance*>(geometry_pool.transfer.mapped);
+
+        u64 triangles_max     = 0;
+        u64 visibility_offset = 0;
 
         for (u32 i = 0; i < draw_count; ++i)
         {
             ZoneScopedN("create models within the scene");
-            primitives_ptr[i] = prims[get_random<i32>(0, prims.size() - 1)];
-            scene_triangles_total += primitives_ptr[i].lod_array[0].indices_count / 3;
+
+            const u32 id_random = get_random<i32>(0, primitives.size() - 1);
 
             auto entity = scene.create_entity();
             entity.add_component<id_component>();
 
-            auto& transform = instances_ptr[i];
-            vec3 position   = {
+            auto& instance = instances_ptr[i];
+            vec3 position  = {
                 i % kVolumeItemsPerSide,
                 (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
                 i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
@@ -118,24 +171,28 @@ namespace
             position *= vec3(get_random<f32>(-kDensityInverse, kDensityInverse),
                              get_random<f32>(-kDensityInverse, kDensityInverse),
                              get_random<f32>(-kDensityInverse, kDensityInverse));
-            position += primitives_ptr[i].radius;
 
-            transform.pos_and_scale = {position, get_random<f32>(0.75F, 10.0F)};
-            transform.rotation_quat =
+            instance.material_index    = 0;
+            instance.visibility_offset = visibility_offset;
+            instance.mesh_data_index   = layouts[id_random].prim_index;
+
+            instance.pos_and_scale = {position, get_random<f32>(0.75F, 10.0F)};
+            instance.rotation_quat =
                 glm::quat(vec3(get_random<f32>(-180, 180), get_random<f32>(-180, 180), get_random<f32>(-180, 180)));
+
+            triangles_max += loader::get_max_lod_tris(ctx.primitives[id_random]);
+            visibility_offset += loader::get_max_lod_meshlets(ctx.primitives[id_random]);
         }
 
         render::submit_transfer(geometry_pool.transfer,
                                 geometry_pool.instances.buffer,
                                 VkBufferCopy {.size = draw_count * sizeof(loader::instance)});
-        render::submit_transfer(geometry_pool.transfer,
-                                geometry_pool.primitives.buffer,
-                                VkBufferCopy {.srcOffset = sizeof(loader::instance) * draw_count,
-                                              .size      = draw_count * sizeof(loader::primitive)});
 
-        return scene_triangles_total;
+        return {.meshes     = primitives.size(),
+                .meshlets   = visibility_offset,
+                .triangles  = triangles_max,
+                .primitives = draw_count};
     }
-#endif
 }
 
 render::vk_renderer create_vk_renderer(window& app_window)
@@ -268,7 +325,7 @@ int app::instance::run(const int argc, char* argv[])
         .index      = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
         .vertex     = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .primitives = render::vk_shared_buffer(m_renderer, 1_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-        .instances  = render::vk_shared_buffer(m_renderer, 1_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .instances  = render::vk_shared_buffer(m_renderer, 48_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .materials  = render::vk_shared_buffer(m_renderer, 1_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
 
         .transfer = *render::create_buffer_transfer(m_renderer.get_context().device,
@@ -283,31 +340,36 @@ int app::instance::run(const int argc, char* argv[])
             render::vk_shared_buffer(m_renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     }
 
-    const bool load_as_scene = argc == 3 && cpp::cx_streq(argv[1], "--scene");
-
     loader::stats stats;
     cpp::heap_array<render::vk_image> textures;
 
+    app::argv_handler argv_handler(argc, argv);
+    const int instance_count = argv_handler.read_numeric("--instances");
+    const int first_instance = argv_handler.get_positional_args_start();
+
+    assert2(instance_count == 0 || first_instance > 0);
+
     // test scene stuff
     scene client_scene;
-    if (load_as_scene)
+    if (instance_count > 0 && first_instance > 0)
     {
-        stats = loader::load_scene(argv[2], client_scene, m_renderer, geometry_pool, textures);
+        cpp::heap_array<mesh::raw_mesh> meshes;
+        for (int i = first_instance; i < argc; ++i)
+        {
+            auto ctx = loader::load_meshes(argv[i]);
+            if (!ctx)
+            {
+                continue;
+            }
+
+            meshes.append(ctx->primitives);
+        }
+
+        stats = populate_scene(instance_count, meshes, client_scene, geometry_pool);
     }
     else
     {
-        stats = loader::stats {
-            .meshes     = 1,
-            .primitives = 144'000,  // kRepeatDraws
-        };
-
-        cpp::heap_array<mesh::raw_mesh> meshes;
-        for (int i = 1; i < argc; ++i)
-        {
-            // meshes.append(mesh::build_mesh(argv[i]));
-        }
-
-        // stats.triangles = populate_scene(stats.primitives, meshes, client_scene, geometry_pool);
+        stats = loader::load_scene(argv[1], client_scene, m_renderer, geometry_pool, textures);
     }
 
     entity camera = client_scene.empty();
@@ -329,6 +391,22 @@ int app::instance::run(const int argc, char* argv[])
     if (!camera)
     {
         camera = editor_camera;
+    }
+
+    entity sun = client_scene.empty();
+    if (const auto loaded_sun = client_scene.get_view<entt::entity, directional_light_component>().front();
+        loaded_sun != entt::null)
+    {
+        sun = client_scene.create_ref(loaded_sun);
+    }
+    else
+    {
+        sun = client_scene.create_entity();
+        sun.add_component<id_component>(DEBUG_ONLY(id_component("sun")));
+        sun.add_component<directional_light_component>(vec3(1));
+
+        auto& t    = sun.emplace_component<transform_component>();
+        t.rotation = glm::quat(vec3(0));
     }
 
     for (u32 i = 0; i < textures.size(); ++i)
@@ -570,6 +648,11 @@ int app::instance::run(const int argc, char* argv[])
                 camera_view = camera_component::get_view_matrix(camera_transform.position, camera_transform.rotation);
                 camera_proj_view = camera_proj * camera_view;
 
+                auto& sun_transform = sun.get_component<transform_component>();
+                auto& sun_data      = sun.get_component<directional_light_component>();
+
+                auto sun_direction = glm::normalize(glm::mat3_cast(sun_transform.rotation) * vec3(0, 1, 0));
+
                 {
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "cull last frame occluders"));
 
@@ -626,7 +709,10 @@ int app::instance::run(const int argc, char* argv[])
                                                                            : pipelines[pso_id::indexed_render_pipeline];
                     render_pipeline.bind(buffer);
                     render_pipeline.push_constant(
-                        buffer, freeze_cull_data ? camera_proj * debug_camera_view : camera_proj_view);
+                        buffer,
+                        render_pc_data {freeze_cull_data ? camera_proj * debug_camera_view : camera_proj_view,
+                                        sun_direction,
+                                        sun_data.rgb_color});
 
                     ZoneScopedN("draw last frame occluders");
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw last frame occluders"));
@@ -688,7 +774,8 @@ int app::instance::run(const int argc, char* argv[])
                     const auto& render_pipeline = enable_meshlets_pipeline ? pipelines[pso_id::task_render_pipeline]
                                                                            : pipelines[pso_id::indexed_render_pipeline];
                     render_pipeline.bind(buffer);
-                    render_pipeline.push_constant(buffer, camera_proj_view);
+                    render_pipeline.push_constant(buffer,
+                                                  render_pc_data {camera_proj_view, sun_direction, sun_data.rgb_color});
 
                     draw_scene(buffer, render_pipeline, frame_cull_data_buffer.buffer);
                     vkCmdEndRendering(buffer);
@@ -731,7 +818,8 @@ int app::instance::run(const int argc, char* argv[])
                                                     ? pipelines[pso_id::task_render_late_pipeline]
                                                     : pipelines[pso_id::indexed_render_pipeline];
                     render_pipeline.bind(buffer);
-                    render_pipeline.push_constant(buffer, camera_proj_view);
+                    render_pipeline.push_constant(buffer,
+                                                  render_pc_data {camera_proj_view, sun_direction, sun_data.rgb_color});
 
                     ZoneScopedN("draw new objects");
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw new objects"));
@@ -819,6 +907,15 @@ int app::instance::run(const int argc, char* argv[])
                             }
                         }
 
+                        if (ImGui::CollapsingHeader("Directional light controls", ImGuiTreeNodeFlags_DefaultOpen))
+                        {
+                            glm::vec3 euler = glm::degrees(glm::eulerAngles(sun_transform.rotation));
+                            ImGui::DragFloat3("Direction", glm::value_ptr(euler));
+                            sun_transform.rotation = glm::quat(glm::radians(euler));
+
+                            ImGui::ColorEdit3("Color", &sun_data.rgb_color.x);
+                        }
+
                         if (ImGui::CollapsingHeader("Camera controls", ImGuiTreeNodeFlags_DefaultOpen))
                         {
                             client_scene.get_view<entt::entity, camera_component>().each(
@@ -832,7 +929,7 @@ int app::instance::run(const int argc, char* argv[])
 #if !defined(NDEBUG)
                                         name = comp_id->name;
 #else
-                                        name = std::to_string(comp_id->id);
+                                        name = cpp::stack_string::make_formatted("%ull", comp_id->id);
 #endif
                                     }
                                     else
@@ -841,7 +938,7 @@ int app::instance::run(const int argc, char* argv[])
                                                                                  static_cast<int>(id));
                                     }
 
-                                    if (ImGui::TreeNode(name.c_str()))
+                                    if (ImGui::TreeNodeEx(name.c_str(), selected ? ImGuiTreeNodeFlags_DefaultOpen : 0))
                                     {
                                         if (ImGui::Checkbox("Selected", &selected) && selected)
                                         {

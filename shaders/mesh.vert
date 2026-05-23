@@ -26,11 +26,12 @@ layout (push_constant) uniform constants
 } pc;
 
 out VS_OUT {
-    layout (location = 0) out vec3 normal;
-    layout (location = 1) out vec2 uv;
-    layout (location = 2) out flat uint material_id;
+    layout (location = 0) out vec2 uv;
+    layout (location = 1) out vec3 normal;
+    layout (location = 2) out vec4 tangent;
+    layout (location = 3) out flat uint material_id;
 #if VISUALIZE_MESHLETS
-    layout (location = 3) out flat uint meshlet_id;
+    layout (location = 4) out flat uint meshlet_id;
 #endif
 } vs_out;
 
@@ -42,14 +43,13 @@ void main()
     vec3 vnorm = vec3(vertices[gl_VertexIndex].nx, vertices[gl_VertexIndex].ny, vertices[gl_VertexIndex].nz);
 
     vs_out.uv = vec2(vertices[gl_VertexIndex].ux, vertices[gl_VertexIndex].uy);
+
     vs_out.normal = quat_rotate_vec3(vnorm, mesh_instances[instance_id].rotation_quat);
 
-    vs_out.material_id = mesh_instances[instance_id].material_index;
+    vec4 tangent = vec4(vertices[gl_VertexIndex].tx, vertices[gl_VertexIndex].ty, vertices[gl_VertexIndex].tz, vertices[gl_VertexIndex].tw);
+    vs_out.tangent = vec4(quat_rotate_vec3(tangent.xyz, mesh_instances[instance_id].rotation_quat), tangent.w);
 
-#if 0
-    vs_out.tangent = vec3(v.tx, v.ty, v.tz);
-    vs_out.bitangent = cross(vs_out.tangent, vs_out.normal);
-#endif
+    vs_out.material_id = mesh_instances[instance_id].material_index;
 
 #if VISUALIZE_MESHLETS
     vs_out.meshlet_id = gl_VertexIndex;

@@ -22,6 +22,13 @@ struct transform_component
 };
 
 /// @imgui
+struct directional_light_component
+{
+    vec3 rgb_color;
+};
+
+
+/// @imgui
 struct id_component
 {
     /// @readonly

@@ -5,11 +5,12 @@
 #include "include/shaders/types.h"
 
 in VS_IN {
-    layout (location = 0) in vec3 normal;
-    layout (location = 1) in vec2 uv;
-    layout (location = 2) in flat uint material_id;
+    layout (location = 0) in vec2 uv;
+    layout (location = 1) in vec3 normal;
+    layout (location = 2) in vec4 tangent;
+    layout (location = 3) flat in uint material_id;
 #if VISUALIZE_MESHLETS
-    layout (location = 3) flat in uint meshlet_id;
+    layout (location = 4) flat in uint meshlet_id;
 #endif
 } vs_in;
 
@@ -22,6 +23,14 @@ layout (binding = 0, set = 0) readonly buffer Materials
 
 layout (binding = 1, set = 0) uniform sampler textures_sampler;
 layout (binding = 0, set = 1) uniform texture2D textures[];
+
+layout (scalar, push_constant) uniform constants
+{
+    mat4 vp;
+    vec3 sun_direction;
+    vec3 sun_color;
+} pc;
+
 
 #define TEXTURE2D(id, uv) texture(sampler2D(textures[nonuniformEXT(id)], textures_sampler), uv)
 
@@ -62,22 +71,28 @@ vec4 from_linear(vec4 rgb_linear)
 
 void main()
 {
-    const vec3 sun_dir = vec3(-1.0F);
-
 #if VISUALIZE_MESHLETS
     o_frag_color = vec4(meshlet_color(vs_in.meshlet_id), 1.0F);
 #else
-#if 0
-    o_frag_color = vec4(mix(vec3(dot(vs_in.normal, sun_dir)), vec3(0.5F), 0.5F), 1.0F);
-#else
     uint albedo_idx = materials[vs_in.material_id].albedo_idx;
-    o_frag_color = albedo_idx > 0 ? TEXTURE2D(albedo_idx, vs_in.uv) : vec4(0);
+    uint normal_idx = materials[vs_in.material_id].normal_idx;
+    o_frag_color = albedo_idx > 0 ? TEXTURE2D(albedo_idx, vs_in.uv) * materials[vs_in.material_id].diffuse_factor : materials[vs_in.material_id].diffuse_factor;
 
     if (o_frag_color.a < 0.5)
         discard;
 
-    o_frag_color = o_frag_color * 0.5F + o_frag_color * max(dot(vs_in.normal, sun_dir), 0.0F) * 0.5F;
+    vec3 tex_normal = vec3(0, 0, 1);
+    if (normal_idx > 0)
+        tex_normal = TEXTURE2D(normal_idx, vs_in.uv).rgb * 2 - 1;
+
+    vec3 normal = normalize(vs_in.normal);
+    vec3 tangent = normalize(vs_in.tangent.xyz);
+
+    vec3 bitangent = cross(normal, tangent) * vs_in.tangent.w;
+    vec3 nrm = normalize(tex_normal.r * tangent.xyz + tex_normal.g * bitangent + tex_normal.b * normal);
+
+    const float kAmbiance = 0.5F;
+    o_frag_color = o_frag_color * kAmbiance + o_frag_color * max(dot(nrm, pc.sun_direction), 0.0F) * (1.0F - kAmbiance) * vec4(pc.sun_color, 1.0F);
     o_frag_color = from_linear(o_frag_color);
-#endif
 #endif
 }

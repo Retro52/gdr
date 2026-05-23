@@ -36,9 +36,7 @@ namespace shader_types
         float px, py, pz;
         float nx, ny, nz;
         float ux, uy;
-#if 0
-        float tx, ty, tz;
-#endif
+        float tx, ty, tz, tw;
     };
 
     struct Meshlet
