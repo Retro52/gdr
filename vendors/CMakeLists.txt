@@ -3,7 +3,6 @@ add_subdirectory(vma)
 add_subdirectory(sdl3)
 add_subdirectory(entt)
 add_subdirectory(json)
-add_subdirectory(tinyxml2)
 add_subdirectory(spirv-headers)
 add_subdirectory(meshoptimizer)
 

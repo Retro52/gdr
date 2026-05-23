@@ -25,9 +25,6 @@
 [submodule "vendors/tracy"]
 	path = vendors/tracy
 	url = https://github.com/wolfpld/tracy.git
-[submodule "vendors/tinyxml2"]
-	path = vendors/tinyxml2
-	url = https://github.com/leethomason/tinyxml2.git
 [submodule "vendors/spirv-headers"]
 	path = vendors/spirv-headers
 	url = https://github.com/KhronosGroup/SPIRV-Headers.git
