@@ -8,9 +8,10 @@ in VS_IN {
     layout (location = 0) in vec2 uv;
     layout (location = 1) in vec3 normal;
     layout (location = 2) in vec4 tangent;
-    layout (location = 3) flat in uint material_id;
-#if VISUALIZE_MESHLETS
-    layout (location = 4) flat in uint meshlet_id;
+    layout (location = 3) in vec3 world_pos;
+    layout (location = 4) flat in uint material_id;
+#if SHADERS_DEBUG
+    layout (location = 5) flat in uint meshlet_id;
 #endif
 } vs_in;
 
@@ -29,6 +30,8 @@ layout (scalar, push_constant) uniform constants
     mat4 vp;
     vec3 sun_direction;
     vec3 sun_color;
+    vec3 camera_pos;
+    uint debug_mode;
 } pc;
 
 
@@ -69,13 +72,45 @@ vec4 from_linear(vec4 rgb_linear)
     return mix(higher, lower, cutoff);
 }
 
+const uint draw_debug_shaded           = 0;
+const uint draw_debug_diffuse_factor   = 1;
+const uint draw_debug_specular_factor  = 2;
+const uint draw_debug_albedo_texture   = 3;
+const uint draw_debug_normal_texture   = 4;
+const uint draw_debug_specular_texture = 5;
+const uint draw_debug_uv               = 6;
+const uint draw_debug_normal           = 7;
+const uint draw_debug_tangent          = 8;
+const uint draw_debug_world_pos        = 9;
+const uint draw_debug_mat_idx          = 10;
+const uint draw_debug_mat_type        = 11;
+const uint draw_debug_mlt_idx          = 12;
+const uint draw_debug_white_lit        = 13;
+const uint draw_debug_white_diffuse    = 14;
+const uint draw_debug_white_specular   = 15;
+
 void main()
 {
-#if VISUALIZE_MESHLETS
-    o_frag_color = vec4(meshlet_color(vs_in.meshlet_id), 1.0F);
-#else
+#if SHADERS_DEBUG
+    if (pc.debug_mode != draw_debug_shaded)
+    {
+        if (pc.debug_mode == draw_debug_diffuse_factor)   {o_frag_color = materials[vs_in.material_id].diffuse_factor;                             return;}
+        if (pc.debug_mode == draw_debug_specular_factor)  {o_frag_color = materials[vs_in.material_id].specular_factor;                            return;}
+        if (pc.debug_mode == draw_debug_albedo_texture)   {o_frag_color = TEXTURE2D(materials[vs_in.material_id].albedo_idx, vs_in.uv);            return;}
+        if (pc.debug_mode == draw_debug_normal_texture)   {o_frag_color = TEXTURE2D(materials[vs_in.material_id].normal_idx, vs_in.uv);            return;}
+        if (pc.debug_mode == draw_debug_specular_texture) {o_frag_color = TEXTURE2D(materials[vs_in.material_id].specular_idx, vs_in.uv);          return;}
+        if (pc.debug_mode == draw_debug_normal)           {o_frag_color = vec4(vs_in.normal, 1.0F);                                                return;}
+        if (pc.debug_mode == draw_debug_uv)               {o_frag_color = vec4(vs_in.uv, 0.0F, 1.0F);                                              return;}
+        if (pc.debug_mode == draw_debug_tangent)          {o_frag_color = vec4(normalize(vs_in.tangent.xyz), 1.0F);                                return;}
+        if (pc.debug_mode == draw_debug_world_pos)        {o_frag_color = vec4(normalize(vs_in.world_pos), 1.0F);                                  return;}
+        if (pc.debug_mode == draw_debug_mat_idx)          {o_frag_color = vec4(meshlet_color(vs_in.material_id), 1.0F);                            return;}
+        if (pc.debug_mode == draw_debug_mat_type)         {o_frag_color = vec4(meshlet_color(materials[vs_in.material_id].material_type), 1.0F);   return;}
+        if (pc.debug_mode == draw_debug_mlt_idx)          {o_frag_color = vec4(meshlet_color(vs_in.meshlet_id), 1.0F);                             return;}
+    }
+#endif
     uint albedo_idx = materials[vs_in.material_id].albedo_idx;
     uint normal_idx = materials[vs_in.material_id].normal_idx;
+    uint specular_idx = materials[vs_in.material_id].specular_idx;
     o_frag_color = albedo_idx > 0 ? TEXTURE2D(albedo_idx, vs_in.uv) * materials[vs_in.material_id].diffuse_factor : materials[vs_in.material_id].diffuse_factor;
 
     if (o_frag_color.a < 0.5)
@@ -91,8 +126,30 @@ void main()
     vec3 bitangent = cross(normal, tangent) * vs_in.tangent.w;
     vec3 nrm = normalize(tex_normal.r * tangent.xyz + tex_normal.g * bitangent + tex_normal.b * normal);
 
+    vec4 specular_factor = specular_idx > 0 ? TEXTURE2D(specular_idx, vs_in.uv) * materials[vs_in.material_id].specular_factor : materials[vs_in.material_id].specular_factor;
+
+    vec3 view = normalize(pc.camera_pos - vs_in.world_pos);
+    vec3 halfw = normalize(pc.sun_direction + view);
+
+    float diffuse = max(dot(nrm, pc.sun_direction), 0.0F);
+    float shininess = max(specular_factor.w * 128.0, 1.0);
+    float specular = specular_factor.w > 0.0F ? pow(max(dot(nrm, halfw), 0.0), shininess) : 0.0F;
+
+    vec3 ambient = vec3(1.0F);
+    vec3 specular_color = specular_factor.rgb * specular;
+
     const float kAmbiance = 0.5F;
-    o_frag_color = o_frag_color * kAmbiance + o_frag_color * max(dot(nrm, pc.sun_direction), 0.0F) * (1.0F - kAmbiance) * vec4(pc.sun_color, 1.0F);
-    o_frag_color = from_linear(o_frag_color);
+
+#if SHADERS_DEBUG
+    vec3 color = o_frag_color.xyz * pc.sun_color;
+    if (pc.debug_mode == draw_debug_white_lit)      o_frag_color = vec4(ambient * kAmbiance + vec3(diffuse) * (1.0F - kAmbiance) + vec3(specular), 1.0F);
+    if (pc.debug_mode == draw_debug_white_diffuse)  o_frag_color = vec4(vec3(diffuse), 1.0F);
+    if (pc.debug_mode == draw_debug_white_specular) o_frag_color = vec4(specular_color, 1.0F);
+    if (pc.debug_mode == draw_debug_shaded)         o_frag_color = vec4(ambient * kAmbiance * color + diffuse * color * (1.0F - kAmbiance) + specular_color, 1.0F);
+#else
+    vec3 color = o_frag_color.xyz * pc.sun_color;
+    o_frag_color = vec4(ambient * kAmbiance * color + diffuse * color * (1.0F - kAmbiance) + specular_color, 1.0F);
 #endif
+
+    o_frag_color = from_linear(o_frag_color);
 }

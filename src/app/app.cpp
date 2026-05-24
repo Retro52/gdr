@@ -40,11 +40,17 @@ namespace
 {
     using frame_cull_data = shader_types::FrameCullData;
 
+    REGISTER_ENUM(debug_mode, shaded, diffuse_factor, specular_factor, albedo_texture, normal_texture, specular_texture,
+                  uv, normal, tangent, world_pos, material_index, material_type, meshlet_index, white_lit, white_diffuse,
+                  white_specular);
+
     struct render_pc_data
     {
         glm::mat4 vp;
         vec3 sun_direction;
         vec3 sun_color;
+        vec3 camera_pos;
+        debug_mode debug_mode;
     };
 
     void build_frustum(frame_cull_data& data, const glm::mat4& iproj, const glm::mat4& iview)
@@ -312,7 +318,8 @@ int app::instance::run(const int argc, char* argv[])
                                                                   VK_FILTER_LINEAR,
                                                                   VK_SAMPLER_MIPMAP_MODE_LINEAR,
                                                                   VK_SAMPLER_ADDRESS_MODE_REPEAT,
-                                                                  VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE);
+                                                                  VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
+                                                                  16.0F);
 
     pso_data pipelines;
     pipelines.load(m_renderer, bindless_textures_desc_set);
@@ -502,6 +509,8 @@ int app::instance::run(const int argc, char* argv[])
     glm::mat4 camera_proj_view;
     glm::mat4 debug_camera_view;
 
+    debug_mode draw_debug_mode {debug_mode::shaded};
+
     bool freeze_cull_data         = false;
     bool enable_vsync             = m_renderer.get_vsync();
     bool enable_fullscreen        = m_window.get_fullscreen();
@@ -590,7 +599,7 @@ int app::instance::run(const int argc, char* argv[])
 
         auto& camera_transform = camera.get_component<transform_component>();
         auto& camera_data      = camera.get_component<camera_component>();
-        controller.update(camera_transform, camera_data, static_cast<f32>(dt));
+        controller.update(static_cast<f32>(dt));
 
         if (m_renderer.get_vsync() != enable_vsync)
         {
@@ -712,7 +721,9 @@ int app::instance::run(const int argc, char* argv[])
                         buffer,
                         render_pc_data {freeze_cull_data ? camera_proj * debug_camera_view : camera_proj_view,
                                         sun_direction,
-                                        sun_data.rgb_color});
+                                        sun_data.rgb_color,
+                                        transform_component(glm::inverse(debug_camera_view)).position,
+                                        draw_debug_mode});
 
                     ZoneScopedN("draw last frame occluders");
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw last frame occluders"));
@@ -774,8 +785,14 @@ int app::instance::run(const int argc, char* argv[])
                     const auto& render_pipeline = enable_meshlets_pipeline ? pipelines[pso_id::task_render_pipeline]
                                                                            : pipelines[pso_id::indexed_render_pipeline];
                     render_pipeline.bind(buffer);
-                    render_pipeline.push_constant(buffer,
-                                                  render_pc_data {camera_proj_view, sun_direction, sun_data.rgb_color});
+                    render_pipeline.push_constant(
+                        buffer,
+                        render_pc_data {camera_proj_view,
+                                        sun_direction,
+                                        sun_data.rgb_color,
+                                        freeze_cull_data ? transform_component(glm::inverse(debug_camera_view)).position
+                                                         : camera_transform.position,
+                                        draw_debug_mode});
 
                     draw_scene(buffer, render_pipeline, frame_cull_data_buffer.buffer);
                     vkCmdEndRendering(buffer);
@@ -818,8 +835,14 @@ int app::instance::run(const int argc, char* argv[])
                                                     ? pipelines[pso_id::task_render_late_pipeline]
                                                     : pipelines[pso_id::indexed_render_pipeline];
                     render_pipeline.bind(buffer);
-                    render_pipeline.push_constant(buffer,
-                                                  render_pc_data {camera_proj_view, sun_direction, sun_data.rgb_color});
+                    render_pipeline.push_constant(
+                        buffer,
+                        render_pc_data {camera_proj_view,
+                                        sun_direction,
+                                        sun_data.rgb_color,
+                                        freeze_cull_data ? transform_component(glm::inverse(debug_camera_view)).position
+                                                         : camera_transform.position,
+                                        draw_debug_mode});
 
                     ZoneScopedN("draw new objects");
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw new objects"));
@@ -869,6 +892,8 @@ int app::instance::run(const int argc, char* argv[])
                             "Small meshlets cull",
                         };
                         ImGuiWidgets::Bits(client_render_settings.flags, names, COUNT_OF(names));
+                        ImGuiWidgets::EnumDrag("Debug mode", draw_debug_mode);
+
                         codegen::draw(client_render_settings);
 
                         ImGui::BeginDisabled(!mesh_shading_supported);

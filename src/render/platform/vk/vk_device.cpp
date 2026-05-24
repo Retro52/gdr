@@ -404,7 +404,8 @@ static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfa
                                  vk11_features.storageBuffer16BitAccess
                                      && vk11_features.uniformAndStorageBuffer16BitAccess);
 
-    return not_found_extensions.empty() && features_table.all_required_supported();
+    return not_found_extensions.empty() && features_table.all_required_supported()
+        && device_features2.features.samplerAnisotropy;
 }
 
 static ext_array build_extensions_from_feature_table(const rendering_features_table& features_table,
@@ -635,6 +636,7 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
         .pNext    = &vk11_features,
         .features = {
                      .multiDrawIndirect       = rendering_features.wanted(rendering_features_table::eDrawIndirect),
+                     .samplerAnisotropy       = VK_TRUE,
                      .pipelineStatisticsQuery = rendering_features.wanted(rendering_features_table::ePipelineStats),
                      }
     };

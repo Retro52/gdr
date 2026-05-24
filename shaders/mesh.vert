@@ -29,9 +29,10 @@ out VS_OUT {
     layout (location = 0) out vec2 uv;
     layout (location = 1) out vec3 normal;
     layout (location = 2) out vec4 tangent;
-    layout (location = 3) out flat uint material_id;
-#if VISUALIZE_MESHLETS
-    layout (location = 4) out flat uint meshlet_id;
+    layout (location = 3) out vec3 world_pos;
+    layout (location = 4) out flat uint material_id;
+#if SHADERS_DEBUG
+    layout (location = 5) out flat uint meshlet_id;
 #endif
 } vs_out;
 
@@ -51,10 +52,10 @@ void main()
 
     vs_out.material_id = mesh_instances[instance_id].material_index;
 
-#if VISUALIZE_MESHLETS
+#if SHADERS_DEBUG
     vs_out.meshlet_id = gl_VertexIndex;
 #endif
 
-    vec4 world_pos = vec4(transform_vec3(vpos, mesh_instances[instance_id].pos_and_scale, mesh_instances[instance_id].rotation_quat), 1.0);
-    gl_Position = pc.vp * world_pos;
+    vs_out.world_pos = transform_vec3(vpos, mesh_instances[instance_id].pos_and_scale, mesh_instances[instance_id].rotation_quat);
+    gl_Position = pc.vp * vec4(vs_out.world_pos, 1.0F);
 }

@@ -1,8 +1,7 @@
 #pragma once
 
-#include <pod_types.hpp>
-
 #include <events.hpp>
+#include <pod_types.hpp>
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 
@@ -44,8 +43,7 @@ struct camera_controller
                 {
                     camera_controller& self = *static_cast<camera_controller*>(user_data);
                     self.roll               = 0.0F;
-                    auto& camera_transform  = self.m_camera.get_component<transform_component>();
-                    self.update_rotation(camera_transform);
+                    self.update_rotation();
                 }
             },
             this);
@@ -85,8 +83,7 @@ struct camera_controller
                 self.yaw -= adjusted_dx * self.look_sensitivity;
                 self.pitch -= adjusted_dy * self.look_sensitivity;
 
-                auto& camera_transform = self.m_camera.get_component<transform_component>();
-                self.update_rotation(camera_transform);
+                self.update_rotation();
             },
             this);
 
@@ -98,6 +95,15 @@ struct camera_controller
                 if (payload.mouse.button == mouse_button::left)
                 {
                     camera_controller& self = *static_cast<camera_controller*>(user_data);
+                    auto& transform         = self.m_camera.get_component<transform_component>();
+
+                    const glm::mat3 euler = glm::mat3_cast(transform.rotation);;
+
+                    self.yaw   = std::atan2(euler[2][0], euler[2][2]);;
+                    self.roll  = std::atan2(euler[0][1], euler[1][1]);;
+                    self.pitch = std::asin(glm::clamp(-euler[2][1], -1.0f, 1.0f));
+
+                    self.update_rotation();
                     self.m_queue.hide_cursor();
                 }
             },
@@ -117,14 +123,14 @@ struct camera_controller
             this);
     }
 
-    ~camera_controller()
-    {
-        m_queue.remove_watcher(this);
-    }
+    ~camera_controller() { m_queue.remove_watcher(this); }
 
-    void update(transform_component& transform, const camera_component& cam, const f32 dt)
+    void update(const f32 dt)
     {
         ZoneScoped;
+
+        auto& cam       = m_camera.get_component<camera_component>();
+        auto& transform = m_camera.get_component<transform_component>();
 
         const glm::vec3 up      = cam.get_up(transform.rotation);
         const glm::vec3 forward = cam.get_direction(transform.rotation);
@@ -151,21 +157,21 @@ struct camera_controller
         {
             const f32 dir = m_queue.get_key_state(keycode::z) == button_state::down ? +1.0F : -1.0F;
             roll += dir * dt;
-            update_rotation(transform);
+            update_rotation();
         }
     }
 
-    void update_rotation(transform_component& transform)
+    void update_rotation()
     {
         ZoneScoped;
 
         pitch = glm::clamp(pitch, -glm::half_pi<f32>() + 0.01f, glm::half_pi<f32>() - 0.01f);
 
-        glm::quat quat_yaw   = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::quat quat_roll  = glm::angleAxis(roll, glm::vec3(0.0f, 0.0f, 1.0f));
-        glm::quat quat_pitch = glm::angleAxis(pitch, glm::vec3(1.0f, 0.0f, 0.0f));
+        const glm::quat quat_yaw   = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::quat quat_roll  = glm::angleAxis(roll, glm::vec3(0.0f, 0.0f, 1.0f));
+        const glm::quat quat_pitch = glm::angleAxis(pitch, glm::vec3(1.0f, 0.0f, 0.0f));
 
-        transform.rotation = quat_yaw * quat_pitch * quat_roll;
+        m_camera.get_component<transform_component>().rotation = quat_yaw * quat_pitch * quat_roll;
     }
 
 private:

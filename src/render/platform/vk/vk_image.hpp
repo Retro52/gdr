@@ -40,6 +40,7 @@ namespace render
 
     result<VkSampler> create_sampler(VkDevice device, VkFilter filter, VkSamplerMipmapMode mipmap_mode,
                                      VkSamplerAddressMode sampler_address_mode,
-                                     VkSamplerReductionMode reduction_mode = VK_SAMPLER_REDUCTION_MODE_MAX_ENUM);
+                                     VkSamplerReductionMode reduction_mode = VK_SAMPLER_REDUCTION_MODE_MAX_ENUM,
+                                     f32 anisotropic_filtering_factor      = 0.0F);
 
 }

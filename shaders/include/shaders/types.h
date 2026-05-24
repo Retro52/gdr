@@ -92,7 +92,7 @@ namespace shader_types
         uint albedo_idx;
         uint normal_idx;
         uint specular_idx;
-        uint padding[1];
+        uint material_type;
     };
 
     struct DrawIndexedIndirect

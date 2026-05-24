@@ -91,6 +91,13 @@ static loader::material build_material(const cgltf_data* data, const cgltf_mater
     }
 
     mat.normal_idx = tex_idx(material.normal_texture.texture);
+
+    cpp::stack_string hash;
+    hash += material.alpha_mode;
+    hash += material.double_sided;
+    hash += material.has_transmission;
+
+    mat.material_type = cpp::crc::crc32(hash.c_str(), hash.length());
     return mat;
 }
 

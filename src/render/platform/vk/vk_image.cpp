@@ -122,21 +122,24 @@ result<VkImageView> render::create_image_view(VkDevice device, VkImage image, Vk
     return view;
 }
 
-result<VkSampler> render::create_sampler(VkDevice device, VkFilter filter, VkSamplerMipmapMode mipmap_mode,
-                                         VkSamplerAddressMode sampler_address_mode,
-                                         VkSamplerReductionMode reduction_mode)
+result<VkSampler> render::create_sampler(VkDevice device, const VkFilter filter, const VkSamplerMipmapMode mipmap_mode,
+                                         const VkSamplerAddressMode sampler_address_mode,
+                                         const VkSamplerReductionMode reduction_mode,
+                                         const f32 anisotropic_filtering_factor)
 {
     ZoneScoped;
     VkSamplerCreateInfo sampler_info {
-        .sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter    = filter,
-        .minFilter    = filter,
-        .mipmapMode   = mipmap_mode,
-        .addressModeU = sampler_address_mode,
-        .addressModeV = sampler_address_mode,
-        .addressModeW = sampler_address_mode,
-        .minLod       = 0.0F,
-        .maxLod       = 16.0F,
+        .sType            = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter        = filter,
+        .minFilter        = filter,
+        .mipmapMode       = mipmap_mode,
+        .addressModeU     = sampler_address_mode,
+        .addressModeV     = sampler_address_mode,
+        .addressModeW     = sampler_address_mode,
+        .anisotropyEnable = anisotropic_filtering_factor > 0 ? VK_TRUE : VK_FALSE,
+        .maxAnisotropy    = anisotropic_filtering_factor > 0 ? anisotropic_filtering_factor : 0.0F,
+        .minLod           = 0.0F,
+        .maxLod           = 16.0F,
     };
 
     VkSamplerReductionModeCreateInfo reduction_mode_info {VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO};

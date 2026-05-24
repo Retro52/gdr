@@ -2,8 +2,8 @@
 
 #include <glm/mat4x4.hpp>
 #include <imgui.h>
-#include <ImGuizmo.h>
 #include <imgui/imex.hpp>
+#include <ImGuizmo.h>
 #include <pod_types.hpp>
 #include <reflection/enum.hpp>
 
@@ -62,5 +62,35 @@ namespace ImGuiWidgets
         }
 
         return return_value;
+    }
+
+    template<typename T>
+    bool EnumDrag(const char* label, T& evalue)
+    {
+        const auto count = reflection::get_enum_values_count<T>();
+        if (count == 0)
+        {
+            return false;
+        }
+
+        const auto* candidates = reflection::get_enum_values<T>();
+
+        int i = 0;
+        for (; i < count; ++i)
+        {
+            if (candidates[i].value == static_cast<u32>(evalue))
+            {
+                break;
+            }
+        }
+
+        const bool changed = ImGui::SliderInt(label, &i, 0, count - 1, reflection::string_from_enum<T>(evalue));
+        if (changed && i < count && i >= 0)
+        {
+            evalue = static_cast<T>(candidates[i].value);
+            return true;
+        }
+
+        return false;
     }
 }

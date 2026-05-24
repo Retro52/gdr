@@ -7,7 +7,7 @@ namespace shader_constants
     using uint = unsigned int;
 #endif
 
-#define VISUALIZE_MESHLETS 0
+#define SHADERS_DEBUG 1
 
     const uint kLodFlagBit              = 0;
     const uint kFrustumCullBit          = 1;
