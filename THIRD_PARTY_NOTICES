@@ -1,0 +1,24 @@
+This project incorporates material from the projects listed below.
+
+--------------------------------------------------------------------------------
+
+Google Marl
+https://github.com/google/marl
+
+Copyright 2019 The Marl Authors.
+Licensed under the Apache License, Version 2.0 (see LICENSES/Apache-2.0.txt).
+
+The following files are derived from Marl with modifications to function
+signatures, variables, macros, and code style:
+
+  src/job/fibers/platform/posix/fiber_arm32.c   (from marl/src/osfiber_arm.c)
+  src/job/fibers/platform/posix/fiber_arm32.S   (from marl/src/osfiber_arm.S)
+  src/job/fibers/platform/posix/fiber_arm64.c   (from marl/src/osfiber_aarch64.c)
+  src/job/fibers/platform/posix/fiber_arm64.S   (from marl/src/osfiber_aarch64.S)
+  src/job/fibers/platform/posix/fiber_x64.c     (from marl/src/osfiber_x64.c)
+  src/job/fibers/platform/posix/fiber_x64.S     (from marl/src/osfiber_x64.S)
+  src/job/fibers/platform/posix/fiber_x86.c     (from marl/src/osfiber_x86.c)
+  src/job/fibers/platform/posix/fiber_x86.S     (from marl/src/osfiber_x86.S)
+
+Additionally, a nop-spinning optimization in src/job/scheduler.cpp (see inline
+attribution at the call site) was adapted from marl/src/scheduler.cpp.
