@@ -1,6 +1,7 @@
 #include <app/render.hpp>
 #include <render/platform/vk/vk_barrier.hpp>
 #include <tracy/Tracy.hpp>
+#include <cmath>
 
 void app::begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView depth, VkAttachmentLoadOp load_op,
                           VkAttachmentStoreOp store_op, const VkRect2D& vp)

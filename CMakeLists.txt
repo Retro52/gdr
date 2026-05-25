@@ -55,6 +55,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
+        TRACY_FIBERS
         VK_NO_PROTOTYPES
 )
 

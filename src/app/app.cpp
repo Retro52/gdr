@@ -50,7 +50,7 @@ namespace
         vec3 sun_direction;
         vec3 sun_color;
         vec3 camera_pos;
-        debug_mode debug_mode;
+        debug_mode mode;
     };
 
     void build_frustum(frame_cull_data& data, const glm::mat4& iproj, const glm::mat4& iview)
@@ -413,7 +413,7 @@ int app::instance::run(const int argc, char* argv[])
         sun.add_component<directional_light_component>(vec3(1));
 
         auto& t    = sun.emplace_component<transform_component>();
-        t.rotation = glm::quat(vec3(0));
+        t.rotation = glm::quat(vec3(0, 1, 0));
     }
 
     for (u32 i = 0; i < textures.size(); ++i)

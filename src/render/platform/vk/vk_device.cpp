@@ -2,14 +2,14 @@
 #include <cpp/alg_constexpr.hpp>
 #include <cpp/containers/hash_set.hpp>
 #include <cpp/containers/heap_array.hpp>
+#include <cpp/containers/stack_string.hpp>
 #include <cpp/hash/crc_hash.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
 #include <tracy/Tracy.hpp>
 
 #include <algorithm>
-
-#include "cpp/containers/stack_string.hpp"
+#include <cmath>
 
 using namespace render;
 

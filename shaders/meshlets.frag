@@ -124,7 +124,7 @@ void main()
     vec3 tangent = normalize(vs_in.tangent.xyz);
 
     vec3 bitangent = cross(normal, tangent) * vs_in.tangent.w;
-    vec3 nrm = normalize(tex_normal.r * tangent.xyz + tex_normal.g * bitangent + tex_normal.b * normal);
+    vec3 nrm = normal_idx > 0 ? normalize(tex_normal.r * tangent.xyz + tex_normal.g * bitangent + tex_normal.b * normal) : normal;
 
     vec4 specular_factor = specular_idx > 0 ? TEXTURE2D(specular_idx, vs_in.uv) * materials[vs_in.material_id].specular_factor : materials[vs_in.material_id].specular_factor;
 

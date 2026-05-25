@@ -13,6 +13,10 @@
 
 #include <glm/gtc/type_ptr.inl>
 
+#ifdef Success
+#undef Success
+#endif
+
 #define CHECK(EXPR)                   \
     if (EXPR != cgltf_result_success) \
     {                                 \
@@ -347,10 +351,12 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
         }
     }
 
-    ctx.materials.resize(data->materials_count);
+    ctx.materials.resize(data->materials_count + 1);
+    ctx.materials[0].diffuse_factor = vec4(1.0F, 0.0F, 0.71F, 1.0F); // -> pinkish <-
+
     for (u32 i = 0; i < data->materials_count; ++i)
     {
-        ctx.materials[i] = build_material(data, data->materials[i]);
+        ctx.materials[i + 1] = build_material(data, data->materials[i]);
     }
 
     wg.wait_till_done();
@@ -444,7 +450,9 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
                 instances[instance_count].visibility_offset = visibility_offset;
                 instances[instance_count].mesh_data_index   = desc.offset + j;
                 instances[instance_count].material_index =
-                    cgltf_material_index(data, node->mesh->primitives[j].material);
+                    node->mesh->primitives[j].material
+                        ? (cgltf_material_index(data, node->mesh->primitives[j].material) + 1)
+                        : 0;
 
                 ++instance_count;
                 triangles_max += get_max_lod_tris(ctx.primitives[desc.offset + j]);
