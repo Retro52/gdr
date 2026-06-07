@@ -2,8 +2,8 @@
 #extension GL_GOOGLE_include_directive: require
 #extension GL_EXT_nonuniform_qualifier: require
 
-#include "pbr.glsl"
-#include "post.glsl"
+#include "utils/pbr.glsl"
+#include "utils/post.glsl"
 #include "include/shaders/types.h"
 
 in VS_IN {
@@ -149,12 +149,13 @@ void main()
     float h_dot_v = max(dot(halfw, view), 0.0F);
     vec3 fresnel = fresnel_schlick(h_dot_v, mix(vec3(0.04F), albedo, metallic));
 
-    vec3 ambient = vec3(0.2F) * albedo;
+    vec3 ambient = vec3(0.2F);
     vec3 diffuse = (vec3(1.0F) - fresnel) * (1.0F - metallic);
     vec3 specular = pbr_specular(fresnel, ndf, geom, n_dot_v, n_dot_l);
 
-    const float intensity = 5.0F;
-    vec3 color = (diffuse * albedo / kPI + specular) * pc.sun_color * intensity * n_dot_l + ambient;
+    const float kIntensity = 5.0F;
+    vec3 sun_color_hdr = pc.sun_color * kIntensity;
+    vec3 color = (diffuse * albedo / kPI + specular) * sun_color_hdr * n_dot_l + ambient * albedo;
 
 #if SHADERS_DEBUG
     if (pc.debug_mode != draw_debug_shaded)
@@ -173,10 +174,9 @@ void main()
         if (pc.debug_mode == draw_debug_mat_idx)          {color = hash_color(vs_in.material_id);                                            }
         if (pc.debug_mode == draw_debug_mat_type)         {color = hash_color(materials[vs_in.material_id].material_flags);                  }
         if (pc.debug_mode == draw_debug_mlt_idx)          {color = hash_color(vs_in.meshlet_id);                                             }
-        if (pc.debug_mode == draw_debug_white_lit)        {color = (diffuse / kPI + specular) * pc.sun_color * n_dot_l;                      }
-        if (pc.debug_mode == draw_debug_white_diffuse)    {color = (diffuse / kPI) * pc.sun_color * n_dot_l;                                 }
-        if (pc.debug_mode == draw_debug_white_diffuse)    {color = (diffuse / kPI) * pc.sun_color * n_dot_l;                                 }
-        if (pc.debug_mode == draw_debug_white_specular)   {color = specular * pc.sun_color * n_dot_l;                                        }
+        if (pc.debug_mode == draw_debug_white_lit)        {color = tonemap((diffuse / kPI + specular) * sun_color_hdr * n_dot_l + ambient);  }
+        if (pc.debug_mode == draw_debug_white_diffuse)    {color = tonemap((diffuse / kPI) * sun_color_hdr * n_dot_l);                       }
+        if (pc.debug_mode == draw_debug_white_specular)   {color = tonemap(specular * sun_color_hdr * n_dot_l);                              }
         o_frag_color = from_linear(vec4(color, 1.0F));
         return;
     }

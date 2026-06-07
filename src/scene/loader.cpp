@@ -31,6 +31,15 @@ namespace
         bytes data;
         ddspp::Descriptor descriptor;
     };
+
+    u16 pack_oct(const vec3& data)
+    {
+        const vec2 proj = vec2(data) * (1.0F / (abs(data.x) + abs(data.y) + abs(data.z)));
+        const vec2 sign = vec2((data.x >= 0.0F) ? 1.0F : -1.0F, (data.y >= 0.0F) ? 1.0F : -1.0F);
+        const vec2 r    = (data.z <= 0.0) ? ((1.0F - abs(vec2(proj.y, proj.x))) * sign) : proj;
+
+        return (meshopt_quantizeSnorm(r.x, 8) + 127) | ((meshopt_quantizeSnorm(r.y, 8) + 127) << 8);
+    }
 }
 
 static vec4 compute_bounding_sphere(const cpp::heap_array<mesh::raw_vertex>& mesh)
@@ -87,8 +96,8 @@ static loader::material build_material(const cgltf_data* data, const cgltf_mater
     else if (material.has_pbr_specular_glossiness)
     {
         mat.met_roughness_idx = tex_idx(material.pbr_specular_glossiness.specular_glossiness_texture.texture);
-        mat.albedo_idx     = tex_idx(material.pbr_specular_glossiness.diffuse_texture.texture);
-        mat.diffuse_factor = vec4(material.pbr_specular_glossiness.diffuse_factor[0],
+        mat.albedo_idx        = tex_idx(material.pbr_specular_glossiness.diffuse_texture.texture);
+        mat.diffuse_factor    = vec4(material.pbr_specular_glossiness.diffuse_factor[0],
                                   material.pbr_specular_glossiness.diffuse_factor[1],
                                   material.pbr_specular_glossiness.diffuse_factor[2],
                                   material.pbr_specular_glossiness.diffuse_factor[3]);
@@ -609,17 +618,15 @@ void loader::encode_raw_mesh(loader_context& ctx, const mesh::raw_mesh& primitiv
         encoded_vtx.py = vertex.position.y;
         encoded_vtx.pz = vertex.position.z;
 
-        encoded_vtx.nx = vertex.normal.x;
-        encoded_vtx.ny = vertex.normal.y;
-        encoded_vtx.nz = vertex.normal.z;
+        encoded_vtx.packed_normal |= (meshopt_quantizeSnorm(vertex.normal.x, 10) + 511) << 0;
+        encoded_vtx.packed_normal |= (meshopt_quantizeSnorm(vertex.normal.y, 10) + 511) << 10;
+        encoded_vtx.packed_normal |= (meshopt_quantizeSnorm(vertex.normal.z, 10) + 511) << 20;
+        encoded_vtx.packed_normal |= (vertex.tangent.w < 0 ? 1 : 0) << 30;
+
+        encoded_vtx.packed_tangent = pack_oct(vec3(vertex.tangent));
 
         encoded_vtx.ux = vertex.uv.x;
         encoded_vtx.uy = vertex.uv.y;
-
-        encoded_vtx.tx = vertex.tangent.x;
-        encoded_vtx.ty = vertex.tangent.y;
-        encoded_vtx.tz = vertex.tangent.z;
-        encoded_vtx.tw = vertex.tangent.w;
     }
 
     // Copy LOD array

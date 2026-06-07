@@ -22,7 +22,7 @@ namespace render
             eScalarBlockLayout = 1 << 8,
             ePortabilitySubset = 1 << 9,
             eBindlessTextures  = 1 << 10,
-            e16BitFloats       = 1 << 11,
+            e16BitTypes       = 1 << 11,
             eCOUNT
         };
 

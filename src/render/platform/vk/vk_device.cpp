@@ -400,7 +400,7 @@ static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfa
                                      && vk12_features.shaderSampledImageArrayNonUniformIndexing
                                      && vk12_features.descriptorBindingSampledImageUpdateAfterBind);
 
-    features_table.set_supported(rendering_features_table::e16BitFloats,
+    features_table.set_supported(rendering_features_table::e16BitTypes,
                                  vk11_features.storageBuffer16BitAccess
                                      && vk11_features.uniformAndStorageBuffer16BitAccess);
 
@@ -626,8 +626,8 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
     VkPhysicalDeviceVulkan11Features vk11_features {
         .sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
         .pNext                              = &vk12_features,
-        .storageBuffer16BitAccess           = rendering_features.wanted(rendering_features_table::e16BitFloats),
-        .uniformAndStorageBuffer16BitAccess = rendering_features.wanted(rendering_features_table::e16BitFloats),
+        .storageBuffer16BitAccess           = rendering_features.wanted(rendering_features_table::e16BitTypes),
+        .uniformAndStorageBuffer16BitAccess = rendering_features.wanted(rendering_features_table::e16BitTypes),
         .shaderDrawParameters               = rendering_features.wanted(rendering_features_table::eDrawIndirect),
     };
 

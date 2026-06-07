@@ -1,3 +1,32 @@
+// https://x.com/Stubbesaurus/status/937994790553227264
+vec3 decode_oct(vec2 e)
+{
+    vec3 v = vec3(e.xy, 1.0 - abs(e.x) - abs(e.y));
+    float t = max(-v.z, 0);
+    v.xy += vec2(v.x >= 0 ? -t : t, v.y >= 0 ? -t : t);
+    return normalize(v);
+}
+
+vec2 unpack_r8g8(uint packed)
+{
+    vec2 result;
+    result.x = (float((packed >> 0) & 255)) / 127.0F - 1.0F;
+    result.y = (float((packed >> 8) & 255)) / 127.0F - 1.0F;
+
+    return result;
+}
+
+vec4 unpack_r10g10b10a2(uint packed)
+{
+    vec4 result = vec4(0.0F);
+    result.x = float((packed >> 00) & 1023) / 511.0F - 1.0F;
+    result.y = float((packed >> 10) & 1023) / 511.0F - 1.0F;
+    result.z = float((packed >> 20) & 1023) / 511.0F - 1.0F;
+    result.w = ((packed >> 30) & 1) == 1 ? -1.0F : 1.0F;
+
+    return result;
+}
+
 vec3 quat_rotate_vec3(vec3 point, vec4 quat)
 {
     return point + 2.0 * cross(quat.xyz, cross(quat.xyz, point) + quat.w * point);

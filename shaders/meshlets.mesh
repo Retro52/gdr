@@ -3,7 +3,7 @@
 #extension GL_EXT_mesh_shader: require
 #extension GL_GOOGLE_include_directive: require
 
-#include "common.glsl"
+#include "utils/math.glsl"
 #include "include/shaders/types.h"
 
 // FIXME: for whatever reason passing 94 (our constant) is illegal for max_primitives, investigate?
@@ -72,18 +72,20 @@ void main()
         const uint vid = meshlet_task.base_vertex + meshlets_vertices[base_vertex + i];
 
         vec3 local_pos = vec3(vertices[vid].px, vertices[vid].py, vertices[vid].pz);
-        vs_out[i].world_pos = transform_vec3(local_pos, mesh_instances[meshlet_task.instance_id].pos_and_scale, mesh_instances[meshlet_task.instance_id].rotation_quat);
-        vs_out[i].normal = quat_rotate_vec3(vec3(vertices[vid].nx, vertices[vid].ny, vertices[vid].nz), mesh_instances[meshlet_task.instance_id].rotation_quat);
 
-#if SHADERS_DEBUG
-        vs_out[i].meshlet_id = meshlet_task.meshlet_ids[gl_WorkGroupID.x];
-#endif
+        vec4 up_norm = unpack_r10g10b10a2(vertices[vid].packed_normal);
+        vec3 up_tang = decode_oct(unpack_r8g8(uint(vertices[vid].packed_tangent)));
+
+        vs_out[i].normal = quat_rotate_vec3(up_norm.xyz, mesh_instances[meshlet_task.instance_id].rotation_quat);
+        vs_out[i].tangent = vec4(quat_rotate_vec3(up_tang, mesh_instances[meshlet_task.instance_id].rotation_quat), up_norm.w);
+        vs_out[i].world_pos = transform_vec3(local_pos, mesh_instances[meshlet_task.instance_id].pos_and_scale, mesh_instances[meshlet_task.instance_id].rotation_quat);
 
         vs_out[i].uv = vec2(vertices[vid].ux, vertices[vid].uy);
         vs_out[i].material_id = mesh_instances[meshlet_task.instance_id].material_index;
 
-        vec4 tangent = vec4(vertices[vid].tx, vertices[vid].ty, vertices[vid].tz, vertices[vid].tw);
-        vs_out[i].tangent = vec4(quat_rotate_vec3(tangent.xyz, mesh_instances[meshlet_task.instance_id].rotation_quat), tangent.w);
+#if SHADERS_DEBUG
+        vs_out[i].meshlet_id = meshlet_task.meshlet_ids[gl_WorkGroupID.x];
+#endif
 
         gl_MeshVerticesEXT[i].gl_Position = pc.vp * vec4(vs_out[i].world_pos, 1.0F);
     }

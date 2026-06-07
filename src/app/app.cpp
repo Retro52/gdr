@@ -40,8 +40,8 @@ namespace
 {
     using frame_cull_data = shader_types::FrameCullData;
 
-    REGISTER_ENUM(debug_mode, shaded, diffuse_factor, mr_factor, metallic, roughness, albedo_texture, normal_texture, mr_texture,
-                  uv, normal, tangent, world_pos, material_index, material_type, meshlet_index, white_lit,
+    REGISTER_ENUM(debug_mode, shaded, diffuse_factor, mr_factor, metallic, roughness, albedo_texture, normal_texture,
+                  mr_texture, uv, normal, tangent, world_pos, material_index, material_type, meshlet_index, white_lit,
                   white_diffuse, white_specular);
 
     struct render_pc_data
@@ -160,10 +160,10 @@ namespace
                 i / (kVolumeItemsPerSide * kVolumeItemsPerSide),
             };
 
-            constexpr f32 kDensityInverse = 7.5F;
             position *= vec3(1.5F);
 
 #if 0
+            constexpr f32 kDensityInverse = 7.5F;
             position *= vec3(get_random<f32>(-kDensityInverse, kDensityInverse),
                              get_random<f32>(-kDensityInverse, kDensityInverse),
                              get_random<f32>(-kDensityInverse, kDensityInverse));
@@ -172,7 +172,7 @@ namespace
             instance.rotation_quat =
                 glm::quat(vec3(get_random<f32>(-180, 180), get_random<f32>(-180, 180), get_random<f32>(-180, 180)));
 #else
-            instance.pos_and_scale = {position, 1.0F};
+            instance.pos_and_scale = {position, 0.25F};
             instance.rotation_quat = glm::quat(vec3());
 #endif
 
@@ -183,10 +183,10 @@ namespace
             auto& material          = ctx.materials[i];
             material.diffuse_factor = vec4(1.0F, 0.0F, 0.0F, 1.0);
 
-            const f32 kMixMax               = static_cast<f32>(kVolumeItemsPerSide) - 1;
-            material.met_roughness_factor.r = glm::mix(0.0F, 1.0F, static_cast<f32>(i % kVolumeItemsPerSide) / kMixMax);
+            const f32 kMixMax = static_cast<f32>(kVolumeItemsPerSide) - 1;
             material.met_roughness_factor.g =
                 glm::mix(0.0F, 1.0F, static_cast<f32>((i / kVolumeItemsPerSide) % kVolumeItemsPerSide) / kMixMax);
+            material.met_roughness_factor.b = glm::mix(0.0F, 1.0F, static_cast<f32>(i % kVolumeItemsPerSide) / kMixMax);
 
             triangles_max += loader::get_max_lod_tris(ctx.primitives[id_random]);
             visibility_offset += loader::get_max_lod_meshlets(ctx.primitives[id_random]);
@@ -201,7 +201,7 @@ namespace
             geometry_pool.transfer, geometry_pool.materials, ctx.materials.data(), ctx.materials.size());
         render::upload_data(
             geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
-        render::upload_data(geometry_pool.transfer, geometry_pool.instances.buffer, instances.data(), instances.size());
+        render::upload_data(geometry_pool.transfer, geometry_pool.instances, instances.data(), instances.size());
 
         return {.meshes     = primitives.size(),
                 .meshlets   = visibility_offset,
@@ -221,7 +221,7 @@ render::vk_renderer create_vk_renderer(window& app_window)
                                         .request(render::rendering_features_table::eMeshShading)
                                         .request(render::rendering_features_table::ePipelineStats)
                                         .require(render::rendering_features_table::e8BitIntegers)
-                                        .require(render::rendering_features_table::e16BitFloats)
+                                        .require(render::rendering_features_table::e16BitTypes)
                                         .require(render::rendering_features_table::eDrawIndirect)
                                         .require(render::rendering_features_table::eDynamicRender)
                                         .require(render::rendering_features_table::eSamplerMinMax)
@@ -342,7 +342,7 @@ int app::instance::run(const int argc, char* argv[])
         .vertex     = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .primitives = render::vk_shared_buffer(m_renderer, 1_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .instances  = render::vk_shared_buffer(m_renderer, 48_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-        .materials  = render::vk_shared_buffer(m_renderer, 1_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .materials  = render::vk_shared_buffer(m_renderer, 48_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
 
         .transfer = *render::create_buffer_transfer(m_renderer.get_context().device,
                                                     m_renderer.get_context().allocator,
@@ -947,7 +947,8 @@ int app::instance::run(const int argc, char* argv[])
                             ImGui::DragFloat3("Direction", glm::value_ptr(euler));
                             sun_transform.rotation = glm::quat(glm::radians(euler));
 
-                            ImGui::ColorEdit3("Color", &sun_data.rgb_color.x, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
+                            ImGui::ColorEdit3(
+                                "Color", &sun_data.rgb_color.x, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
                         }
 
                         if (ImGui::CollapsingHeader("Camera controls", ImGuiTreeNodeFlags_DefaultOpen))

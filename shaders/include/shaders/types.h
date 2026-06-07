@@ -34,9 +34,9 @@ namespace shader_types
     struct Vertex
     {
         float px, py, pz;
-        float nx, ny, nz;
+        uint packed_normal; // 10-10-10-2 bit quantized normal in [-1; 1] range
+        uint16_t packed_tangent; // octahedral encoding
         float16_t ux, uy;
-        float tx, ty, tz, tw;
     };
 
     struct Meshlet

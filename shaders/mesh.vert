@@ -2,7 +2,7 @@
 
 #extension GL_GOOGLE_include_directive: require
 
-#include "common.glsl"
+#include "utils/math.glsl"
 #include "include/shaders/types.h"
 
 layout (binding = 2) readonly buffer Vertices
@@ -41,14 +41,13 @@ void main()
     uint instance_id = draw_cmds[gl_DrawID].instance_id;
 
     vec3 vpos = vec3(vertices[gl_VertexIndex].px, vertices[gl_VertexIndex].py, vertices[gl_VertexIndex].pz);
-    vec3 vnorm = vec3(vertices[gl_VertexIndex].nx, vertices[gl_VertexIndex].ny, vertices[gl_VertexIndex].nz);
+
+    vec4 up_norm = unpack_r10g10b10a2(vertices[gl_VertexIndex].packed_normal);
+    vec3 up_tang = decode_oct(unpack_r8g8(uint(vertices[gl_VertexIndex].packed_tangent)));
 
     vs_out.uv = vec2(vertices[gl_VertexIndex].ux, vertices[gl_VertexIndex].uy);
-
-    vs_out.normal = quat_rotate_vec3(vnorm, mesh_instances[instance_id].rotation_quat);
-
-    vec4 tangent = vec4(vertices[gl_VertexIndex].tx, vertices[gl_VertexIndex].ty, vertices[gl_VertexIndex].tz, vertices[gl_VertexIndex].tw);
-    vs_out.tangent = vec4(quat_rotate_vec3(tangent.xyz, mesh_instances[instance_id].rotation_quat), tangent.w);
+    vs_out.normal = quat_rotate_vec3(up_norm.xyz, mesh_instances[instance_id].rotation_quat);
+    vs_out.tangent = vec4(quat_rotate_vec3(up_tang, mesh_instances[instance_id].rotation_quat), up_norm.w);
 
     vs_out.material_id = mesh_instances[instance_id].material_index;
 
