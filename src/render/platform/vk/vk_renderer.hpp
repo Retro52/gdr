@@ -65,6 +65,8 @@ namespace render
     private:
         void recreate_swapchain(ivec2 new_size, bool vsync);
 
+        void force_recreate_swapchain(ivec2 new_size, bool vsync);
+
     private:
         constexpr static u32 kFramesInFlight = 2;
 

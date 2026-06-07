@@ -68,40 +68,44 @@ static loader::material build_material(const cgltf_data* data, const cgltf_mater
         return base_texture + static_cast<u32>(cgltf_texture_index(data, texture));
     };
 
-    if (material.has_pbr_specular_glossiness)
+    mat.normal_idx = tex_idx(material.normal_texture.texture);
+    if (material.has_pbr_metallic_roughness)
     {
+        mat.albedo_idx        = tex_idx(material.pbr_metallic_roughness.base_color_texture.texture);
+        mat.met_roughness_idx = tex_idx(material.pbr_metallic_roughness.metallic_roughness_texture.texture);
+
+        mat.diffuse_factor = vec4(material.pbr_metallic_roughness.base_color_factor[0],
+                                  material.pbr_metallic_roughness.base_color_factor[1],
+                                  material.pbr_metallic_roughness.base_color_factor[2],
+                                  material.pbr_metallic_roughness.base_color_factor[3]);
+
+        mat.met_roughness_factor = vec4(1.0F,
+                                        material.pbr_metallic_roughness.roughness_factor,
+                                        material.pbr_metallic_roughness.metallic_factor,
+                                        1.0F);
+    }
+    else if (material.has_pbr_specular_glossiness)
+    {
+        mat.met_roughness_idx = tex_idx(material.pbr_specular_glossiness.specular_glossiness_texture.texture);
         mat.albedo_idx     = tex_idx(material.pbr_specular_glossiness.diffuse_texture.texture);
         mat.diffuse_factor = vec4(material.pbr_specular_glossiness.diffuse_factor[0],
                                   material.pbr_specular_glossiness.diffuse_factor[1],
                                   material.pbr_specular_glossiness.diffuse_factor[2],
                                   material.pbr_specular_glossiness.diffuse_factor[3]);
 
-        mat.specular_idx    = tex_idx(material.pbr_specular_glossiness.specular_glossiness_texture.texture);
-        mat.specular_factor = vec4(material.pbr_specular_glossiness.specular_factor[0],
-                                   material.pbr_specular_glossiness.specular_factor[1],
-                                   material.pbr_specular_glossiness.specular_factor[2],
-                                   material.pbr_specular_glossiness.glossiness_factor);
+        const f32 max_specular = glm::max(material.pbr_specular_glossiness.specular_factor[0],
+                                          material.pbr_specular_glossiness.specular_factor[1],
+                                          material.pbr_specular_glossiness.specular_factor[2]);
+
+        mat.material_flags       = 1 << shader_constants::kMatGlossBit;
+        mat.met_roughness_factor = vec4(1.0F, material.pbr_specular_glossiness.glossiness_factor, max_specular, 1.0F);
     }
-    else if (material.has_pbr_metallic_roughness)
+
+    if (material.has_transmission && vec3(mat.diffuse_factor) == vec3(1.0F))
     {
-        mat.albedo_idx     = tex_idx(material.pbr_metallic_roughness.base_color_texture.texture);
-        mat.diffuse_factor = vec4(material.pbr_metallic_roughness.base_color_factor[0],
-                                  material.pbr_metallic_roughness.base_color_factor[1],
-                                  material.pbr_metallic_roughness.base_color_factor[2],
-                                  material.pbr_metallic_roughness.base_color_factor[3]);
-
-        mat.specular_idx    = tex_idx(material.pbr_metallic_roughness.metallic_roughness_texture.texture);
-        mat.specular_factor = vec4(1, 1, 1, 1 - material.pbr_metallic_roughness.roughness_factor);
+        mat.diffuse_factor.a = 0.0F;
     }
 
-    mat.normal_idx = tex_idx(material.normal_texture.texture);
-
-    cpp::stack_string hash;
-    hash += material.alpha_mode;
-    hash += material.double_sided;
-    hash += material.has_transmission;
-
-    mat.material_type = cpp::crc::crc32(hash.c_str(), hash.length());
     return mat;
 }
 
@@ -352,7 +356,7 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
     }
 
     ctx.materials.resize(data->materials_count + 1);
-    ctx.materials[0].diffuse_factor = vec4(1.0F, 0.0F, 0.71F, 1.0F); // -> pinkish <-
+    ctx.materials[0].diffuse_factor = vec4(1.0F, 0.0F, 0.71F, 1.0F);  // -> pinkish <-
 
     for (u32 i = 0; i < data->materials_count; ++i)
     {

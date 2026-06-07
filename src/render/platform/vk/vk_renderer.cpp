@@ -228,11 +228,18 @@ void vk_renderer::recreate_swapchain(ivec2 new_size, bool vsync)
         return;
     }
 
-    const auto new_swapchain = *render::create_swapchain(
-        m_context, VK_FORMAT_B8G8R8A8_UNORM, new_size, kFramesInFlight, vsync, m_swapchain.vk_swapchain);
-    render::destroy_swapchain(m_context, m_swapchain);
+    force_recreate_swapchain(new_size, vsync);
+}
 
-    m_swapchain_size = new_size;
-    m_swapchain      = new_swapchain;
-    m_frame_index.set_flag(tagged_bits::vsync_bit, vsync);
+void vk_renderer::force_recreate_swapchain(ivec2 new_size, bool vsync)
+{
+    if (const auto created_sc = render::create_swapchain(
+            m_context, VK_FORMAT_B8G8R8A8_UNORM, new_size, kFramesInFlight, vsync, m_swapchain.vk_swapchain))
+    {
+        render::destroy_swapchain(m_context, m_swapchain);
+
+        m_swapchain_size = new_size;
+        m_swapchain      = *created_sc;
+        m_frame_index.set_flag(tagged_bits::vsync_bit, vsync);
+    }
 }

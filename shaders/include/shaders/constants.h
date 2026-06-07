@@ -17,6 +17,8 @@ namespace shader_constants
     const uint kMeshletOcclusionCullBit = 5;
     const uint kSmallMeshletsCullBit    = 6;
 
+    const uint kMatGlossBit = 0;
+
     const uint kMaxVerticesPerMeshlet  = 64;
     const uint kMaxTrianglesPerMeshlet = 94;
     const uint kMaxIndicesPerMeshlet   = kMaxTrianglesPerMeshlet * 3;

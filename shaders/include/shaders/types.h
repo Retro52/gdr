@@ -35,7 +35,7 @@ namespace shader_types
     {
         float px, py, pz;
         float nx, ny, nz;
-        float ux, uy;
+        float16_t ux, uy;
         float tx, ty, tz, tw;
     };
 
@@ -87,12 +87,12 @@ namespace shader_types
     struct MeshMaterial
     {
         vec4 diffuse_factor;
-        vec4 specular_factor;
+        vec4 met_roughness_factor;
 
         uint albedo_idx;
         uint normal_idx;
-        uint specular_idx;
-        uint material_type;
+        uint met_roughness_idx;
+        uint material_flags;
     };
 
     struct DrawIndexedIndirect

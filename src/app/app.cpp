@@ -40,9 +40,9 @@ namespace
 {
     using frame_cull_data = shader_types::FrameCullData;
 
-    REGISTER_ENUM(debug_mode, shaded, diffuse_factor, specular_factor, albedo_texture, normal_texture, specular_texture,
-                  uv, normal, tangent, world_pos, material_index, material_type, meshlet_index, white_lit, white_diffuse,
-                  white_specular);
+    REGISTER_ENUM(debug_mode, shaded, diffuse_factor, mr_factor, metallic, roughness, albedo_texture, normal_texture, mr_texture,
+                  uv, normal, tangent, world_pos, material_index, material_type, meshlet_index, white_lit,
+                  white_diffuse, white_specular);
 
     struct render_pc_data
     {
@@ -133,25 +133,13 @@ namespace
         ctx.meshlets.resize(total_meshlets);
         ctx.meshlets_data.resize(total_payload);
 
+        ctx.materials.resize(draw_count);
+        cpp::heap_array<loader::instance> instances(draw_count);
+
         for (u32 i = 0; i < primitives.size(); ++i)
         {
             loader::encode_raw_mesh(ctx, primitives[i], layouts[i]);
         }
-
-        auto& mat          = ctx.materials.emplace_back();
-        mat.diffuse_factor = vec4(0.9, 0.4, 0.9, 1.0);
-
-        render::upload_data(geometry_pool.transfer, geometry_pool.index, ctx.indices.data(), ctx.indices.size());
-        render::upload_data(
-            geometry_pool.transfer, geometry_pool.primitives, ctx.primitives.data(), ctx.primitives.size());
-        render::upload_data(geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
-        render::upload_data(geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
-        render::upload_data(
-            geometry_pool.transfer, geometry_pool.materials, ctx.materials.data(), ctx.materials.size());
-        render::upload_data(
-            geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
-
-        auto* instances_ptr = static_cast<loader::instance*>(geometry_pool.transfer.mapped);
 
         u64 triangles_max     = 0;
         u64 visibility_offset = 0;
@@ -165,7 +153,7 @@ namespace
             auto entity = scene.create_entity();
             entity.add_component<id_component>();
 
-            auto& instance = instances_ptr[i];
+            auto& instance = instances[i];
             vec3 position  = {
                 i % kVolumeItemsPerSide,
                 (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
@@ -174,25 +162,46 @@ namespace
 
             constexpr f32 kDensityInverse = 7.5F;
             position *= vec3(1.5F);
+
+#if 0
             position *= vec3(get_random<f32>(-kDensityInverse, kDensityInverse),
                              get_random<f32>(-kDensityInverse, kDensityInverse),
                              get_random<f32>(-kDensityInverse, kDensityInverse));
 
-            instance.material_index    = 0;
-            instance.visibility_offset = visibility_offset;
-            instance.mesh_data_index   = layouts[id_random].prim_index;
-
             instance.pos_and_scale = {position, get_random<f32>(0.75F, 10.0F)};
             instance.rotation_quat =
                 glm::quat(vec3(get_random<f32>(-180, 180), get_random<f32>(-180, 180), get_random<f32>(-180, 180)));
+#else
+            instance.pos_and_scale = {position, 1.0F};
+            instance.rotation_quat = glm::quat(vec3());
+#endif
+
+            instance.material_index    = i;
+            instance.visibility_offset = visibility_offset;
+            instance.mesh_data_index   = layouts[id_random].prim_index;
+
+            auto& material          = ctx.materials[i];
+            material.diffuse_factor = vec4(1.0F, 0.0F, 0.0F, 1.0);
+
+            const f32 kMixMax               = static_cast<f32>(kVolumeItemsPerSide) - 1;
+            material.met_roughness_factor.r = glm::mix(0.0F, 1.0F, static_cast<f32>(i % kVolumeItemsPerSide) / kMixMax);
+            material.met_roughness_factor.g =
+                glm::mix(0.0F, 1.0F, static_cast<f32>((i / kVolumeItemsPerSide) % kVolumeItemsPerSide) / kMixMax);
 
             triangles_max += loader::get_max_lod_tris(ctx.primitives[id_random]);
             visibility_offset += loader::get_max_lod_meshlets(ctx.primitives[id_random]);
         }
 
-        render::submit_transfer(geometry_pool.transfer,
-                                geometry_pool.instances.buffer,
-                                VkBufferCopy {.size = draw_count * sizeof(loader::instance)});
+        render::upload_data(geometry_pool.transfer, geometry_pool.index, ctx.indices.data(), ctx.indices.size());
+        render::upload_data(
+            geometry_pool.transfer, geometry_pool.primitives, ctx.primitives.data(), ctx.primitives.size());
+        render::upload_data(geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
+        render::upload_data(geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
+        render::upload_data(
+            geometry_pool.transfer, geometry_pool.materials, ctx.materials.data(), ctx.materials.size());
+        render::upload_data(
+            geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
+        render::upload_data(geometry_pool.transfer, geometry_pool.instances.buffer, instances.data(), instances.size());
 
         return {.meshes     = primitives.size(),
                 .meshlets   = visibility_offset,
@@ -938,7 +947,7 @@ int app::instance::run(const int argc, char* argv[])
                             ImGui::DragFloat3("Direction", glm::value_ptr(euler));
                             sun_transform.rotation = glm::quat(glm::radians(euler));
 
-                            ImGui::ColorEdit3("Color", &sun_data.rgb_color.x);
+                            ImGui::ColorEdit3("Color", &sun_data.rgb_color.x, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
                         }
 
                         if (ImGui::CollapsingHeader("Camera controls", ImGuiTreeNodeFlags_DefaultOpen))
