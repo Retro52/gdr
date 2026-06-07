@@ -21,10 +21,25 @@ jobs:
           submodules: recursive
 
       - name: Install Vulkan SDK
-        uses: humbletim/install-vulkan-sdk@v1.2
+        uses: jakoch/install-vulkan-sdk-action@v1
         with:
-          version: latest
+          vulkan_version: latest
+          install_runtime: true
           cache: true
+          stripdown: true
+
+      - name: Verify Vulkan headers (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          test -f "$VULKAN_SDK/Include/vulkan/vk_platform.h" \
+            || { echo "Vulkan headers missing under $VULKAN_SDK"; ls -la "$VULKAN_SDK"; exit 1; }
+
+      - name: Verify Vulkan headers (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          test -f "$VULKAN_SDK/include/vulkan/vk_platform.h" \
+            || { echo "Vulkan headers missing under $VULKAN_SDK"; ls -la "$VULKAN_SDK"; exit 1; }
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -38,8 +53,12 @@ jobs:
             libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev \
             libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev
 
+      - name: Set up MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Configure CMake
-        run: cmake -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        run: cmake -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -G Ninja
 
       - name: Build
         run: cmake --build ${{ github.workspace }}/build --config ${{ matrix.build_type }} -j 4
@@ -52,5 +71,5 @@ jobs:
             build/gdr
             build/gdr.exe
             shaders/bin/
-            data/kitten.obj
+            shaders/*.cfg
           if-no-files-found: warn

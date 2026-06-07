@@ -19,10 +19,16 @@ jobs:
         submodules: recursive
 
     - name: Install Vulkan SDK
-      uses: humbletim/install-vulkan-sdk@v1.2
+      uses: jakoch/install-vulkan-sdk-action@v1
       with:
-        version: latest
+        install_runtime: true
+        vulkan_version: latest
         cache: true
+
+    - name: Verify Vulkan headers
+      run: |
+        test -f "$VULKAN_SDK/include/vulkan/vk_platform.h" \
+          || { echo "Vulkan headers missing under $VULKAN_SDK"; ls -la "$VULKAN_SDK"; exit 1; }
 
     - name: Install dependencies
       run: |
@@ -34,7 +40,7 @@ jobs:
         libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev \
         libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev \
         libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev
-      
+
     - name: Configure CMake
       run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
 
@@ -44,9 +50,9 @@ jobs:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: gdr-${{ runner.os }}-${{ matrix.build_type }}
+        name: gdr-${{ runner.os }}-${{ env.BUILD_TYPE }}
         path: |
           build/gdr
           shaders/bin/
-          data/kitten.obj
+          shaders/*.cfg
         if-no-files-found: warn
