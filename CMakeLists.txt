@@ -43,7 +43,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         glm::glm
         EnTT::EnTT
         volk::volk
+        quill::quill
         Tracy::TracyClient
+        SDL3_image::SDL3_image
         SPIRV-Headers::SPIRV-Headers
         GPUOpen::VulkanMemoryAllocator
 

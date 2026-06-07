@@ -37,3 +37,9 @@
 [submodule "vendors/ImGuizmo"]
 	path = vendors/ImGuizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo.git
+[submodule "vendors/sdl_image"]
+	path = vendors/sdl_image
+	url = https://github.com/libsdl-org/SDL_image.git
+[submodule "vendors/quill"]
+	path = vendors/quill
+	url = https://github.com/odygrd/quill.git
