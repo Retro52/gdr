@@ -1,6 +1,7 @@
 #include <camera_controller.hpp>
 #include <codegen/camera_controller.hpp>
 #include <codegen/imgui/gpu_profile_data.hpp>
+#include <codegen/scene/components.hpp>
 #include <editor/info.hpp>
 #include <imgui.h>
 #include <imgui/imex.hpp>
@@ -70,6 +71,7 @@ void editor::info_widget_context::draw() const
 {
     ImGui::SeparatorText("camera controller");
     codegen::draw(m_camera);
+    codegen::draw(m_camera.active_camera().get_component<transform_component>());
 
     ImGui::SeparatorText("gpu timings");
     codegen::draw(m_gpu_profile);

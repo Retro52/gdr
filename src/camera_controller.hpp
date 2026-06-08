@@ -97,10 +97,10 @@ struct camera_controller
                     camera_controller& self = *static_cast<camera_controller*>(user_data);
                     auto& transform         = self.m_camera.get_component<transform_component>();
 
-                    const glm::mat3 euler = glm::mat3_cast(transform.rotation);;
+                    const glm::mat3 euler = glm::mat3_cast(transform.rotation);
 
-                    self.yaw   = std::atan2(euler[2][0], euler[2][2]);;
-                    self.roll  = std::atan2(euler[0][1], euler[1][1]);;
+                    self.yaw   = std::atan2(euler[2][0], euler[2][2]);
+                    self.roll  = std::atan2(euler[0][1], euler[1][1]);
                     self.pitch = std::asin(glm::clamp(-euler[2][1], -1.0f, 1.0f));
 
                     self.update_rotation();
@@ -124,6 +124,8 @@ struct camera_controller
     }
 
     ~camera_controller() { m_queue.remove_watcher(this); }
+
+    const entity& active_camera() const { return m_camera; }
 
     void update(const f32 dt)
     {

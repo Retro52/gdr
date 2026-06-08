@@ -216,18 +216,18 @@ render::vk_renderer create_vk_renderer(window& app_window)
 
     constexpr auto features_table = render::rendering_features_table()
 #if !defined(NDEBUG)
-                                        .request(render::rendering_features_table::eValidation)
+                                        .request(render::feature_flag::eValidation)
 #endif
-                                        .request(render::rendering_features_table::eMeshShading)
-                                        .request(render::rendering_features_table::ePipelineStats)
-                                        .require(render::rendering_features_table::e8BitIntegers)
-                                        .require(render::rendering_features_table::e16BitTypes)
-                                        .require(render::rendering_features_table::eDrawIndirect)
-                                        .require(render::rendering_features_table::eDynamicRender)
-                                        .require(render::rendering_features_table::eSamplerMinMax)
-                                        .require(render::rendering_features_table::eBindlessTextures)
-                                        .require(render::rendering_features_table::eScalarBlockLayout)
-                                        .require(render::rendering_features_table::eSynchronization2);
+                                        .request(render::feature_flag::eMeshShading)
+                                        .request(render::feature_flag::ePipelineStats)
+                                        .require(render::feature_flag::e8BitIntegers)
+                                        .require(render::feature_flag::e16BitTypes)
+                                        .require(render::feature_flag::eDrawIndirect)
+                                        .require(render::feature_flag::eDynamicRender)
+                                        .require(render::feature_flag::eSamplerMinMax)
+                                        .require(render::feature_flag::eBindlessTextures)
+                                        .require(render::feature_flag::eScalarBlockLayout)
+                                        .require(render::feature_flag::eSynchronization2);
     return {
         render::instance_desc {
                                .app_name        = "Vulkan renderer",
@@ -265,9 +265,9 @@ int app::instance::run(const int argc, char* argv[])
 
     bool exit = false;
     bool mesh_shading_supported =
-        m_renderer.get_context().enabled_device_features.supported(render::rendering_features_table::eMeshShading);
+        m_renderer.get_context().enabled_device_features.supported(render::feature_flag::eMeshShading);
     bool pipeline_stats_supported =
-        m_renderer.get_context().enabled_device_features.supported(render::rendering_features_table::ePipelineStats);
+        m_renderer.get_context().enabled_device_features.supported(render::feature_flag::ePipelineStats);
 
     m_events_queue.add_watcher(
         event_type::request_close,
@@ -397,7 +397,7 @@ int app::instance::run(const int argc, char* argv[])
 
     entity editor_camera = client_scene.create_entity();
     editor_camera.add_component<id_component>(DEBUG_ONLY(id_component("editor camera")));
-    editor_camera.add_component<transform_component>();
+    editor_camera.add_component<transform_component>(transform_component {vec3(0, 1, 5), 1.0F, glm::quat()});
     editor_camera.add_component<camera_component>(camera_component {
         .near_plane     = 0.01F,
         .aspect_ratio   = 16.0F / 9.0F,

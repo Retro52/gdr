@@ -10,12 +10,12 @@
         __VA_ARGS__                                                                     \
     };                                                                                  \
                                                                                         \
-    constexpr u64 get_enum_values_count(const Name* /*enum*/)                           \
+    constexpr u64 enum_reflect_count(const Name* /*enum*/)                              \
     {                                                                                   \
         return reflection::enum_values_count(#__VA_ARGS__);                             \
     }                                                                                   \
                                                                                         \
-    inline const reflection::enum_value* get_enum_values(const Name* /* enum */)        \
+    inline const reflection::enum_value* enum_reflect_values(const Name* /* enum */)    \
     {                                                                                   \
         static const reflection::enum_value* values = []()                              \
         {                                                                               \
@@ -29,6 +29,68 @@
         }();                                                                            \
                                                                                         \
         return values;                                                                  \
+    }
+
+#define REGISTER_FLAGS(Name, ...)                                                       \
+    enum class Name : u32                                                               \
+    {                                                                                   \
+        __VA_ARGS__                                                                     \
+    };                                                                                  \
+                                                                                        \
+    constexpr u64 enum_reflect_count(const Name* /*enum*/)                              \
+    {                                                                                   \
+        return reflection::enum_values_count(#__VA_ARGS__);                             \
+    }                                                                                   \
+                                                                                        \
+    inline const reflection::enum_value* enum_reflect_values(const Name* /* enum */)    \
+    {                                                                                   \
+        static const reflection::enum_value* values = []()                              \
+        {                                                                               \
+            constexpr static u64 count = reflection::get_enum_values_count<Name>();     \
+            static cpp::stack_string names[count];                                      \
+            static reflection::enum_value result[count];                                \
+            static reflection::enum_counter<Name> __VA_ARGS__;                          \
+            static u32 integer_values[] = {__VA_ARGS__};                                \
+            reflection::parse_enum_values(#__VA_ARGS__, integer_values, names, result); \
+            return result;                                                              \
+        }();                                                                            \
+                                                                                        \
+        return values;                                                                  \
+    }                                                                                   \
+                                                                                        \
+    constexpr Name operator~(Name value)                                                \
+    {                                                                                   \
+        return static_cast<Name>(~static_cast<u32>(value));                             \
+    }                                                                                   \
+                                                                                        \
+    constexpr Name operator|(Name lhs, Name rhs)                                        \
+    {                                                                                   \
+        return static_cast<Name>(static_cast<u32>(lhs) | static_cast<u32>(rhs));        \
+    }                                                                                   \
+                                                                                        \
+    constexpr u32 operator|(u32 lhs, Name rhs)                                          \
+    {                                                                                   \
+        return lhs | static_cast<u32>(rhs);                                             \
+    }                                                                                   \
+                                                                                        \
+    constexpr u32 operator|(Name lhs, u32 rhs)                                          \
+    {                                                                                   \
+        return static_cast<u32>(lhs) | rhs;                                             \
+    }                                                                                   \
+                                                                                        \
+    constexpr Name operator&(Name lhs, Name rhs)                                        \
+    {                                                                                   \
+        return static_cast<Name>(static_cast<u32>(lhs) & static_cast<u32>(rhs));        \
+    }                                                                                   \
+                                                                                        \
+    constexpr u32 operator&(u32 lhs, Name rhs)                                          \
+    {                                                                                   \
+        return lhs & static_cast<u32>(rhs);                                             \
+    }                                                                                   \
+                                                                                        \
+    constexpr u32 operator&(Name lhs, u32 rhs)                                          \
+    {                                                                                   \
+        return static_cast<u32>(lhs) & rhs;                                             \
     }
 
 namespace reflection
@@ -64,16 +126,45 @@ namespace reflection
         inline static u32 s_counter;
     };
 
+    namespace detail
+    {
+        template<typename T>
+        constexpr u64 enum_values_count_adl()
+        {
+            return enum_reflect_count(static_cast<const T*>(nullptr));
+        }
+
+        template<typename T>
+        const enum_value* enum_values_adl()
+        {
+            return enum_reflect_values(static_cast<const T*>(nullptr));
+        }
+    }
+
     template<typename T>
     constexpr u64 get_enum_values_count()
     {
-        return get_enum_values_count(static_cast<const T*>(nullptr));
+        return detail::enum_values_count_adl<T>();
     }
 
     template<typename T>
     const enum_value* get_enum_values()
     {
-        return get_enum_values(static_cast<const T*>(nullptr));
+        return detail::enum_values_adl<T>();
+    }
+
+    template<typename T>
+    T get_enum_value_at(const u32 index)
+    {
+        assert2m(index < get_enum_values_count<T>(), "index out of range");
+        return static_cast<T>(get_enum_values<T>()[index].value);
+    }
+
+    template<typename T>
+    const char* get_enum_name_at(const u32 index)
+    {
+        assert2m(index < get_enum_values_count<T>(), "index out of range");
+        return get_enum_values<T>()[index].name;
     }
 
     template<typename T>

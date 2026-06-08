@@ -77,8 +77,6 @@ namespace fs
             return *this;
         }
 
-        bool operator==(const std::string& other) const { return m_path == other.c_str(); }
-
         constexpr bool operator==(const path& other) const { return m_path == other.m_path; }
 
         constexpr bool operator!=(const path& other) const { return m_path != other.m_path; }

@@ -2,60 +2,65 @@
 
 #include <cpp/alg_constexpr.hpp>
 #include <cpp/containers/heap_array.hpp>
+#include <reflection/enum.hpp>
 #include <render/platform/vk/vk_image.hpp>
 #include <window.hpp>
 
 namespace render
 {
+    // clang-format off
+    REGISTER_FLAGS(feature_flag,
+        eValidation        = 1 << 0,
+        eMeshShading       = 1 << 1,
+        eDynamicRender     = 1 << 2,
+        eSynchronization2  = 1 << 3,
+        eDrawIndirect      = 1 << 4,
+        e8BitIntegers      = 1 << 5,
+        ePipelineStats     = 1 << 6,
+        eSamplerMinMax     = 1 << 7,
+        eScalarBlockLayout = 1 << 8,
+        ePortabilitySubset = 1 << 9,
+        eBindlessTextures  = 1 << 10,
+        e16BitTypes        = 1 << 11,
+        eCOUNT
+    );
+    // clang-format on
+
     struct rendering_features_table
     {
-        enum flag : u32
+        [[nodiscard]] constexpr bool required(const feature_flag flag) const noexcept
         {
-            eValidation        = 1 << 0,
-            eMeshShading       = 1 << 1,
-            eDynamicRender     = 1 << 2,
-            eSynchronization2  = 1 << 3,
-            eDrawIndirect      = 1 << 4,
-            e8BitIntegers      = 1 << 5,
-            ePipelineStats     = 1 << 6,
-            eSamplerMinMax     = 1 << 7,
-            eScalarBlockLayout = 1 << 8,
-            ePortabilitySubset = 1 << 9,
-            eBindlessTextures  = 1 << 10,
-            e16BitTypes       = 1 << 11,
-            eCOUNT
-        };
+            return (flag & required_features) > 0;
+        }
 
-        [[nodiscard]] constexpr bool required(const flag flag) const noexcept { return (flag & required_features) > 0; }
-
-        [[nodiscard]] constexpr bool requested(const flag flag) const noexcept
+        [[nodiscard]] constexpr bool requested(const feature_flag flag) const noexcept
         {
             return (flag & requested_features) > 0 || required(flag);
         }
 
-        [[nodiscard]] constexpr bool supported(const flag flag) const noexcept
+        [[nodiscard]] constexpr bool supported(const feature_flag flag) const noexcept
         {
             return (flag & supported_features) > 0;
         }
 
-        [[nodiscard]] constexpr bool wanted(const flag flag) const noexcept
+        [[nodiscard]] constexpr bool wanted(const feature_flag flag) const noexcept
         {
             return (flag & supported_features) > 0 && requested(flag);
         }
 
-        constexpr rendering_features_table& require(const flag flag) noexcept
+        constexpr rendering_features_table& require(const feature_flag flag) noexcept
         {
-            required_features |= flag;
+            required_features = required_features | flag;
             return *this;
         }
 
-        constexpr rendering_features_table& request(const flag flag) noexcept
+        constexpr rendering_features_table& request(const feature_flag flag) noexcept
         {
-            requested_features |= flag;
+            requested_features = requested_features | flag;
             return *this;
         }
 
-        constexpr void set_supported(const flag flag, const bool supported = true) noexcept
+        constexpr void set_supported(const feature_flag flag, const bool supported = true) noexcept
         {
             supported_features = supported ? supported_features | flag : supported_features & ~flag;
         }
@@ -63,9 +68,9 @@ namespace render
         [[nodiscard]] constexpr bool all_required_supported() const noexcept
         {
             bool result = true;
-            for (u32 i = 0; i < cpp::cx_get_enum_bit_count(rendering_features_table::eCOUNT); ++i)
+            for (u32 i = 0; i < cpp::cx_get_enum_bit_count(feature_flag::eCOUNT); ++i)
             {
-                const auto feature = static_cast<flag>(1 << i);
+                const auto feature = static_cast<feature_flag>(1 << i);
                 result &= this->required(feature) ? this->supported(feature) : result;
             }
 

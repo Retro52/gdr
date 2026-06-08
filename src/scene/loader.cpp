@@ -1,36 +1,153 @@
+#include <SDL3/SDL_surface.h>
+
 #include <assert2.hpp>
 #include <cgltf.h>
 #include <ddspp.h>
 #include <janitor.hpp>
 #include <job/schedule_async.hpp>
 #include <job/wait_group.hpp>
+#include <log.hpp>
 #include <render/platform/vk/vk_utils.hpp>
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 #include <scene/loader.hpp>
 #include <scene/mesh_load.hpp>
 #include <scene/scene.hpp>
+#include <SDL3_image/SDL_image.h>
 
 #include <glm/gtc/type_ptr.inl>
+#include <type_traits>
+#include <variant>
+
+#include "reflection/enum.hpp"
 
 #ifdef Success
 #undef Success
 #endif
 
-#define CHECK(EXPR)                   \
-    if (EXPR != cgltf_result_success) \
-    {                                 \
-        assert2m(false, #EXPR);       \
-        return {};                    \
+#define CHECK(EXPR)                                                                  \
+    if (EXPR != cgltf_result_success)                                                \
+    {                                                                                \
+        LOG_WARNING("failed to read scene {}. failed expr: {}", path.c_str(), #EXPR) \
+        assert2m(false, #EXPR);                                                      \
+        return {};                                                                   \
     }
 
 namespace
 {
-    struct parsed_texture
+    struct dds_data
     {
         bytes data;
-        ddspp::Descriptor descriptor;
+        ddspp::Descriptor dds_descriptor;
     };
+
+    struct unified_tex_desc
+    {
+        u32 width          = 0;
+        u32 height         = 0;
+        u32 depth          = 0;
+        u32 data_size      = 0;
+        u32 mips_count     = 0;
+        u32 arrays_count   = 0;
+        u32 block_size     = 0;
+        u32 bits_per_block = 0;
+        VkFormat format    = VK_FORMAT_UNDEFINED;
+        const void* pdata  = nullptr;
+    };
+
+    REGISTER_ENUM(texture_usage, unknown, albedo, normal, metalic_roughness)
+
+    struct parsed_texture
+    {
+        texture_usage usage {texture_usage::unknown};
+        std::variant<dds_data, SDL_Surface*> desc;
+    };
+
+    texture_usage try_get_texture_usage(const cgltf_data* data, const cgltf_texture* texture)
+    {
+        if (!data || !data->materials || !data->textures)
+        {
+            return texture_usage::unknown;
+        }
+
+        auto is_either = [texture](const cgltf_texture_view& a, const cgltf_texture_view& b)
+        {
+            return (a.texture && a.texture == texture) || (b.texture && b.texture == texture);
+        };
+
+        for (u32 i = 0; i < data->materials_count; ++i)
+        {
+            auto& material = data->materials[i];
+
+            if (material.normal_texture.texture == texture)
+            {
+                return texture_usage::normal;
+            }
+
+            if (is_either(material.pbr_metallic_roughness.base_color_texture,
+                          material.pbr_specular_glossiness.diffuse_texture))
+            {
+                return texture_usage::albedo;
+            }
+
+            if (is_either(material.pbr_metallic_roughness.metallic_roughness_texture,
+                          material.pbr_specular_glossiness.specular_glossiness_texture))
+            {
+                return texture_usage::metalic_roughness;
+            }
+        }
+
+        return texture_usage::unknown;
+    }
+
+    unified_tex_desc desc_from_parse_result(const parsed_texture& parsed_texture)
+    {
+        unified_tex_desc result;
+        std::visit(
+            [&]<typename T>(T&& data)
+            {
+                using desc_t = std::remove_cvref_t<T>;
+                if constexpr (std::is_same_v<desc_t, dds_data>)
+                {
+                    result.width          = data.dds_descriptor.width;
+                    result.height         = data.dds_descriptor.height;
+                    result.depth          = data.dds_descriptor.depth;
+                    result.mips_count     = data.dds_descriptor.numMips;
+                    result.arrays_count   = data.dds_descriptor.arraySize;
+                    result.block_size     = data.dds_descriptor.blockHeight;
+                    result.bits_per_block = data.dds_descriptor.bitsPerPixelOrBlock;
+                    result.format         = render::vk_format_from_dxgi(data.dds_descriptor.format);
+                    result.pdata          = data.data.template get<u8>() + data.dds_descriptor.headerSize;
+                    result.data_size      = data.data.template length<u8>() - data.dds_descriptor.headerSize;
+                }
+                else if constexpr (std::is_same_v<desc_t, SDL_Surface*>)
+                {
+                    result.width        = data->w;
+                    result.height       = data->h;
+                    result.depth        = 1;
+                    result.mips_count   = 1;
+                    result.arrays_count = 1;
+                    result.pdata        = data->pixels;
+                    result.data_size    = data->pitch * data->h;
+                    result.format       = VK_FORMAT_R8G8B8A8_UNORM;
+                }
+                else
+                {
+                    assert2m(false, "Unsupported data type");
+                }
+            },
+            parsed_texture.desc);
+
+        if (parsed_texture.usage != texture_usage::unknown)
+        {
+            result.format = render::vk_format_force_color_space(result.format,
+                                                                parsed_texture.usage == texture_usage::albedo
+                                                                    ? render::color_space::srgb
+                                                                    : render::color_space::linear);
+        }
+
+        return result;
+    }
 
     u16 pack_oct(const vec3& data)
     {
@@ -63,13 +180,13 @@ static vec4 compute_bounding_sphere(const cpp::heap_array<mesh::raw_vertex>& mes
 }
 
 static loader::material build_material(const cgltf_data* data, const cgltf_material& material,
-                                       const u32 base_texture = 1)
+                                       const cpp::heap_array<render::vk_image>& textures, const u32 base_texture = 1)
 {
     loader::material mat {};
 
     auto tex_idx = [&](const cgltf_texture* texture) -> u32
     {
-        if (!texture)
+        if (!texture || textures[cgltf_texture_index(data, texture)].image == VK_NULL_HANDLE)
         {
             return 0;
         }
@@ -166,40 +283,72 @@ static cpp::heap_array<loader::prim_info> collect_primitives(const cgltf_data* d
     return result;
 }
 
-static result<parsed_texture> read_texture(const fs::path& path)
+static result<parsed_texture> read_texture(const fs::path& uri, texture_usage usage)
 {
     ZoneScoped;
-    const auto r_data = fs::read_file(path);
+
+    const auto base      = uri.parent() / uri.stem();
+    const auto full_path = (fs::exists(base.append(".dds")) ? base.append(".dds") : uri);
+
+    const auto r_data = fs::read_file(full_path);
     if (!r_data)
     {
+        LOG_WARNING("failed to load texture at {}: read file failed with '{}'", full_path.c_str(), r_data.message);
         return error("failed to open file");
     }
 
-    ddspp::Descriptor desc {};
-    ddspp::Result decode_r = ddspp::decode_header(r_data->get<u8>(), desc);
+    parsed_texture result;
+    result.usage = usage;
 
-    if (decode_r != ddspp::Result::Success)
+    if (std::memcmp(r_data->data(), "DDS ", 4) == 0)
     {
-        return error("failed to read texture as DDS");
+        ddspp::Descriptor desc {};
+        ddspp::Result decode_r = ddspp::decode_header(r_data->get<u8>(), desc);
+        if (decode_r != ddspp::Result::Success)
+        {
+            LOG_WARNING("failed to read texture {} (usage: {}). as DDS",
+                        uri.filename().c_str(),
+                        reflection::string_from_enum(usage));
+            return error("failed to read texture as DDS");
+        }
+
+        result.desc = dds_data {*r_data, desc};
+        return result;
     }
 
-    return parsed_texture {.data = *r_data, .descriptor = desc};
+    if (const auto io = SDL_IOFromConstMem(r_data->data(), r_data->size()))
+    {
+        SUMMON_JANITOR(SDL_CloseIO(io));
+        if (const auto sfc = IMG_Load_IO(io, false))
+        {
+            SUMMON_JANITOR(SDL_DestroySurface(sfc));
+            result.desc = SDL_ConvertSurface(sfc, SDL_PIXELFORMAT_RGBA32);
+            return result;
+        }
+
+        LOG_WARNING(
+            "failed to load texture {} (usage: {})", uri.filename().c_str(), reflection::string_from_enum(usage));
+        return error("failed to load texture from memory");
+    }
+
+    LOG_WARNING("failed to load texture {} (usage: {}). unsupported format?",
+                uri.filename().c_str(),
+                reflection::string_from_enum(usage));
+    return error("failed to load texture -- unsupported format?");
 }
 
 static result<render::vk_image> upload_texture(const parsed_texture& texture, const render::vk_renderer& renderer,
                                                const render::vk_buffer_transfer& scratch)
 {
-    auto& data = texture.data;
-    auto& desc = texture.descriptor;
-
+    const auto desc                           = desc_from_parse_result(texture);
     const VkImageCreateInfo image_create_info = {
         .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .pNext       = nullptr,
-        .imageType   = desc.type == ddspp::Texture2D ? VK_IMAGE_TYPE_2D : VK_IMAGE_TYPE_3D,
-        .format      = render::vk_format_from_dxgi(desc.format),
+        .imageType   = desc.depth > 1 ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D,
+        .format      = desc.format,
         .extent      = {desc.width, desc.height, desc.depth},
-        .mipLevels   = desc.numMips,
-        .arrayLayers = desc.arraySize,
+        .mipLevels   = desc.mips_count,
+        .arrayLayers = desc.arrays_count,
         .samples     = VK_SAMPLE_COUNT_1_BIT,
         .tiling      = VK_IMAGE_TILING_OPTIMAL,
         .usage       = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
@@ -213,16 +362,15 @@ static result<render::vk_image> upload_texture(const parsed_texture& texture, co
         return error(image_r.message);
     }
 
-    const u8* data_bytes = data.get<u8>() + desc.headerSize;
     render::upload_image(scratch,
                          *image_r,
-                         data_bytes,
-                         data.length<u8>() - desc.headerSize,
+                         static_cast<const u8*>(desc.pdata),
+                         desc.data_size,
                          desc.width,
                          desc.height,
-                         desc.numMips,
-                         desc.blockHeight,
-                         desc.bitsPerPixelOrBlock);
+                         desc.mips_count,
+                         desc.block_size,
+                         desc.bits_per_block);
     return *image_r;
 }
 
@@ -252,7 +400,7 @@ result<render::vk_image> loader::load_texture(const fs::path& path, const render
                                               const render::vk_buffer_transfer& scratch)
 {
     ZoneScoped;
-    if (const auto read_r = read_texture(path))
+    if (const auto read_r = read_texture(path, texture_usage::unknown))
     {
         return upload_texture(*read_r, renderer, scratch);
     }
@@ -265,8 +413,13 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
                                  cpp::heap_array<render::vk_image>& textures)
 {
     ZoneScoped;
+    LOG_INFO("loading GLTF scene {}", path.c_str());
+
     if (path.extension() != ".gltf" && path.extension() != ".glb")
     {
+        LOG_WARNING(
+            "loading non-gltf scenes not supported. supported file extensions: '.gltf', '.glb'. file extension: '{}'",
+            path.extension().c_str())
         return {};
     }
 
@@ -278,6 +431,13 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
 
     CHECK(cgltf_load_buffers(&options, data, path.c_str()));
     CHECK(cgltf_validate(data));
+
+    LOG_INFO("parsed GLTF scene {}; meshes={}; materials={}; textures={}; nodes={}",
+             path.c_str(),
+             data->meshes_count,
+             data->materials_count,
+             data->textures_count,
+             data->nodes_count);
 
     loader_context ctx;
 
@@ -299,8 +459,10 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
     const u64 prim_count = to_load.size();
     cpp::heap_array<mesh::raw_mesh> raw_meshes(prim_count);
 
-    job::wait_group wg(prim_count);
+    job::wait_group primitives_wg(prim_count);
     job::wait_group textures_wg(0);
+
+    LOG_INFO("loading {} primitives", prim_count);
 
     {
         ZoneScopedN("loader::load_scene::schedule_load_meshes");
@@ -314,7 +476,7 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
 #endif
                     raw_meshes[to_load[i].id] = mesh::build_mesh(*to_load[i].ptr);
                 },
-                wg);
+                primitives_wg);
         }
     }
 
@@ -326,27 +488,25 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
 
         for (u64 i = 0; i < data->textures_count; ++i)
         {
-            const auto texture = data->textures[i];
+            const auto& texture = data->textures[i];
             if (!texture.image->uri)
             {
                 continue;
             }
 
-            const auto tex_path  = fs::path(texture.image->uri);
-            const auto ext_swap  = tex_path.stem().append(".dds");
-            const auto full_path = path.parent() / tex_path.parent() / ext_swap;
-
             textures_wg.add(1);
             job::schedule_async(
-                [&, i, full_path]()
+                [&path, &textures_data, i, data]()
                 {
+                    const auto* tex = &data->textures[i];
+                    const auto uri  = path.parent() / fs::path(tex->image->uri);
 #if TRACY_ENABLE
                     const auto debug_name =
-                        cpp::big_stack_string::make_formatted("read texture: %s", full_path.c_str());
+                        cpp::big_stack_string::make_formatted("read texture: %s", uri.filename().c_str());
                     TracyMessage(debug_name.c_str(), debug_name.length());
 #endif
 
-                    if (auto res = read_texture(full_path))
+                    if (auto res = read_texture(uri, try_get_texture_usage(data, tex)))
                     {
                         textures_data[i] = std::move(*res);
                     }
@@ -369,10 +529,10 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
 
     for (u32 i = 0; i < data->materials_count; ++i)
     {
-        ctx.materials[i + 1] = build_material(data, data->materials[i]);
+        ctx.materials[i + 1] = build_material(data, data->materials[i], textures);
     }
 
-    wg.wait_till_done();
+    primitives_wg.wait_till_done();
     cpp::heap_array<prim_layout> layouts(prim_count);
 
     u64 total_vertices = 0;
@@ -399,6 +559,12 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
             total_payload += lod.raw_meshlets_payload.size();
         }
     }
+
+    LOG_INFO("scene geometry size: vertices={}; indices={}; meshlets={}; meshlet_data_size={}",
+             total_vertices,
+             total_indices,
+             total_meshlets,
+             total_payload);
 
     ctx.primitives.resize(prim_count);
     ctx.vertices.resize(total_vertices);

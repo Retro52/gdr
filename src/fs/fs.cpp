@@ -6,6 +6,11 @@
 
 #include <filesystem>
 
+bool fs::exists(const fs::path& path)
+{
+    return std::filesystem::exists(path.c_str());
+}
+
 result<bytes> fs::read_file(const fs::path& path)
 {
     ZoneScoped;

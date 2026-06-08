@@ -7,9 +7,9 @@
 
 struct bytes
 {
-    explicit bytes() = default;
+    bytes() = default;
 
-    explicit bytes(const u64 size)
+    bytes(const u64 size)
         : m_size(size)
         , m_memory(new u8[size])
     {

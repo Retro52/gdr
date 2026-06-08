@@ -178,18 +178,18 @@ namespace cpp
             return *this;
         }
 
-        constexpr stack_string operator+(const char* other) const
+        constexpr auto operator+(const char* other) const
         {
-            stack_string result;
+            stack_string_base result;
             result += *this;
             result += other;
             return result;
         }
 
         template<u64 No>
-        constexpr stack_string operator+(const stack_string_base<No>& other) const
+        constexpr auto operator+(const stack_string_base<No>& other) const
         {
-            stack_string result;
+            stack_string_base<cpp::max(N, No)> result;
             result += *this;
             result += other;
             return result;

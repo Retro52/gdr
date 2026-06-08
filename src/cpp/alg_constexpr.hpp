@@ -62,10 +62,11 @@ namespace cpp
         return !required || supported;
     }
 
-    constexpr u32 cx_get_enum_bit_count(u64 enum_count_value) noexcept
+    template<typename T>
+    constexpr u32 cx_get_enum_bit_count(T enum_count_value) noexcept
     {
         u32 count      = 0;
-        auto prev_flag = enum_count_value - 1;
+        auto prev_flag = static_cast<u64>(enum_count_value) - 1;
 
         while (prev_flag > 0)
         {

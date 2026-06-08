@@ -6,6 +6,8 @@
 
 namespace fs
 {
+    bool exists(const fs::path& path);
+
     result<bytes> read_file(const fs::path& path);
 
     void write_file(const fs::path& path, const bytes& data);
