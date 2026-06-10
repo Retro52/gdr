@@ -47,10 +47,11 @@ namespace
     struct render_pc_data
     {
         glm::mat4 vp;
-        vec3 sun_direction;
-        vec3 sun_color;
+        vec4 sun_color;
         vec3 camera_pos;
         debug_mode mode;
+        vec3 sun_direction;
+        f32 camera_exposure;
     };
 
     void build_frustum(frame_cull_data& data, const glm::mat4& iproj, const glm::mat4& iview)
@@ -419,7 +420,7 @@ int app::instance::run(const int argc, char* argv[])
     {
         sun = client_scene.create_entity();
         sun.add_component<id_component>(DEBUG_ONLY(id_component("sun")));
-        sun.add_component<directional_light_component>(vec3(1));
+        sun.add_component<directional_light_component>(vec3(1), 5500.0F);
 
         auto& t    = sun.emplace_component<transform_component>();
         t.rotation = glm::quat(vec3(0, 1, 0));
@@ -520,6 +521,7 @@ int app::instance::run(const int argc, char* argv[])
 
     debug_mode draw_debug_mode {debug_mode::shaded};
 
+    f32 camera_exposure           = 10.0F;
     bool freeze_cull_data         = false;
     bool enable_vsync             = m_renderer.get_vsync();
     bool enable_fullscreen        = m_window.get_fullscreen();
@@ -728,11 +730,14 @@ int app::instance::run(const int argc, char* argv[])
                     render_pipeline.bind(buffer);
                     render_pipeline.push_constant(
                         buffer,
-                        render_pc_data {freeze_cull_data ? camera_proj * debug_camera_view : camera_proj_view,
-                                        sun_direction,
-                                        sun_data.rgb_color,
-                                        transform_component(glm::inverse(debug_camera_view)).position,
-                                        draw_debug_mode});
+                        render_pc_data {
+                            freeze_cull_data ? camera_proj * debug_camera_view : camera_proj_view,
+                            vec4(sun_data.rgb_color, sun_data.intensity),
+                            transform_component(glm::inverse(debug_camera_view)).position,
+                            draw_debug_mode,
+                            sun_direction,
+                            camera_exposure,
+                        });
 
                     ZoneScopedN("draw last frame occluders");
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw last frame occluders"));
@@ -796,12 +801,15 @@ int app::instance::run(const int argc, char* argv[])
                     render_pipeline.bind(buffer);
                     render_pipeline.push_constant(
                         buffer,
-                        render_pc_data {camera_proj_view,
-                                        sun_direction,
-                                        sun_data.rgb_color,
-                                        freeze_cull_data ? transform_component(glm::inverse(debug_camera_view)).position
-                                                         : camera_transform.position,
-                                        draw_debug_mode});
+                        render_pc_data {
+                            camera_proj_view,
+                            vec4(sun_data.rgb_color, sun_data.intensity),
+                            freeze_cull_data ? transform_component(glm::inverse(debug_camera_view)).position
+                                             : camera_transform.position,
+                            draw_debug_mode,
+                            sun_direction,
+                            camera_exposure,
+                        });
 
                     draw_scene(buffer, render_pipeline, frame_cull_data_buffer.buffer);
                     vkCmdEndRendering(buffer);
@@ -846,12 +854,15 @@ int app::instance::run(const int argc, char* argv[])
                     render_pipeline.bind(buffer);
                     render_pipeline.push_constant(
                         buffer,
-                        render_pc_data {camera_proj_view,
-                                        sun_direction,
-                                        sun_data.rgb_color,
-                                        freeze_cull_data ? transform_component(glm::inverse(debug_camera_view)).position
-                                                         : camera_transform.position,
-                                        draw_debug_mode});
+                        render_pc_data {
+                            camera_proj_view,
+                            vec4(sun_data.rgb_color, sun_data.intensity),
+                            freeze_cull_data ? transform_component(glm::inverse(debug_camera_view)).position
+                                             : camera_transform.position,
+                            draw_debug_mode,
+                            sun_direction,
+                            camera_exposure,
+                        });
 
                     ZoneScopedN("draw new objects");
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw new objects"));
@@ -947,6 +958,8 @@ int app::instance::run(const int argc, char* argv[])
                             ImGui::DragFloat3("Direction", glm::value_ptr(euler));
                             sun_transform.rotation = glm::quat(glm::radians(euler));
 
+                            ImGui::DragFloat("Intensity (lm/m^2)", &sun_data.intensity);
+                            ImGui::DragFloat("Camera exposure", &camera_exposure);
                             ImGui::ColorEdit3(
                                 "Color", &sun_data.rgb_color.x, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
                         }

@@ -30,10 +30,11 @@ layout (binding = 0, set = 1) uniform texture2D textures[];
 layout (scalar, push_constant) uniform constants
 {
     mat4 vp;
-    vec3 sun_direction;
-    vec3 sun_color;
+    vec4 sun_color;
     vec3 camera_pos;
     uint debug_mode;
+    vec3 sun_direction;
+    float camera_exposure;
 } pc;
 
 
@@ -153,8 +154,9 @@ void main()
     vec3 diffuse = (vec3(1.0F) - fresnel) * (1.0F - metallic);
     vec3 specular = pbr_specular(fresnel, ndf, geom, n_dot_v, n_dot_l);
 
-    const float kIntensity = 5.0F;
-    vec3 sun_color_hdr = pc.sun_color * kIntensity;
+    const float ev100 = 1.0 / (1.2 * exp2(pc.camera_exposure));
+
+    vec3 sun_color_hdr = pc.sun_color.rgb * pc.sun_color.w * ev100;
     vec3 color = (diffuse * albedo / kPI + specular) * sun_color_hdr * n_dot_l + ambient * albedo;
 
 #if SHADERS_DEBUG

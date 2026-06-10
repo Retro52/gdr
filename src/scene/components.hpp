@@ -25,8 +25,8 @@ struct transform_component
 struct directional_light_component
 {
     vec3 rgb_color;
+    f32 intensity {0.0F};
 };
-
 
 /// @imgui
 struct id_component

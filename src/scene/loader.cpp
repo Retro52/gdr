@@ -432,6 +432,16 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
     CHECK(cgltf_load_buffers(&options, data, path.c_str()));
     CHECK(cgltf_validate(data));
 
+    for (u32 i = 0; i < data->extensions_used_count; ++i)
+    {
+        LOG_WARNING("scene uses an extension: {}", data->extensions_used[i])
+    }
+
+    for (u32 i = 0; i < data->extensions_required_count; ++i)
+    {
+        LOG_WARNING("scene requires an extension: {}", data->extensions_required[i])
+    }
+
     LOG_INFO("parsed GLTF scene {}; meshes={}; materials={}; textures={}; nodes={}",
              path.c_str(),
              data->meshes_count,
@@ -651,6 +661,8 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
         if (node->light && node->light->type == cgltf_light_type_directional)
         {
             auto& component     = entity.emplace_component<directional_light_component>();
+
+            component.intensity = node->light->intensity;
             component.rgb_color = {node->light->color[0], node->light->color[1], node->light->color[2]};
         }
 
