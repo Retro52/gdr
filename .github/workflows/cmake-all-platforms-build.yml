@@ -71,5 +71,5 @@ jobs:
             build/gdr
             build/gdr.exe
             shaders/bin/
-            shaders/*.cfg
+            shaders/*.json
           if-no-files-found: warn
