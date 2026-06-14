@@ -1,10 +1,11 @@
-# Gpu Driven Renderer
+# GPU Driven Renderer
 
 ![preview](.github/assets/preview.png "Bistro scene (by Amazon Lumberyard")
 
 C++20/Vulkan GPU-driven renderer focused on modern real-time rendering architecture.
-Implements GPU-side visibility culling, Hi-Z occlusion culling, indirect draw generation, bindless-style resource access, 
-textures support, and meshlet (cluster) rendering experiments (meshlets occlusion culling, cone culling, etc.).
+Implements visibility buffer rendering, GPU-side visibility culling, Hi-Z occlusion culling, indirect draw generation, 
+bindless-style resource access, textures support, and meshlet (cluster) rendering experiments 
+(meshlets occlusion culling, cone culling, etc.).
 
 ## Building
 
@@ -25,7 +26,8 @@ cd build
 
 ## Compatible GPUs:
 
-Mesh shading is not required to run the program. However, the following Vulkan capabilities are required by default:
+Mesh shading is not required to run the program, although the performance is better with it.
+However, the following Vulkan capabilities are required by default:
 
 * 8-bit integer storage buffer access
 * 16-bit storage and uniform buffer types
@@ -43,4 +45,4 @@ but they are untested due to lack of access to such hardware.
 
 ## License
 
-MIT License. Portions of the fiber platform code (`src/job/fibers/platform/posix/`) are derived from [Google's Marl](https://github.com/google/marl) and are licensed under Apache-2.0. See [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) for details.
+MIT License. Portions of the fiber platform code (`src/job/fibers/platform/posix/`) are derived from [Google's Marl](https://github.com/google/marl) and are licensed under Apache-2.0. See [third party notice](THIRD_PARTY_NOTICES) for details.
