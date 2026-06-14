@@ -38,23 +38,10 @@
 
 namespace
 {
-    using frame_cull_data = shader_types::FrameCullData;
+    REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_specular, uv, normal, tangent, world_pos, color, metallic,
+                  roughness, albedo_texture, normal_texture, omr_texture, triangle_id, instance_id);
 
-    REGISTER_ENUM(debug_mode, shaded, diffuse_factor, mr_factor, metallic, roughness, albedo_texture, normal_texture,
-                  mr_texture, uv, normal, tangent, world_pos, material_index, material_type, meshlet_index, white_lit,
-                  white_diffuse, white_specular);
-
-    struct render_pc_data
-    {
-        glm::mat4 vp;
-        vec4 sun_color;
-        vec3 camera_pos;
-        debug_mode mode;
-        vec3 sun_direction;
-        f32 camera_exposure;
-    };
-
-    void build_frustum(frame_cull_data& data, const glm::mat4& iproj, const glm::mat4& iview)
+    void build_frustum(shader_types::FrameCullData& data, const glm::mat4& iproj, const glm::mat4& iview)
     {
         ZoneScoped;
 
@@ -219,8 +206,10 @@ render::vk_renderer create_vk_renderer(window& app_window)
 #if !defined(NDEBUG)
                                         .request(render::feature_flag::eValidation)
 #endif
-                                        .request(render::feature_flag::eMeshShading)
+#if !NO_PERF_QUERY
                                         .request(render::feature_flag::ePipelineStats)
+#endif
+                                        .request(render::feature_flag::eMeshShading)
                                         .require(render::feature_flag::e8BitIntegers)
                                         .require(render::feature_flag::e16BitTypes)
                                         .require(render::feature_flag::eDrawIndirect)
@@ -259,6 +248,9 @@ int app::instance::run(const int argc, char* argv[])
                                                       m_renderer.get_context().device,
                                                       m_renderer.get_context().allocator);
 
+    vis_buffer_data vis_buffer = create_vis_buffer_data(
+        m_window.get_size_in_px(), m_renderer.get_context().device, m_renderer.get_context().allocator);
+
     depth_pyramid_data depth_pyramid = create_depth_pyramid(m_window.get_size_in_px(),
                                                             VK_FORMAT_R32_SFLOAT,
                                                             m_renderer.get_context().device,
@@ -292,9 +284,11 @@ int app::instance::run(const int argc, char* argv[])
     struct resize_context
     {
         render::vk_renderer& renderer;
+
+        vis_buffer_data& vis_buffer;
         render::vk_image& depth_image;
         depth_pyramid_data& depth_pyramid;
-    } resize_ctx(m_renderer, depth_image, depth_pyramid);
+    } resize_ctx(m_renderer, vis_buffer, depth_image, depth_pyramid);
 
     m_events_queue.add_watcher(
         event_type::window_size_changed,
@@ -319,6 +313,12 @@ int app::instance::run(const int argc, char* argv[])
                                                      VK_FORMAT_R32_SFLOAT,
                                                      ctx.renderer.get_context().device,
                                                      ctx.renderer.get_context().allocator);
+
+            render::destroy_image(
+                ctx.renderer.get_context().device, ctx.renderer.get_context().allocator, ctx.vis_buffer.vis_buffer_img);
+
+            ctx.vis_buffer = create_vis_buffer_data(
+                payload.window.size_px, ctx.renderer.get_context().device, ctx.renderer.get_context().allocator);
         },
         &resize_ctx);
 
@@ -331,15 +331,21 @@ int app::instance::run(const int argc, char* argv[])
                                                                   VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
                                                                   16.0F);
 
+    VkSampler depth_texture_sampler = *render::create_sampler(m_renderer.get_context().device,
+                                                              VK_FILTER_NEAREST,
+                                                              VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                                                              VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER);
+
     pso_data pipelines;
     pipelines.load(m_renderer, bindless_textures_desc_set);
 
 #if !NO_EDITOR
-    imgui_layer editor(m_window, m_renderer);
+    imgui_layer editor(m_window, m_renderer, pipelines[pso_id::imgui_blit]);
 #endif
 
     render::vk_scene_geometry_pool geometry_pool {
-        .index      = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+        .index = render::vk_shared_buffer(
+            m_renderer, 128_MB, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .vertex     = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .primitives = render::vk_shared_buffer(m_renderer, 1_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .instances  = render::vk_shared_buffer(m_renderer, 48_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
@@ -454,6 +460,7 @@ int app::instance::run(const int argc, char* argv[])
         *render::create_query_pool(m_renderer.get_context().device, kQueryPoolCount, VK_QUERY_TYPE_TIMESTAMP);
 
     render::vk_query pipeline_statistics_query;
+#if !NO_PERF_QUERY
     if (pipeline_stats_supported)
     {
         pipeline_statistics_query =
@@ -465,6 +472,7 @@ int app::instance::run(const int argc, char* argv[])
                                                          | VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT
                                                          | VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT);
     }
+#endif
 
     render::vk_buffer draw_count_buffer = *render::create_buffer(
         sizeof(u32[3]),
@@ -499,11 +507,18 @@ int app::instance::run(const int argc, char* argv[])
         m_renderer.get_context().allocator,
         0);
 
-    render::vk_mapped_buffer frame_cull_data_buffers[3];
-    for (u32 i = 0; i < 3; i++)
+    cpp::heap_array<render::vk_mapped_buffer> world_data_buffers(m_renderer.get_frames_in_flight());
+    cpp::heap_array<render::vk_mapped_buffer> frame_cull_data_buffers(m_renderer.get_frames_in_flight());
+
+    for (u32 i = 0; i < m_renderer.get_frames_in_flight(); i++)
     {
+        world_data_buffers[i] = *render::create_buffer_mapped(sizeof(shader_types::FrameWorldData),
+                                                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                                              m_renderer.get_context().allocator,
+                                                              VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+
         frame_cull_data_buffers[i] =
-            *render::create_buffer_mapped(sizeof(frame_cull_data),
+            *render::create_buffer_mapped(sizeof(shader_types::FrameCullData),
                                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                           m_renderer.get_context().allocator,
                                           VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
@@ -535,7 +550,7 @@ int app::instance::run(const int argc, char* argv[])
     f64 last_frame_time = get_time();
     camera_controller controller(m_events_queue, camera);
 
-    render::debug::frustum_renderer frustum_renderer(m_renderer);
+    render::debug::frustum_renderer frustum_renderer(pipelines[pso_id::frustum_debug]);
 
 #if !NO_EDITOR
     editor::hierarchy_window_context hierarchy_window_context;
@@ -546,11 +561,11 @@ int app::instance::run(const int argc, char* argv[])
     };
 #endif
 
-    auto draw_scene = [&](VkCommandBuffer cmd, const render::vk_pipeline& pipeline, VkBuffer frame_cull_data)
+    auto draw_scene = [&](VkCommandBuffer cmd, const render::vk_pipeline& pipeline)
     {
         ZoneScopedN("app.instance.run.draw_scene");
 
-        constexpr u32 kMaxSetZeroBindings = 12;
+        constexpr u32 kMaxSetZeroBindings = 16;
         render::vk_descriptor_info render_bindings[kMaxSetZeroBindings];
 
         u32 curr_bind  = 0;
@@ -560,18 +575,18 @@ int app::instance::run(const int argc, char* argv[])
             render_bindings[curr_bind++] = next;
         };
 
+        bind_next(geometry_pool.vertex.buffer.buffer);
         bind_next(geometry_pool.materials.buffer.buffer);
         bind_next(render::vk_descriptor_info(bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED));
-        bind_next(geometry_pool.vertex.buffer.buffer);
+        bind_next(geometry_pool.meshlets.buffer.buffer);
+        bind_next(geometry_pool.meshlets_payload.buffer.buffer);
+        bind_next(geometry_pool.primitives.buffer.buffer);
+        bind_next(geometry_pool.instances.buffer.buffer);
 
         if (enable_meshlets_pipeline)
         {
-            bind_next(geometry_pool.meshlets.buffer.buffer);
-            bind_next(geometry_pool.meshlets_payload.buffer.buffer);
-            bind_next(geometry_pool.primitives.buffer.buffer);
-            bind_next(geometry_pool.instances.buffer.buffer);
             bind_next(meshlets_draw_indirect_buffer.buffer);
-            bind_next(frame_cull_data);
+            bind_next(frame_cull_data_buffers[m_renderer.get_frame_index()].buffer);
             bind_next(meshlets_visibility_buffer.buffer);
             bind_next(
                 render::vk_descriptor_info(depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL));
@@ -583,7 +598,6 @@ int app::instance::run(const int argc, char* argv[])
         }
         else
         {
-            bind_next(geometry_pool.instances.buffer.buffer);
             bind_next(indexed_draw_indirect_buffer.buffer);
 
             pipeline.push_descriptor_set(cmd, render_bindings);
@@ -651,17 +665,18 @@ int app::instance::run(const int argc, char* argv[])
                     auto view = camera_component::get_view_matrix(camera_transform.position, camera_transform.rotation);
                     debug_camera_view = view;
 
-                    frame_cull_data fcd {.pyramid_size  = depth_pyramid.base_size,
-                                         .viewport_size = m_window.get_size_in_px(),
-                                         .draw_count    = static_cast<u32>(stats.primitives),
-                                         .flags         = client_render_settings.flags};
+                    shader_types::FrameCullData fcd {.pyramid_size  = depth_pyramid.base_size,
+                                                     .viewport_size = m_window.get_size_in_px(),
+                                                     .draw_count    = static_cast<u32>(stats.primitives),
+                                                     .flags         = client_render_settings.flags};
                     build_frustum(fcd, projection, view);
-                    (*static_cast<frame_cull_data*>(frame_cull_data_buffer.mapped)) = fcd;
+                    (*static_cast<shader_types::FrameCullData*>(frame_cull_data_buffer.mapped)) = fcd;
                 }
                 else
                 {
-                    static_cast<frame_cull_data*>(frame_cull_data_buffer.mapped)->view  = debug_camera_view;
-                    static_cast<frame_cull_data*>(frame_cull_data_buffer.mapped)->flags = client_render_settings.flags;
+                    static_cast<shader_types::FrameCullData*>(frame_cull_data_buffer.mapped)->view = debug_camera_view;
+                    static_cast<shader_types::FrameCullData*>(frame_cull_data_buffer.mapped)->flags =
+                        client_render_settings.flags;
                 }
 
                 camera_proj = camera_data.get_projection_matrix();
@@ -672,6 +687,15 @@ int app::instance::run(const int argc, char* argv[])
                 auto& sun_data      = sun.get_component<directional_light_component>();
 
                 auto sun_direction = glm::normalize(glm::mat3_cast(sun_transform.rotation) * vec3(0, 1, 0));
+
+                auto& world_data_buffer = world_data_buffers[m_renderer.get_frame_index()];
+                (*static_cast<shader_types::FrameWorldData*>(world_data_buffer.mapped)) = shader_types::FrameWorldData {
+                    .sun_color       = {sun_data.rgb_color, sun_data.intensity},
+                    .camera_pos      = camera_transform.position,
+                    .debug_mode      = static_cast<u32>(draw_debug_mode),
+                    .sun_direction   = sun_direction,
+                    .camera_exposure = camera_exposure,
+                };
 
                 {
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "cull last frame occluders"));
@@ -707,13 +731,16 @@ int app::instance::run(const int argc, char* argv[])
                                          VK_IMAGE_LAYOUT_UNDEFINED,
                                          VK_IMAGE_LAYOUT_GENERAL);
 
+                render::transition_image(
+                    buffer, vis_buffer.vis_buffer_img.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
                 render::transition_image(buffer,
                                          depth_image.image,
                                          VK_IMAGE_LAYOUT_UNDEFINED,
                                          VK_IMAGE_LAYOUT_GENERAL,
                                          VK_IMAGE_ASPECT_DEPTH_BIT);
                 begin_rendering(buffer,
-                                m_renderer.get_frame_swapchain_image().image_view,
+                                vis_buffer.vis_buffer_img.view,
                                 depth_image.view,
                                 VK_ATTACHMENT_LOAD_OP_CLEAR,
                                 VK_ATTACHMENT_STORE_OP_STORE,
@@ -728,21 +755,15 @@ int app::instance::run(const int argc, char* argv[])
                     const auto& render_pipeline = enable_meshlets_pipeline ? pipelines[pso_id::task_render_pipeline]
                                                                            : pipelines[pso_id::indexed_render_pipeline];
                     render_pipeline.bind(buffer);
-                    render_pipeline.push_constant(
-                        buffer,
-                        render_pc_data {
-                            freeze_cull_data ? camera_proj * debug_camera_view : camera_proj_view,
-                            vec4(sun_data.rgb_color, sun_data.intensity),
-                            transform_component(glm::inverse(debug_camera_view)).position,
-                            draw_debug_mode,
-                            sun_direction,
-                            camera_exposure,
-                        });
+                    render_pipeline.push_constant(buffer,
+                                                  shader_types::DrawPushConstants {freeze_cull_data
+                                                                                       ? camera_proj * debug_camera_view
+                                                                                       : camera_proj_view});
 
                     ZoneScopedN("draw last frame occluders");
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw last frame occluders"));
 
-                    draw_scene(buffer, render_pipeline, frame_cull_data_buffer.buffer);
+                    draw_scene(buffer, render_pipeline);
                 }
 
                 pipeline_statistics_query.end(buffer, 0);
@@ -790,7 +811,7 @@ int app::instance::run(const int argc, char* argv[])
                                            "draw last frame occluders from an actual perspective"));
 
                     begin_rendering(buffer,
-                                    m_renderer.get_frame_swapchain_image().image_view,
+                                    vis_buffer.vis_buffer_img.view,
                                     depth_image.view,
                                     VK_ATTACHMENT_LOAD_OP_CLEAR,
                                     VK_ATTACHMENT_STORE_OP_STORE,
@@ -799,19 +820,9 @@ int app::instance::run(const int argc, char* argv[])
                     const auto& render_pipeline = enable_meshlets_pipeline ? pipelines[pso_id::task_render_pipeline]
                                                                            : pipelines[pso_id::indexed_render_pipeline];
                     render_pipeline.bind(buffer);
-                    render_pipeline.push_constant(
-                        buffer,
-                        render_pc_data {
-                            camera_proj_view,
-                            vec4(sun_data.rgb_color, sun_data.intensity),
-                            freeze_cull_data ? transform_component(glm::inverse(debug_camera_view)).position
-                                             : camera_transform.position,
-                            draw_debug_mode,
-                            sun_direction,
-                            camera_exposure,
-                        });
+                    render_pipeline.push_constant(buffer, shader_types::DrawPushConstants(camera_proj_view));
 
-                    draw_scene(buffer, render_pipeline, frame_cull_data_buffer.buffer);
+                    draw_scene(buffer, render_pipeline);
                     vkCmdEndRendering(buffer);
                 }
 
@@ -852,30 +863,20 @@ int app::instance::run(const int argc, char* argv[])
                                                     ? pipelines[pso_id::task_render_late_pipeline]
                                                     : pipelines[pso_id::indexed_render_pipeline];
                     render_pipeline.bind(buffer);
-                    render_pipeline.push_constant(
-                        buffer,
-                        render_pc_data {
-                            camera_proj_view,
-                            vec4(sun_data.rgb_color, sun_data.intensity),
-                            freeze_cull_data ? transform_component(glm::inverse(debug_camera_view)).position
-                                             : camera_transform.position,
-                            draw_debug_mode,
-                            sun_direction,
-                            camera_exposure,
-                        });
+                    render_pipeline.push_constant(buffer, shader_types::DrawPushConstants(camera_proj_view));
 
                     ZoneScopedN("draw new objects");
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw new objects"));
 
                     begin_rendering(buffer,
-                                    m_renderer.get_frame_swapchain_image().image_view,
+                                    vis_buffer.vis_buffer_img.view,
                                     depth_image.view,
                                     VK_ATTACHMENT_LOAD_OP_LOAD,
                                     VK_ATTACHMENT_STORE_OP_STORE,
                                     m_renderer.get_scissor());
 
                     pipeline_statistics_query.begin(buffer, 1, 0);
-                    draw_scene(buffer, render_pipeline, frame_cull_data_buffer.buffer);
+                    draw_scene(buffer, render_pipeline);
                     pipeline_statistics_query.end(buffer, 1);
 
                     if (freeze_cull_data)
@@ -884,6 +885,47 @@ int app::instance::run(const int argc, char* argv[])
                     }
 
                     vkCmdEndRendering(buffer);
+                }
+
+                {
+                    ZoneScopedN("Resolve pass");
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "vb resolve"));
+
+                    const render::vk_descriptor_info cull_pass_bindings[] = {
+                        render::vk_descriptor_info(
+                            VK_NULL_HANDLE, m_renderer.get_frame_swapchain_image().image_view, VK_IMAGE_LAYOUT_GENERAL),
+                        render::vk_descriptor_info(
+                            VK_NULL_HANDLE, vis_buffer.vis_buffer_img.view, VK_IMAGE_LAYOUT_GENERAL),
+                        geometry_pool.index.buffer.buffer,
+                        geometry_pool.vertex.buffer.buffer,
+                        geometry_pool.meshlets.buffer.buffer,
+                        geometry_pool.meshlets_payload.buffer.buffer,
+                        geometry_pool.primitives.buffer.buffer,
+                        geometry_pool.instances.buffer.buffer,
+                        geometry_pool.materials.buffer.buffer,
+                        world_data_buffer.buffer,
+                        render::vk_descriptor_info(
+                            bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED),
+                        render::vk_descriptor_info(depth_texture_sampler, depth_image.view, VK_IMAGE_LAYOUT_GENERAL),
+                    };
+
+                    const render::vk_pipeline& cull_pass =
+                        pipelines[enable_meshlets_pipeline ? pso_id::mesh_resolve_pipeline
+                                                           : pso_id::vert_resolve_pipeline];
+
+                    cull_pass.bind(buffer);
+                    cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
+                    cull_pass.bind_descriptor_set(buffer, bindless_textures_desc_set);
+
+                    cull_pass.push_constant(buffer, shader_types::DrawPushConstants(camera_proj_view));
+
+                    cull_pass.dispatch(buffer, m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1);
+
+                    render::cmd_stage_barrier(buffer,
+                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                              VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                              VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                              VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
                 }
 
 #if !NO_EDITOR
@@ -1121,10 +1163,10 @@ int app::instance::run(const int argc, char* argv[])
 
     vkDeviceWaitIdle(m_renderer.get_context().device);
 
-    frustum_renderer.shutdown(m_renderer);
-
     pipelines.shutdown(m_renderer);
     render::destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, depth_image);
+    render::destroy_image(
+        m_renderer.get_context().device, m_renderer.get_context().allocator, vis_buffer.vis_buffer_img);
     destroy_depth_pyramid(depth_pyramid, m_renderer.get_context().device, m_renderer.get_context().allocator);
 
     render::destroy_query_pool(m_renderer.get_context().device, timestamp_query_pool);
@@ -1156,6 +1198,7 @@ int app::instance::run(const int argc, char* argv[])
         render::destroy_buffer_mapped(m_renderer.get_context().allocator, buffer);
     }
 
+    vkDestroySampler(m_renderer.get_context().device, depth_texture_sampler, nullptr);
     vkDestroySampler(m_renderer.get_context().device, bindless_textures_sampler, nullptr);
     for (auto& texture : textures)
     {

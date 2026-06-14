@@ -2,9 +2,9 @@
 
 #include <cpp/hash/crc_hash.hpp>
 #include <pod_types.hpp>
+#include <render/platform/vk/vk_descriptor_set.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
-#include <render/platform/vk/vk_descriptor_set.hpp>
 
 #include <unordered_map>
 
@@ -12,6 +12,12 @@ namespace app
 {
     enum class pso_id : u32
     {
+        imgui_blit       = "imgui_blit"_crc32,
+        frustum_debug    = "frustum_debug"_crc32,
+
+        mesh_resolve_pipeline = "mesh_resolve_pipeline"_crc32,
+        vert_resolve_pipeline = "vert_resolve_pipeline"_crc32,
+
         task_cull_pipeline           = "task_cull_pipeline"_crc32,
         task_render_pipeline         = "task_render_pipeline"_crc32,
         task_render_late_pipeline    = "task_render_late_pipeline"_crc32,

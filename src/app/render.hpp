@@ -7,6 +7,11 @@
 
 namespace app
 {
+    struct vis_buffer_data
+    {
+        render::vk_image vis_buffer_img;
+    };
+
     struct depth_pyramid_data
     {
         VkImageView views[12] {};
@@ -24,6 +29,8 @@ namespace app
     render::vk_image create_depth_image(const ivec2& size, VkFormat format, VkDevice device, VmaAllocator allocator);
 
     void destroy_depth_pyramid(depth_pyramid_data& pyramid, VkDevice device, VmaAllocator allocator);
+
+    vis_buffer_data create_vis_buffer_data(const ivec2& size, VkDevice device, VmaAllocator allocator);
 
     depth_pyramid_data create_depth_pyramid(const ivec2& size, VkFormat format, VkDevice device,
                                             VmaAllocator allocator);

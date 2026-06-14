@@ -26,7 +26,10 @@ result<render::vk_descriptor_set> render::create_bindless_textures_set(const VkD
     VK_RETURN_ON_FAIL(vkCreateDescriptorPool(device, &create_info, nullptr, &descriptor_pool));
 
     VkDescriptorSetLayoutBinding set_layout_bindings[] = {
-        {0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, max_textures, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
+        {0,
+         VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, max_textures,
+         VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+         nullptr}
     };
 
     VkDescriptorBindingFlags binding_flags[] = {VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT

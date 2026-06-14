@@ -39,6 +39,68 @@ vec3 transform_vec3(vec3 point, vec4 pos_and_scale, vec4 quat)
     return (point + 2.0 * cross(quat.xyz, cross(quat.xyz, point) + quat.w * point)) * pos_and_scale.w + pos_and_scale.xyz;
 }
 
+vec3 get_barycentric(vec4 v1, vec4 v2, vec4 v3, vec2 ndc)
+{
+    vec2 p1 = v1.xy / v1.w;
+    vec2 p2 = v2.xy / v2.w;
+    vec2 p3 = v3.xy / v3.w;
+
+    vec2 e1 = p2 - p1;
+    vec2 e2 = p3 - p1;
+    vec2 ep = ndc - p1;
+
+    float det = e1.x * e2.y - e2.x * e1.y;
+
+    float u = (ep.x * e2.y - e2.x * ep.y) / det;
+    float v = (e1.x * ep.y - ep.x * e1.y) / det;
+
+    vec3 linear = vec3(1.0F - u - v, u, v);
+
+    vec3 bary = linear / vec3(v1.w, v2.w, v3.w);
+    return bary / (bary.x + bary.y + bary.z);
+}
+
+void compute_barycentric(vec4 v1, vec4 v2, vec4 v3, vec2 ndc, out vec3 linear, out vec3 perspective)
+{
+    vec2 p1 = v1.xy / v1.w;
+    vec2 p2 = v2.xy / v2.w;
+    vec2 p3 = v3.xy / v3.w;
+
+    vec2 e1 = p2 - p1;
+    vec2 e2 = p3 - p1;
+    vec2 ep = ndc - p1;
+
+    float det = e1.x * e2.y - e2.x * e1.y;
+
+    float u = (ep.x * e2.y - e2.x * ep.y) / det;
+    float v = (e1.x * ep.y - ep.x * e1.y) / det;
+
+    linear = vec3(1.0F - u - v, u, v);
+
+    vec3 bary = linear / vec3(v1.w, v2.w, v3.w);
+    perspective = bary / (bary.x + bary.y + bary.z);
+}
+
+float wsum(float v1, float v2, float v3, vec3 factors)
+{
+    return v1 * factors.x + v2 * factors.y + v3 * factors.z;
+}
+
+vec2 wsum(vec2 v1, vec2 v2, vec2 v3, vec3 factors)
+{
+    return v1 * factors.x + v2 * factors.y + v3 * factors.z;
+}
+
+vec3 wsum(vec3 v1, vec3 v2, vec3 v3, vec3 factors)
+{
+    return v1 * factors.x + v2 * factors.y + v3 * factors.z;
+}
+
+vec4 wsum(vec4 v1, vec4 v2, vec4 v3, vec3 factors)
+{
+    return v1 * factors.x + v2 * factors.y + v3 * factors.z;
+}
+
 // 2D Polyhedral Bounds of a Clipped, Perspective-Projected 3D Sphere. Michael Mara, Morgan McGuire. 2013
 // Adapted version from https://github.com/zeux/niagara
 bool project_sphere(vec3 c, float r, float znear, float P00, float P11, out vec4 aabb)

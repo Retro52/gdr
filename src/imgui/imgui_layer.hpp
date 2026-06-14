@@ -10,7 +10,7 @@
 class imgui_layer
 {
 public:
-    imgui_layer(const window& window, const render::vk_renderer& renderer);
+    imgui_layer(const window& window, const render::vk_renderer& renderer, const render::vk_pipeline& pipeline);
 
     ~imgui_layer();
 
@@ -68,8 +68,8 @@ private:
 
     // TODO: keep an array of atlases?
     atlas_data m_atlas_data;
-    render::vk_pipeline m_blit_pipeline;
     std::vector<blit_request> m_pending_uploads;
 
     const render::vk_renderer& m_renderer;
+    const render::vk_pipeline& m_blit_pipeline;
 };

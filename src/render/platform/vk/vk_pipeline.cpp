@@ -15,6 +15,12 @@ using namespace render;
 
 namespace
 {
+    template<typename T>
+    T opt_get(const nlohmann::json& options, const char* key, T defval)
+    {
+        return options.contains(key) ? static_cast<T>(options[key]) : defval;
+    }
+
     std::string parse_spv_string(const u32* raw)
     {
         ZoneScoped;
@@ -490,7 +496,8 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     return result;
 }
 
-result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, const vk_shader& shader)
+result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, const vk_shader& shader,
+                                                const vk_descriptor_set* desc_set, u32 desc_set_count)
 {
     ZoneScoped;
     assert2(shader.meta.stage == VK_SHADER_STAGE_COMPUTE_BIT);
@@ -500,7 +507,7 @@ result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, con
     VkPipelineLayout pipeline_layout;
     VkDescriptorSetLayout descriptor_set_layout;
     VK_RETURN_ON_FAIL(create_pipeline_layout(
-        renderer.get_context().device, &shader, 1, nullptr, 0, pc_range, &pipeline_layout, &descriptor_set_layout));
+        renderer.get_context().device, &shader, 1, desc_set, desc_set_count, pc_range, &pipeline_layout, &descriptor_set_layout));
 
     VkDescriptorUpdateTemplate update_template;
     VK_RETURN_ON_FAIL(create_update_template(
@@ -534,7 +541,7 @@ result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, con
 
 result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
                                                  u32 shaders_count, const vk_descriptor_set* desc_set,
-                                                 u32 desc_set_count, VkPrimitiveTopology topology)
+                                                 u32 desc_set_count, const nlohmann::json& options)
 {
     ZoneScoped;
     cpp::heap_array<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
@@ -564,7 +571,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
 
     const VkPipelineInputAssemblyStateCreateInfo assembly_state_create_info {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology               = topology,
+        .topology               = opt_get(options, "topology", VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
         .primitiveRestartEnable = VK_FALSE,
     };
 
@@ -618,11 +625,12 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
         .pAttachments    = &color_blend_attachment_state,
     };
 
+    const auto color_formats = opt_get(options, "color_format", renderer.get_swapchain().surface_format.format);
     const VkPipelineRenderingCreateInfo pipeline_rendering_create_info {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
         .pNext                   = nullptr,
         .colorAttachmentCount    = 1,
-        .pColorAttachmentFormats = &renderer.get_swapchain().surface_format.format,
+        .pColorAttachmentFormats = &color_formats,
         .depthAttachmentFormat   = renderer.get_swapchain().depth_format,
     };
 

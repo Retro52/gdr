@@ -16,25 +16,9 @@ namespace render::debug
         };
 
     public:
-        explicit frustum_renderer(const vk_renderer& renderer)
+        explicit frustum_renderer(const vk_pipeline& pipeline)
+            : m_pipeline(pipeline)
         {
-            ZoneScoped;
-            render::vk_shader shaders[] = {
-                *render::vk_shader::load(renderer, "../shaders/bin/frustum.vert.spv"),
-                *render::vk_shader::load(renderer, "../shaders/bin/frustum.frag.spv"),
-            };
-
-            m_pipeline = *render::vk_pipeline::create_graphics(
-                renderer, shaders, COUNT_OF(shaders), nullptr, 0, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
-
-            render::destroy_shader(renderer.get_context().device, shaders[0]);
-            render::destroy_shader(renderer.get_context().device, shaders[1]);
-        }
-
-        void shutdown(const vk_renderer& renderer)
-        {
-            ZoneScoped;
-            render::destroy_pipeline(renderer.get_context().device, m_pipeline);
         }
 
         void draw(VkCommandBuffer cmd, const glm::mat4& camera_vp, const render::vk_mapped_buffer& cull_data) const
@@ -53,6 +37,6 @@ namespace render::debug
         }
 
     private:
-        vk_pipeline m_pipeline;
+        const vk_pipeline& m_pipeline;
     };
 }

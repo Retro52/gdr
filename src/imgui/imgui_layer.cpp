@@ -6,8 +6,9 @@
 
 #include <cmath>
 
-imgui_layer::imgui_layer(const window& window, const render::vk_renderer& renderer)
+imgui_layer::imgui_layer(const window& window, const render::vk_renderer& renderer, const render::vk_pipeline& pipeline)
     : m_renderer(renderer)
+    , m_blit_pipeline(pipeline)
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -72,16 +73,6 @@ imgui_layer::imgui_layer(const window& window, const render::vk_renderer& render
 
     m_atlas_data.imgui_descriptor = ImGui_ImplVulkan_AddTexture(
         m_atlas_data.sampler, m_atlas_data.atlas_image.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-    render::vk_shader shaders[] = {
-        *render::vk_shader::load(renderer, "../shaders/bin/imgui_blit.vert.spv"),
-        *render::vk_shader::load(renderer, "../shaders/bin/imgui_blit.frag.spv"),
-    };
-
-    m_blit_pipeline = *render::vk_pipeline::create_graphics(renderer, shaders, COUNT_OF(shaders));
-
-    render::destroy_shader(renderer.get_context().device, shaders[0]);
-    render::destroy_shader(renderer.get_context().device, shaders[1]);
 }
 
 imgui_layer::~imgui_layer()
@@ -91,7 +82,6 @@ imgui_layer::~imgui_layer()
     ImGui_ImplVulkan_RemoveTexture(m_atlas_data.imgui_descriptor);
     vkDestroySampler(context.device, m_atlas_data.sampler, nullptr);
 
-    render::destroy_pipeline(context.device, m_blit_pipeline);
     render::destroy_image(context.device, context.allocator, m_atlas_data.atlas_image);
 
     ImGui_ImplVulkan_Shutdown();

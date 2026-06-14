@@ -1,0 +1,284 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive: require
+#extension GL_EXT_nonuniform_qualifier: require
+
+#include "utils/pbr.glsl"
+#include "utils/post.glsl"
+#include "utils/math.glsl"
+#include "include/shaders/types.h"
+
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout (binding = 0, rgba8)  uniform writeonly image2D o_color;
+layout (binding = 1, rg32ui) uniform readonly uimage2D i_visbuf;
+
+layout (binding = 2, set = 0) readonly buffer Indices         { uint indices[]; };
+layout (binding = 3, set = 0) readonly buffer Vertices        { Vertex vertices[]; };
+
+layout (binding = 4, set = 0) readonly buffer Meshlets { Meshlet meshlets[]; };
+layout (binding = 5, set = 0) readonly buffer MeshletVertices { uint meshlets_vertices[]; };
+layout (binding = 5, set = 0) readonly buffer MeshletIndices  { uint8_t meshlets_indices[]; };
+
+layout (binding = 6, set = 0) readonly buffer MeshPrimitives  { MeshData primitives[]; };
+layout (binding = 7, scalar)  readonly buffer MeshInstances   { MeshInstance instances[]; };
+layout (binding = 8, set = 0) readonly buffer Materials       { MeshMaterial materials[]; };
+layout (binding = 9, scalar)  readonly buffer FrameWorldDatas { FrameWorldData world; };
+
+layout (binding = 10, set = 0) uniform sampler   textures_sampler;
+layout (binding = 11, set = 0) uniform sampler2D depth_texture_sampler;
+layout (binding = 0,  set = 1) uniform texture2D textures[];
+
+layout (scalar, push_constant) uniform constants
+{
+    DrawPushConstants pc;
+};
+
+const uint draw_debug_shaded           = 0;
+const uint draw_debug_lit              = 1;
+const uint draw_debug_lit_diffuse      = 2;
+const uint draw_debug_lit_specular     = 3;
+const uint draw_debug_uv               = 4;
+const uint draw_debug_normal           = 5;
+const uint draw_debug_tangent          = 6;
+const uint draw_debug_world_pos        = 7;
+const uint draw_debug_color            = 8;
+const uint draw_debug_metallic         = 9;
+const uint draw_debug_roughness        = 10;
+const uint draw_debug_albedo_texture   = 11;
+const uint draw_debug_normal_texture   = 12;
+const uint draw_debug_omr_texture      = 13;
+const uint draw_debug_triangle_id      = 14;
+const uint draw_debug_instance_id      = 15;
+
+#define TEXTURE2DG(id, uv, dfdx, dfdy) textureGrad(sampler2D(textures[nonuniformEXT(id)], textures_sampler), uv, dfdx, dfdy)
+#define DTEXTURE2D(id, uv, dfdx, dfdy) (id > 0 ? textureGrad(sampler2D(textures[nonuniformEXT(id)], textures_sampler), uv, dfdx, dfdy) : vec4(1.0F, 0.25F, 0.95F, 1.0F))
+
+// https://stackoverflow.com/questions/23319289/is-there-a-good-glsl-hash-function
+uint lowbias32(uint x)
+{
+    x = x == 0 ? 0x100203 : x;
+    x ^= x >> 16;
+    x *= 0x7feb352dU;
+    x ^= x >> 15;
+    x *= 0x846ca68bU;
+    x ^= x >> 16;
+    return x;
+}
+
+vec3 uint_color(uint num)
+{
+    return vec3(float(num & 0xFF) / 255.0F,
+    float((num >> 8) & 0xFF) / 255.0F,
+    float((num >> 16) & 0xFF) / 255.0F
+    );
+}
+
+vec3 hash_color(uint id)
+{
+    return uint_color(lowbias32(id));
+}
+
+vec4 metallic_roughness_from_specular_gloss(vec4 spec_gloss_texture)
+{
+    vec3 spec = from_srgb(spec_gloss_texture.rgb);
+
+    float gloss = spec_gloss_texture.a;
+    float metal = max(spec.r, max(spec.g, spec.b));
+
+    return vec4(0.0F, gloss, metal, 1.0F);
+}
+
+void get_vertex_normal_tangent(uint index, uint instance, out vec3 normal, out vec4 tangent)
+{
+    vec4 up_norm = unpack_r10g10b10a2(vertices[index].packed_normal);
+    vec3 up_tang = decode_oct(unpack_r8g8(uint(vertices[index].packed_tangent)));
+
+    normal = quat_rotate_vec3(up_norm.xyz, instances[instance].rotation_quat);
+    tangent = vec4(quat_rotate_vec3(up_tang, instances[instance].rotation_quat), up_norm.w);
+}
+
+vec2 to_ndc(vec2 px, vec2 size)
+{
+    return ((px + vec2(0.5F)) / size) * 2.0F - 1.0F;
+}
+
+vec3 to_world(vec3 local, uint instance)
+{
+    return transform_vec3(local, instances[instance].pos_and_scale, instances[instance].rotation_quat);
+}
+
+void weight_normal_tangent(uint i0, uint i1, uint i2, uint instance, vec3 weights, out vec3 normal, out vec4 tangent)
+{
+    vec3 normals[3];
+    vec4 tangents[3];
+
+    get_vertex_normal_tangent(i0, instance, normals[0], tangents[0]);
+    get_vertex_normal_tangent(i1, instance, normals[1], tangents[1]);
+    get_vertex_normal_tangent(i2, instance, normals[2], tangents[2]);
+
+    normal = normalize(wsum(normals[0], normals[1], normals[2], weights));
+    tangent = vec4(normalize(wsum(tangents[0], tangents[1], tangents[2], weights).xyz), tangents[0].w);
+}
+
+void main()
+{
+    vec2 px = vec2(gl_GlobalInvocationID.xy);
+
+    ivec2 image_size = imageSize(o_color);
+    uvec2 data = imageLoad(i_visbuf, ivec2(gl_GlobalInvocationID.xy)).xy;
+
+    uint instance_id = data.r;
+    if (instance_id == ~0U)
+    {
+        imageStore(o_color, ivec2(gl_GlobalInvocationID.xy), vec4(0.2F, 0.2F, 1.0F, 1.0F));
+        return;
+    }
+
+    uint base_vertex = primitives[instances[instance_id].mesh_data_index].base_vertex;
+
+#ifdef FOR_MESH_PIPELINE
+    uint m_idx = data.g >> 7;
+    uint ml = (data.g & 127) * 3;
+
+    const uint meshlet_base_vertex = meshlets[m_idx].data_offset / 4;
+    const uint meshlet_base_index  = meshlets[m_idx].data_offset + uint(meshlets[m_idx].vertices_count) * 4;
+
+    uint i0 = meshlets_vertices[meshlet_base_vertex + uint(meshlets_indices[meshlet_base_index + ml + 0])] + base_vertex;
+    uint i1 = meshlets_vertices[meshlet_base_vertex + uint(meshlets_indices[meshlet_base_index + ml + 1])] + base_vertex;
+    uint i2 = meshlets_vertices[meshlet_base_vertex + uint(meshlets_indices[meshlet_base_index + ml + 2])] + base_vertex;
+
+#else
+    uint i0 = indices[data.g + 0] + base_vertex;
+    uint i1 = indices[data.g + 1] + base_vertex;
+    uint i2 = indices[data.g + 2] + base_vertex;
+#endif
+
+    vec3 v0 = to_world(vec3(vertices[i0].px, vertices[i0].py, vertices[i0].pz), instance_id);
+    vec3 v1 = to_world(vec3(vertices[i1].px, vertices[i1].py, vertices[i1].pz), instance_id);
+    vec3 v2 = to_world(vec3(vertices[i2].px, vertices[i2].py, vertices[i2].pz), instance_id);
+
+    vec4 vt0 = pc.vp * vec4(v0, 1.0F);
+    vec4 vt1 = pc.vp * vec4(v1, 1.0F);
+    vec4 vt2 = pc.vp * vec4(v2, 1.0F);
+
+    vec2 vtp = to_ndc(px, image_size);
+
+    vec3 bary_linear;
+    vec3 bary_perspective;
+    compute_barycentric(vt0, vt1, vt2, vtp, bary_linear, bary_perspective);
+
+    vec3 normal;
+    vec4 tangent;
+    weight_normal_tangent(i0, i1, i2, instance_id, bary_perspective, normal, tangent);
+
+    vec2 uv;
+
+    vec2 vtp_r = to_ndc(px + ivec2(1, 0), image_size);
+    vec2 vtp_d = to_ndc(px + ivec2(0, 1), image_size);
+
+    vec3 bary_r = get_barycentric(vt0, vt1, vt2, vtp_r);
+    vec3 bary_d = get_barycentric(vt0, vt1, vt2, vtp_d);
+
+    vec2 uv0 = vec2(vertices[i0].ux, vertices[i0].uy);
+    vec2 uv1 = vec2(vertices[i1].ux, vertices[i1].uy);
+    vec2 uv2 = vec2(vertices[i2].ux, vertices[i2].uy);
+
+    uv = wsum(uv0, uv1, uv2, bary_perspective);
+    vec2 uv_r  = uv0 * bary_r.x + uv1 * bary_r.y + uv2 * bary_r.z;
+    vec2 uv_d  = uv0 * bary_d.x + uv1 * bary_d.y + uv2 * bary_d.z;
+
+    vec2 dfdx = uv_r - uv;
+    vec2 dfdy = uv_d - uv;
+
+    uint material_id = instances[instance_id].material_index;
+
+    uint albedo_idx = materials[material_id].albedo_idx;
+    uint normal_idx = materials[material_id].normal_idx;
+    uint met_roughness_idx = materials[material_id].met_roughness_idx;
+
+    vec4 frag_col = albedo_idx > 0 ? TEXTURE2DG(albedo_idx, uv, dfdx, dfdy) * materials[material_id].diffuse_factor : materials[material_id].diffuse_factor;
+    vec3 albedo = frag_col.rgb;
+
+    vec3 tex_normal = vec3(0, 0, 1);
+    if (normal_idx > 0)
+        tex_normal = TEXTURE2DG(normal_idx, uv, dfdx, dfdy).rgb * 2 - 1;
+
+    vec3 bitangent = cross(normal, tangent.xyz) * tangent.w;
+    vec3 nrm = normal_idx > 0 ? normalize(tex_normal.r * tangent.xyz + tex_normal.g * bitangent + tex_normal.b * normal) : normal;
+
+#if 1
+    vec4 met_roughness_factor = vec4(1.0F);
+    if (GET_BIT(materials[material_id].material_flags, kMatGlossBit) == 1)
+    {
+        vec4 factor = materials[material_id].met_roughness_factor;
+        met_roughness_factor = met_roughness_idx > 0
+                                ? metallic_roughness_from_specular_gloss(TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy)) * factor
+                                : factor;
+
+        met_roughness_factor.g = 1.0F - met_roughness_factor.g;
+    }
+    else
+    {
+        met_roughness_factor = met_roughness_idx > 0 ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * materials[material_id].met_roughness_factor : materials[material_id].met_roughness_factor;
+    }
+#else
+    vec4 met_roughness_factor = met_roughness_idx > 0 ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * materials[material_id].met_roughness_factor : materials[material_id].met_roughness_factor;
+#endif
+
+    vec3 world_pos = wsum(v0, v1, v2, bary_perspective);
+
+    vec3 view = normalize(world.camera_pos - world_pos);
+    vec3 halfw = normalize(world.sun_direction + view);
+
+    float metallic = met_roughness_factor.b;
+    float roughness = max(met_roughness_factor.g, 0.045);
+
+    float n_dot_v = max(dot(nrm, view), 0.0F);
+    float n_dot_h = max(dot(nrm, halfw), 0.0F);
+    float n_dot_l = max(dot(nrm, world.sun_direction), 0.0F);
+
+    float alpha = roughness * roughness;
+
+    float geom = geometry_smith(n_dot_v, n_dot_l, alpha / 2);
+    float ndf = distribution_townbridge_reitz_ggx(n_dot_h, alpha);
+
+    float h_dot_v = max(dot(halfw, view), 0.0F);
+    vec3 fresnel = fresnel_schlick(h_dot_v, mix(vec3(0.04F), albedo, metallic));
+
+    vec3 ambient = vec3(0.2F);
+    vec3 diffuse = (vec3(1.0F) - fresnel) * (1.0F - metallic);
+    vec3 specular = pbr_specular(fresnel, ndf, geom, n_dot_v, n_dot_l);
+
+    const float ev100 = 1.0 / (1.2 * exp2(world.camera_exposure));
+
+    vec3 sun_color_hdr = world.sun_color.rgb * world.sun_color.w * ev100;
+    vec3 color = (diffuse * albedo / kPI + specular) * sun_color_hdr * n_dot_l + ambient * albedo;
+
+    vec4 result = from_linear(vec4(tonemap(color), 1.0F));
+
+#if SHADERS_DEBUG
+    if (world.debug_mode != draw_debug_shaded)
+    {
+        vec3 color;
+        if (world.debug_mode == draw_debug_lit)            { color = tonemap((diffuse / kPI + specular) * sun_color_hdr * n_dot_l + ambient); }
+        if (world.debug_mode == draw_debug_lit_diffuse)    { color = tonemap(diffuse * sun_color_hdr * n_dot_l / kPI); }
+        if (world.debug_mode == draw_debug_lit_specular)   { color = tonemap(specular * sun_color_hdr * n_dot_l); }
+        if (world.debug_mode == draw_debug_uv)             { color = vec3(uv, 0.0F); }
+        if (world.debug_mode == draw_debug_normal)         { color = nrm; }
+        if (world.debug_mode == draw_debug_tangent)        { color = tangent.xyz; }
+        if (world.debug_mode == draw_debug_world_pos)      { color = normalize(world_pos); }
+        if (world.debug_mode == draw_debug_color)          { color = materials[material_id].diffuse_factor.rgb; }
+        if (world.debug_mode == draw_debug_metallic)       { color = vec3(metallic); }
+        if (world.debug_mode == draw_debug_roughness)      { color = vec3(roughness); }
+        if (world.debug_mode == draw_debug_albedo_texture) { color = DTEXTURE2D(albedo_idx, uv, dfdx, dfdy).rgb; }
+        if (world.debug_mode == draw_debug_normal_texture) { color = DTEXTURE2D(normal_idx, uv, dfdx, dfdy).rgb; }
+        if (world.debug_mode == draw_debug_omr_texture)    { color = DTEXTURE2D(met_roughness_idx, uv, dfdx, dfdy).rgb; }
+        if (world.debug_mode == draw_debug_triangle_id)    { color = hash_color(i0); }
+        if (world.debug_mode == draw_debug_instance_id)    { color = hash_color(instance_id); }
+        result = from_linear(vec4(color, 1.0F));
+    }
+#endif
+
+    imageStore(o_color, ivec2(gl_GlobalInvocationID.xy), result);
+}

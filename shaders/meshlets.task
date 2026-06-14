@@ -8,48 +8,24 @@
 
 layout (local_size_x = kTaskWorkGroups, local_size_y = 1, local_size_z = 1) in;
 
-layout (binding = 3) readonly buffer Meshlets
-{
-    Meshlet meshlets[];
-};
+layout (binding = 3, set = 0) readonly buffer Meshlets      { Meshlet meshlets[]; };
+layout (binding = 5, set = 0) readonly buffer MeshesData    { MeshData meshes_data[]; };
+layout (binding = 6, scalar)  readonly buffer MeshInstances { MeshInstance mesh_instances[]; };
 
-layout (binding = 5) readonly buffer MeshesData
-{
-    MeshData meshes_data[];
-};
-
-layout (scalar, binding = 6) readonly buffer MeshInstances
-{
-    MeshInstance mesh_instances[];
-};
-
-layout (binding = 7) readonly buffer DrawMeshletsIndirects
-{
-    DrawTaskCommandIndirect draw_mesh_cmds[];
-};
-
-layout (binding = 8) buffer FrameCullDataBuffer
-{
-    FrameCullData frame_cull;
-};
+layout (binding = 7, set = 0) readonly buffer DrawMeshletsIndirects { DrawTaskCommandIndirect draw_mesh_cmds[]; };
+layout (binding = 8, set = 0) readonly buffer FrameCullDataBuffer   { FrameCullData frame_cull; };
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-layout (binding = 9) buffer MeshletsVisibilityBuffer
-#else
-layout (binding = 9) readonly buffer MeshletsVisibilityBuffer
-#endif
-{
-    uint meshlets_visibility_buffer[];
-};
-
-#ifdef FOR_LATE_OCCLUSION_TEST
+layout (binding = 9)  buffer MeshletsVisibilityBuffer { uint meshlets_visibility_buffer[]; };
 layout (binding = 10) uniform sampler2D depth_pyramid;
+#else
+layout (binding = 9) readonly buffer MeshletsVisibilityBuffer { uint meshlets_visibility_buffer[]; };
 #endif
 
 layout (push_constant) uniform constants
 {
-    mat4 vp;
-} pc;
+    DrawPushConstants pc;
+};
 
 shared uint meshlets_count;
 taskPayloadSharedEXT DrawMeshletsTask meshlet_task;
@@ -68,15 +44,15 @@ void main()
     barrier();
 
     vec3 cull_cone_axis = vec3(
-    meshlets[meshlet_id].cone_axis[0],
-    meshlets[meshlet_id].cone_axis[1],
-    meshlets[meshlet_id].cone_axis[2]
+        meshlets[meshlet_id].cone_axis[0],
+        meshlets[meshlet_id].cone_axis[1],
+        meshlets[meshlet_id].cone_axis[2]
     );
 
     vec3 sphere_center = vec3(
-    meshlets[meshlet_id].sphere_center[0],
-    meshlets[meshlet_id].sphere_center[1],
-    meshlets[meshlet_id].sphere_center[2]
+        meshlets[meshlet_id].sphere_center[0],
+        meshlets[meshlet_id].sphere_center[1],
+        meshlets[meshlet_id].sphere_center[2]
     );
 
     float sphere_radius = float(meshlets[meshlet_id].sphere_radius) * mesh_instances[instance_id].pos_and_scale.w;

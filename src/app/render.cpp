@@ -1,6 +1,7 @@
 #include <app/render.hpp>
 #include <render/platform/vk/vk_barrier.hpp>
 #include <tracy/Tracy.hpp>
+
 #include <cmath>
 
 void app::begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView depth, VkAttachmentLoadOp load_op,
@@ -16,13 +17,13 @@ void app::begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView de
         color_attachment_info = {
             .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
             .imageView   = color,
-            .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+            .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
             .loadOp      = load_op,
             .storeOp     = store_op,
-            .clearValue  = {
-                            .color = {0.53F, 0.81F, 0.92F, 1.0F},
-                            }
         };
+
+        cpp::cx_fill(
+            &color_attachment_info.clearValue.color.uint32[0], &color_attachment_info.clearValue.color.uint32[4], ~0U);
 
         rendering_info.colorAttachmentCount = 1;
         rendering_info.pColorAttachments    = &color_attachment_info;
@@ -103,6 +104,28 @@ void app::destroy_depth_pyramid(depth_pyramid_data& pyramid, VkDevice device, Vm
     pyramid.pyramid_count = 0;
     render::destroy_image(device, allocator, pyramid.image);
     vkDestroySampler(device, pyramid.sampler, nullptr);
+}
+
+app::vis_buffer_data app::create_vis_buffer_data(const ivec2& size, VkDevice device, VmaAllocator allocator)
+{
+    ZoneScoped;
+
+    const VkImageCreateInfo image_create_info {
+        .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType   = VK_IMAGE_TYPE_2D,
+        .format      = VK_FORMAT_R32G32_UINT,
+        .extent      = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
+        .mipLevels   = 1,
+        .arrayLayers = 1,
+        .samples     = VK_SAMPLE_COUNT_1_BIT,
+        .tiling      = VK_IMAGE_TILING_OPTIMAL,
+        .usage       = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT
+               | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    return {*render::create_image(device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, allocator)};
 }
 
 app::depth_pyramid_data app::create_depth_pyramid(const ivec2& size, const VkFormat format, VkDevice device,

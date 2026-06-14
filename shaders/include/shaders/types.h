@@ -34,8 +34,8 @@ namespace shader_types
     struct Vertex
     {
         float px, py, pz;
-        uint packed_normal; // 10-10-10-2 bit quantized normal in [-1; 1] range
-        uint16_t packed_tangent; // octahedral encoding
+        uint packed_normal;       // 10-10-10-2 bit quantized normal in [-1; 1] range
+        uint16_t packed_tangent;  // octahedral encoding
         float16_t ux, uy;
     };
 
@@ -111,6 +111,28 @@ namespace shader_types
         uint meshlet_count;
         uint meshlet_offset;
         uint visibility_offset;
+    };
+
+    struct DrawPushConstants
+    {
+#ifdef __cplusplus
+        DrawPushConstants(const glm::mat4& ivp)
+            : vp(ivp)
+            , vp_inverse(glm::inverse(ivp))
+        {
+        }
+#endif
+        mat4 vp;
+        mat4 vp_inverse;
+    };
+
+    struct FrameWorldData
+    {
+        vec4 sun_color;
+        vec3 camera_pos;
+        uint debug_mode;
+        vec3 sun_direction;
+        float camera_exposure;
     };
 
     struct FrameCullData

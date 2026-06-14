@@ -175,10 +175,25 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBi
                                                VkDebugUtilsMessageTypeFlagsEXT,
                                                const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void*)
 {
+    if (!pCallbackData->pMessage)
+    {
+        return VK_FALSE;
+    }
+
     if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
-        assert2m(false, pCallbackData->pMessage ? pCallbackData->pMessage : "VK validation error");
+        LOG_ERROR("validation error: {}", pCallbackData->pMessage);
+        assert2m(false, pCallbackData->pMessage);
     }
+    else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+    {
+        LOG_WARNING("validation warning: {}", pCallbackData->pMessage);
+    }
+    else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)
+    {
+        LOG_INFO("validation message: {}", pCallbackData->pMessage);
+    }
+
     return VK_FALSE;
 }
 
@@ -477,8 +492,8 @@ static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR s
     for (const auto device : devices)
     {
         const auto rating = rate_device(device);
-        if (check_device_basic_features_support(device, surface, required_extensions, required_features)
-            && rating > best_rating)
+        if (rating > best_rating
+            && check_device_basic_features_support(device, surface, required_extensions, required_features))
         {
             best_rating             = rating;
             current_pick            = device;
@@ -662,6 +677,7 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
         .sType    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext    = &vk11_features,
         .features = {
+                     .geometryShader          = VK_TRUE,
                      .multiDrawIndirect       = rendering_features.wanted(render::feature_flag::eDrawIndirect),
                      .samplerAnisotropy       = VK_TRUE,
                      .pipelineStatisticsQuery = rendering_features.wanted(render::feature_flag::ePipelineStats),
@@ -959,8 +975,8 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
         .imageColorSpace  = sc_data.surface_format.colorSpace,
         .imageExtent      = choose_extent(capabilities, {static_cast<u32>(size.x), static_cast<u32>(size.y)}),
         .imageArrayLayers = 1,
-        .imageUsage =
-            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        .imageUsage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+                    | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
         .imageSharingMode      = image_sharing_supported ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE,
         .queueFamilyIndexCount = image_sharing_supported ? static_cast<u32>(COUNT_OF(unique_queues)) : 0,
         .pQueueFamilyIndices   = image_sharing_supported ? unique_queues : nullptr,

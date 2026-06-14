@@ -1,0 +1,81 @@
+{
+  "imgui_blit": {
+    "shaders": [
+      "imgui_blit.frag.spv",
+      "imgui_blit.vert.spv"
+    ]
+  },
+  "frustum_debug": {
+    "shaders": [
+      "frustum.frag.spv",
+      "frustum.vert.spv"
+    ],
+    "options": {
+      "topology": 1
+    }
+  },
+  "task_cull_pipeline": {
+    "shaders": [
+      "cull_tasks.comp.spv"
+    ]
+  },
+  "task_render_pipeline": {
+    "shaders": [
+      "meshlets_submit.task.spv",
+      "meshlets.mesh.spv",
+      "gpass_mesh.frag.spv"
+    ],
+    "options": {
+      "color_format": 101
+    }
+  },
+  "task_render_late_pipeline": {
+    "shaders": [
+      "meshlets_submit_late.task.spv",
+      "meshlets.mesh.spv",
+      "gpass_mesh.frag.spv"
+    ],
+    "options": {
+      "color_format": 101
+    }
+  },
+  "task_occlusion_cull_pipeline": {
+    "shaders": [
+      "cull_occlusion_tasks.comp.spv"
+    ]
+  },
+  "indexed_cull_pipeline": {
+    "shaders": [
+      "cull_mesh.comp.spv"
+    ]
+  },
+  "indexed_render_pipeline": {
+    "shaders": [
+      "mesh.vert.spv",
+      "gpass_vert.frag.spv"
+    ],
+    "options": {
+      "color_format": 101
+    }
+  },
+  "indexed_cull_occlusion_pipeline": {
+    "shaders": [
+      "cull_occlusion_mesh.comp.spv"
+    ]
+  },
+  "depth_reduce_pipeline": {
+    "shaders": [
+      "depth_reduce.comp.spv"
+    ]
+  },
+  "mesh_resolve_pipeline": {
+    "shaders": [
+      "resolve_mesh.comp.spv"
+    ]
+  },
+  "vert_resolve_pipeline": {
+    "shaders": [
+      "resolve_vert.comp.spv"
+    ]
+  }
+}

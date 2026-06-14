@@ -2,6 +2,7 @@
 
 #include <bytes.hpp>
 #include <fs/path.hpp>
+#include <nlohmann/json.hpp>
 #include <render/platform/vk/vk_descriptor_set.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
 #include <result.hpp>
@@ -79,12 +80,13 @@ namespace render
         u32 m_push_constants_max_size;
         u32 work_group_size[3] {};
 
-        static result<vk_pipeline> create_compute(const vk_renderer& renderer, const vk_shader& shader);
+        static result<vk_pipeline> create_compute(const vk_renderer& renderer, const vk_shader& shader,
+                                                  const vk_descriptor_set* desc_set = nullptr, u32 desc_set_count = 0);
 
         static result<vk_pipeline> create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
                                                    u32 shaders_count, const vk_descriptor_set* desc_set = nullptr,
-                                                   u32 desc_set_count           = 0,
-                                                   VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+                                                   u32 desc_set_count            = 0,
+                                                   const nlohmann::json& options = nlohmann::json());
 
         void bind(VkCommandBuffer command_buffer) const;
 

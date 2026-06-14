@@ -1,33 +1,39 @@
 #include <app/pso.hpp>
 #include <fs/fs.hpp>
+#include <log.hpp>
+#include <nlohmann/json.hpp>
 #include <tracy/Tracy.hpp>
 
 void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_descriptor_set& textures_set)
 {
     ZoneScoped;
-    auto data = fs::read_file("../shaders/pipelines.cfg");
+    auto data = fs::read_file("../shaders/pipelines.json");
     if (!data)
     {
         assert2m(false, data.message);
         return;
     }
 
-    const auto* c = data.value.get<char>();
-
-    cpp::big_stack_string buffer;
-
-    u32 key = 0;
-    cpp::heap_array<cpp::stack_string> shaders;
-    std::unordered_map<u32, render::vk_shader> cache;
+    nlohmann::json info = nlohmann::json::parse(data->get<char>(), data->get<char>() + data->size());
 
     constexpr fs::path kShadersBinDir = "../shaders/bin";
+    std::unordered_map<u32, render::vk_shader> cache;
+    cpp::heap_array<render::vk_shader> compiled_shaders;
 
-    auto process = [&]()
+    auto process = [&](const u32 key, const nlohmann::json& pipeline_info)
     {
-        cpp::heap_array<render::vk_shader> compiled;
+        if (!pipeline_info.contains("shaders"))
+        {
+            return;
+        }
+
+        compiled_shaders.clear();
+        const auto& shaders = pipeline_info["shaders"];
+
         for (const auto& shader : shaders)
         {
-            const auto shader_id = cpp::crc::crc32(shader.c_str(), shader.length());
+            const auto id        = shader.get<std::string>();
+            const auto shader_id = cpp::crc::crc32(id.c_str(), id.length());
             const auto it        = cache.find(shader_id);
             if (it == cache.end())
             {
@@ -36,22 +42,29 @@ void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_d
                 if (compiled_shader)
                 {
                     cache.emplace(shader_id, *compiled_shader);
-                    compiled.emplace_back(*compiled_shader);
+                    compiled_shaders.emplace_back(*compiled_shader);
                 }
             }
             else
             {
-                compiled.emplace_back(it->second);
+                compiled_shaders.emplace_back(it->second);
             }
         }
 
-        assert2m(!compiled.empty() && compiled.size() == shaders.size(), "some shaders failed to compile?");
-        if (compiled.size() == shaders.size())
+        assert2m(!compiled_shaders.empty() && compiled_shaders.size() == shaders.size(),
+                 "some shaders failed to compile?");
+        if (compiled_shaders.size() == shaders.size())
         {
             // stupid...
-            auto pso = (shaders.size() == 1) ? render::vk_pipeline::create_compute(renderer, compiled[0])
-                                             : render::vk_pipeline::create_graphics(
-                                                   renderer, compiled.data(), compiled.size(), &textures_set, 1);
+            auto pso = (shaders.size() == 1)
+                         ? render::vk_pipeline::create_compute(renderer, compiled_shaders[0], &textures_set, 1)
+                         : render::vk_pipeline::create_graphics(
+                               renderer,
+                               compiled_shaders.data(),
+                               compiled_shaders.size(),
+                               &textures_set,
+                               1,
+                               pipeline_info.contains("options") ? pipeline_info["options"] : nlohmann::json());
 
             assert2m(pso && key, pso.message);
             if (pso)
@@ -59,46 +72,18 @@ void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_d
                 m_pipelines[key] = *pso;
             }
         }
-
-        key = 0;
-        shaders.clear();
     };
 
-    while (c && *c)
+    for (auto it = info.begin(); it != info.end(); ++it)
     {
-        switch (*c)
+        if (!it.value().contains("shaders"))
         {
-        case '\r' :
-            break;
-        case '\n' :
-            if (key && !buffer.empty())
-            {
-                shaders.emplace_back(buffer);
-                buffer.clear();
-            }
-
-            if (key && !shaders.empty())
-            {
-                process();
-            }
-            break;
-        case ';' :
-            key = cpp::crc::crc32(buffer.c_str(), buffer.length());
-            buffer.clear();
-            break;
-        case ' ' :
-            if (key && !buffer.empty())
-            {
-                shaders.emplace_back(buffer);
-                buffer.clear();
-            }
-            break;
-        default :
-            buffer += *c;
-            break;
+            LOG_WARNING("pipeline '{}' has no shader modules", it.key());
+            continue;
         }
 
-        ++c;
+        const auto key = cpp::crc::crc32(it.key().c_str(), it.key().length());
+        process(key, *it);
     }
 
     for (auto& [_, shader] : cache)
