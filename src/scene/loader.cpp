@@ -7,6 +7,7 @@
 #include <job/schedule_async.hpp>
 #include <job/wait_group.hpp>
 #include <log.hpp>
+#include <reflection/enum.hpp>
 #include <render/platform/vk/vk_utils.hpp>
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
@@ -18,12 +19,6 @@
 #include <glm/gtc/type_ptr.inl>
 #include <type_traits>
 #include <variant>
-
-#include "reflection/enum.hpp"
-
-#ifdef Success
-#undef Success
-#endif
 
 #define CHECK(EXPR)                                                                  \
     if (EXPR != cgltf_result_success)                                                \
@@ -660,7 +655,7 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
 
         if (node->light && node->light->type == cgltf_light_type_directional)
         {
-            auto& component     = entity.emplace_component<directional_light_component>();
+            auto& component = entity.emplace_component<directional_light_component>();
 
             component.intensity = node->light->intensity;
             component.rgb_color = {node->light->color[0], node->light->color[1], node->light->color[2]};

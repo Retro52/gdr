@@ -1,8 +1,7 @@
 #include <cgltf.h>
+#include <cpp/containers/stack_string.hpp>
 #include <meshoptimizer.h>
 #include <scene/mesh_load.hpp>
-
-#include "cpp/containers/stack_string.hpp"
 
 mesh::raw_mesh mesh::build_mesh(const cgltf_primitive& prim)
 {
