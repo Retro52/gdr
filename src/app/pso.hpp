@@ -12,8 +12,8 @@ namespace app
 {
     enum class pso_id : u32
     {
-        imgui_blit       = "imgui_blit"_crc32,
-        frustum_debug    = "frustum_debug"_crc32,
+        imgui_blit    = "imgui_blit"_crc32,
+        frustum_debug = "frustum_debug"_crc32,
 
         mesh_resolve_pipeline = "mesh_resolve_pipeline"_crc32,
         vert_resolve_pipeline = "vert_resolve_pipeline"_crc32,
@@ -23,9 +23,9 @@ namespace app
         task_render_late_pipeline    = "task_render_late_pipeline"_crc32,
         task_occlusion_cull_pipeline = "task_occlusion_cull_pipeline"_crc32,
 
-        indexed_cull_pipeline           = "indexed_cull_pipeline"_crc32,
         indexed_render_pipeline         = "indexed_render_pipeline"_crc32,
-        indexed_cull_occlusion_pipeline = "indexed_cull_occlusion_pipeline"_crc32,
+        indexed_fill_pipeline           = "indexed_fill_pipeline"_crc32,
+        indexed_fill_late_pipeline      = "indexed_fill_late_pipeline"_crc32,
 
         depth_reduce_pipeline = "depth_reduce_pipeline"_crc32,
     };

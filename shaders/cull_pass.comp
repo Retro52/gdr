@@ -8,49 +8,21 @@
 
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
-layout (binding = 0) readonly buffer MeshesData
-{
-    MeshData meshes_data[];
-};
-
-layout (scalar, binding = 1) readonly buffer MeshInstances
-{
-    MeshInstance mesh_instances[];
-};
-
-layout (binding = 2) buffer MeshesDrawCommandsCount
-{
-    uint draw_commands_count;
-};
+layout (binding = 0, set = 0) readonly buffer MeshesData     { MeshData meshes_data[]; };
+layout (binding = 1, scalar)  readonly buffer MeshInstances  { MeshInstance mesh_instances[]; };
+layout (binding = 2, set = 0) buffer MeshesDrawCommandsCount { uint draw_commands_count; };
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-layout (binding = 3) buffer MeshVisibilityBuffer
+layout (binding = 3) buffer MeshVisibilityBuffer { uint mesh_visibility_buffer[]; };
 #else
-layout (binding = 3) readonly buffer MeshVisibilityBuffer
+layout (binding = 3) readonly buffer MeshVisibilityBuffer { uint mesh_visibility_buffer[]; };
 #endif
-{
-    uint mesh_visibility_buffer[];
-};
 
-layout (binding = 4) readonly buffer FrameCullDataBuffer
-{
-    FrameCullData frame_cull;
-};
-
-#ifdef FOR_MESH_PIPELINE
-layout (binding = 5) writeonly buffer DrawMeshletsIndirects
-{
-    DrawTaskCommandIndirect draw_indirect_cmds[];
-};
-#else
-layout (binding = 5) writeonly buffer DrawIndexedIndirects
-{
-    DrawIndexedIndirect draw_indirect_cmds[];
-};
-#endif
+layout (binding = 4, set = 0) readonly buffer FrameCullDataBuffer { FrameCullData frame_cull; };
+layout (binding = 5, set = 0) writeonly buffer DrawMeshletsIndirects { DrawTaskCommandIndirect draw_indirect_cmds[]; };
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-layout (binding = 6) uniform sampler2D depth_pyramid;
+layout (binding = 6, set = 0) uniform sampler2D depth_pyramid;
 #endif
 
 void main()
@@ -92,25 +64,19 @@ void main()
     {
         vec2 pmd_size = vec2(p_aabb.z - p_aabb.x, p_aabb.w - p_aabb.y) * frame_cull.pyramid_size;
         float level = ceil(log2(max(pmd_size.x, pmd_size.y)));
+        float spr_depth = -frame_cull.frustum[4] / (center.z + radius);
 
 #ifndef PLATFORM_MVK
         float pmd_depth = textureLod(depth_pyramid, (p_aabb.xy + p_aabb.zw) * 0.5, level).x;
 #else
         float pmd_depth = textureGatherLodMin(depth_pyramid, (p_aabb.xy + p_aabb.zw) * 0.5, level, 0);
 #endif
-        float spr_depth = -frame_cull.frustum[4] / (center.z + radius);
 
         visible = visible && spr_depth >= pmd_depth;
     }
 #endif
 
-#ifdef FOR_LATE_OCCLUSION_TEST
-    const bool skip_draw = false;
-#else
-    const bool skip_draw = false;
-#endif
-
-    if (visible && !skip_draw)
+    if (visible)
     {
         uint lod_base = 0;
         float dist = max(length(center) - radius, 0);
@@ -126,13 +92,12 @@ void main()
         lod_base = GET_BIT(frame_cull.flags, kLodFlagBit) == 0 ? 0 : lod_base;
         MeshLod selected_lod = meshes_data[mesh_idx].lod_array[lod_base];
 
-#ifdef FOR_MESH_PIPELINE
-        uint taskCount = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
-        uint dci = atomicAdd(draw_commands_count, taskCount);
-        for (uint i = taskCount; i > 0; i--)
+        uint task_count = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
+        uint dci = atomicAdd(draw_commands_count, task_count);
+        for (uint i = task_count; i > 0; i--)
         {
-            uint dcii = dci + taskCount - i;
-            uint offset = kTaskWorkGroups * (taskCount - i);
+            uint dcii = dci + task_count - i;
+            uint offset = kTaskWorkGroups * (task_count - i);
             draw_indirect_cmds[dcii].instance_id = idx;
             draw_indirect_cmds[dcii].meshlet_offset = selected_lod.base_meshlet + offset;
             draw_indirect_cmds[dcii].visibility_offset = mesh_instances[idx].visibility_offset + offset;
@@ -143,20 +108,6 @@ void main()
             draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups);
 #endif
         }
-#else
-        uint dci = atomicAdd(draw_commands_count, 1);
-        draw_indirect_cmds[dci].instance_count = 1;
-#ifndef PLATFORM_MVK
-        draw_indirect_cmds[dci].first_instance = 0;
-#else
-        draw_indirect_cmds[dci].first_instance = dci;
-#endif
-        draw_indirect_cmds[dci].vertex_offset = int(meshes_data[mesh_idx].base_vertex);
-
-        draw_indirect_cmds[dci].instance_id = idx;
-        draw_indirect_cmds[dci].first_index = selected_lod.base_index;
-        draw_indirect_cmds[dci].index_count = selected_lod.indices_count;
-#endif
     }
 
 #ifdef FOR_LATE_OCCLUSION_TEST

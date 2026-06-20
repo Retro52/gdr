@@ -70,6 +70,16 @@
       "depth_reduce.comp.spv"
     ]
   },
+  "indexed_fill_pipeline": {
+    "shaders": [
+      "fill_index_from_tasks.comp.spv"
+    ]
+  },
+  "indexed_fill_late_pipeline": {
+    "shaders": [
+      "fill_index_from_tasks_late.comp.spv"
+    ]
+  },
   "mesh_resolve_pipeline": {
     "shaders": [
       "resolve_mesh.comp.spv"

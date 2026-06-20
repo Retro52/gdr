@@ -48,6 +48,35 @@ void app::begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView de
     vkCmdBeginRendering(cmd, &rendering_info);
 }
 
+void app::zero_buffer(VkCommandBuffer cmd, const render::vk_buffer& buffer, u64 offset, u64 size)
+{
+    ZoneScoped;
+
+#ifdef __APPLE__
+    constexpr auto stage_bits = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+#else
+    constexpr auto stage_bits = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT
+                              | VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+#endif
+
+    render::cmd_buffer_barrier(cmd,
+                               buffer.buffer,
+                               stage_bits,
+                               VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+                                   | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                               VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                               VK_ACCESS_2_TRANSFER_WRITE_BIT);
+
+    vkCmdFillBuffer(cmd, buffer.buffer, offset, size ? size : (buffer.size - offset), 0);
+
+    render::cmd_buffer_barrier(cmd,
+                               buffer.buffer,
+                               VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                               VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+}
+
 void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& draw_count_buffer)
 {
     ZoneScoped;

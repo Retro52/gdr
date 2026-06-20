@@ -24,6 +24,8 @@ namespace app
     void begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView depth, VkAttachmentLoadOp load_op,
                          VkAttachmentStoreOp store_op, const VkRect2D& vp);
 
+    void zero_buffer(VkCommandBuffer cmd, const render::vk_buffer& draw_count_buffer, u64 offset = 0, u64 size = 0);
+
     void reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& draw_count_buffer);
 
     render::vk_image create_depth_image(const ivec2& size, VkFormat format, VkDevice device, VmaAllocator allocator);

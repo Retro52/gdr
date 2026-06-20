@@ -374,7 +374,7 @@ u32 loader::get_max_lod_tris(const loader::primitive& prim)
     u32 res = 0;
     for (u32 i = 0; i < prim.lod_count; ++i)
     {
-        res = cpp::max(prim.lod_array[i].indices_count / 3, res);
+        // res = cpp::max(prim.lod_array[i].indices_count / 3, res);
     }
 
     return res;
@@ -555,8 +555,7 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
         for (u32 i = 0; i < raw_meshes[p].lod_count; ++i)
         {
             const auto& lod     = raw_meshes[p].lod_array[i];
-            layout.lod_array[i] = {total_indices + (geometry_pool.index.offset / sizeof(u32)),
-                                   total_meshlets + (geometry_pool.meshlets.offset / sizeof(loader::meshlet)),
+            layout.lod_array[i] = {total_meshlets + (geometry_pool.meshlets.offset / sizeof(loader::meshlet)),
                                    total_payload + geometry_pool.meshlets_payload.offset};
 
             total_indices += lod.raw_indices.size();
@@ -573,7 +572,6 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
 
     ctx.primitives.resize(prim_count);
     ctx.vertices.resize(total_vertices);
-    ctx.indices.resize(total_indices);
     ctx.meshlets.resize(total_meshlets);
     ctx.meshlets_data.resize(total_payload);
 
@@ -591,7 +589,6 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
         wg1.wait_till_done();
     }
 
-    upload_data(geometry_pool.transfer, geometry_pool.index, ctx.indices.data(), ctx.indices.size());
     upload_data(geometry_pool.transfer, geometry_pool.primitives, ctx.primitives.data(), ctx.primitives.size());
     upload_data(geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
     upload_data(geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
@@ -809,9 +806,6 @@ void loader::encode_raw_mesh(loader_context& ctx, const mesh::raw_mesh& primitiv
         const auto& lod_layout  = layout.lod_array[i];
         auto& encoded_lod_level = prim_desc.lod_array[i];
 
-        encoded_lod_level.base_index    = lod_layout.index_offset;
-        encoded_lod_level.indices_count = lod_level.raw_indices.size();
-
         encoded_lod_level.base_meshlet   = lod_layout.meshlet_offset;
         encoded_lod_level.meshlets_count = lod_level.raw_meshlets.size();
 
@@ -820,9 +814,6 @@ void loader::encode_raw_mesh(loader_context& ctx, const mesh::raw_mesh& primitiv
         const u64 meshlet_base_offset = lod_layout.meshlet_data_offset;
 
         // simple copy
-        std::memcpy(ctx.indices.data() + lod_layout.index_offset,
-                    lod_level.raw_indices.data(),
-                    lod_level.raw_indices.size() * sizeof(u32));
         std::memcpy(ctx.meshlets_data.data() + lod_layout.meshlet_data_offset,
                     lod_level.raw_meshlets_payload.data(),
                     lod_level.raw_meshlets_payload.size());

@@ -91,7 +91,6 @@ namespace
         cpp::heap_array<loader::prim_layout> layouts(primitives.size());
 
         u64 total_vertices = 0;
-        u64 total_indices  = 0;
         u64 total_meshlets = 0;
         u64 total_payload  = 0;
         for (u32 p = 0; p < primitives.size(); ++p)
@@ -105,11 +104,9 @@ namespace
             for (u32 i = 0; i < primitives[p].lod_count; ++i)
             {
                 const auto& lod     = primitives[p].lod_array[i];
-                layout.lod_array[i] = {total_indices + (geometry_pool.index.offset / sizeof(u32)),
-                                       total_meshlets + (geometry_pool.meshlets.offset / sizeof(loader::meshlet)),
+                layout.lod_array[i] = {total_meshlets + (geometry_pool.meshlets.offset / sizeof(loader::meshlet)),
                                        total_payload + geometry_pool.meshlets_payload.offset};
 
-                total_indices += lod.raw_indices.size();
                 total_meshlets += lod.raw_meshlets.size();
                 total_payload += lod.raw_meshlets_payload.size();
             }
@@ -117,7 +114,6 @@ namespace
 
         ctx.primitives.resize(primitives.size());
         ctx.vertices.resize(total_vertices);
-        ctx.indices.resize(total_indices);
         ctx.meshlets.resize(total_meshlets);
         ctx.meshlets_data.resize(total_payload);
 
@@ -180,7 +176,6 @@ namespace
             visibility_offset += loader::get_max_lod_meshlets(ctx.primitives[id_random]);
         }
 
-        render::upload_data(geometry_pool.transfer, geometry_pool.index, ctx.indices.data(), ctx.indices.size());
         render::upload_data(
             geometry_pool.transfer, geometry_pool.primitives, ctx.primitives.data(), ctx.primitives.size());
         render::upload_data(geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
@@ -346,8 +341,6 @@ int app::instance::run(const int argc, char* argv[])
 #endif
 
     render::vk_scene_geometry_pool geometry_pool {
-        .index = render::vk_shared_buffer(
-            m_renderer, 128_MB, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .vertex           = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .meshlets         = render::vk_shared_buffer(m_renderer, 16_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .primitives       = render::vk_shared_buffer(m_renderer, 1_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
@@ -478,6 +471,12 @@ int app::instance::run(const int argc, char* argv[])
         m_renderer.get_context().allocator,
         0);
 
+    render::vk_buffer indexed_count_buffer = *render::create_buffer(
+        sizeof(u32[2]),
+        VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        m_renderer.get_context().allocator,
+        0);
+
     render::vk_buffer mesh_visibility_buffer = *render::create_buffer(
         (stats.primitives + 31) / 8,
         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -493,14 +492,20 @@ int app::instance::run(const int argc, char* argv[])
     render::fill_buffer(geometry_pool.transfer, mesh_visibility_buffer, 0_u8);
     render::fill_buffer(geometry_pool.transfer, meshlets_visibility_buffer, 0_u8);
 
+    render::vk_buffer indexed_indices_buffer =
+        *render::create_buffer(96_MB,
+                               VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                               m_renderer.get_context().allocator,
+                               0);
+
     render::vk_buffer indexed_draw_indirect_buffer = *render::create_buffer(
-        16 * 1024 * 1024,
+        16_MB,
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         m_renderer.get_context().allocator,
         0);
 
     render::vk_buffer meshlets_draw_indirect_buffer = *render::create_buffer(
-        16 * 1024 * 1024,
+        16_MB,
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         m_renderer.get_context().allocator,
         0);
@@ -601,21 +606,21 @@ int app::instance::run(const int argc, char* argv[])
             pipeline.push_descriptor_set(cmd, render_bindings);
             pipeline.bind_descriptor_set(cmd, bindless_textures_desc_set);
 
-            vkCmdBindIndexBuffer(cmd, geometry_pool.index.buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdBindIndexBuffer(cmd, indexed_indices_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
 #if defined(__APPLE__)
             vkCmdDrawIndexedIndirect(cmd,
                                      indexed_draw_indirect_buffer.buffer,
                                      0,
-                                     stats.primitives,
+                                     stats.meshlets / shader_constants::kTaskWorkGroups,
                                      sizeof(shader_types::DrawIndexedIndirect));
 #else
             vkCmdDrawIndexedIndirectCount(cmd,
                                           indexed_draw_indirect_buffer.buffer,
                                           0,
-                                          draw_count_buffer.buffer,
-                                          0,
-                                          stats.primitives,
+                                          indexed_count_buffer.buffer,
+                                          sizeof(u32),
+                                          stats.meshlets / shader_constants::kTaskWorkGroups,
                                           sizeof(shader_types::DrawIndexedIndirect));
 #endif
         }
@@ -713,13 +718,10 @@ int app::instance::run(const int argc, char* argv[])
                                                                              draw_count_buffer.buffer,
                                                                              mesh_visibility_buffer.buffer,
                                                                              frame_cull_data_buffer.buffer,
-                                                                             enable_meshlets_pipeline
-                                                                                 ? meshlets_draw_indirect_buffer.buffer
-                                                                                 : indexed_draw_indirect_buffer.buffer};
+                                                                             meshlets_draw_indirect_buffer.buffer};
 
-                    const render::vk_pipeline& cull_pass = enable_meshlets_pipeline
-                                                             ? pipelines[pso_id::task_cull_pipeline]
-                                                             : pipelines[pso_id::indexed_cull_pipeline];
+                    const render::vk_pipeline& cull_pass = pipelines[pso_id::task_cull_pipeline];
+
                     cull_pass.bind(buffer);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
 
@@ -729,7 +731,44 @@ int app::instance::run(const int argc, char* argv[])
                         buffer,
                         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                        VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
+                            | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                        VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                }
+
+                if (!enable_meshlets_pipeline)
+                {
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "build index buffer"));
+
+                    app::zero_buffer(buffer, indexed_count_buffer);
+#if defined(__APPLE__)
+                    app::zero_buffer(buffer, indexed_draw_indirect_buffer);
+#endif
+                    const render::vk_descriptor_info fill_pass_bindings[] = {
+                        geometry_pool.meshlets.buffer.buffer,
+                        geometry_pool.meshlets_payload.buffer.buffer,
+                        geometry_pool.primitives.buffer.buffer,
+                        geometry_pool.instances.buffer.buffer,
+                        meshlets_draw_indirect_buffer.buffer,
+                        frame_cull_data_buffer.buffer,
+                        indexed_indices_buffer.buffer,
+                        indexed_draw_indirect_buffer.buffer,
+                        indexed_count_buffer.buffer,
+                        meshlets_visibility_buffer.buffer,
+                    };
+
+                    const render::vk_pipeline& fill_pass = pipelines[pso_id::indexed_fill_pipeline];
+
+                    fill_pass.bind(buffer);
+                    fill_pass.push_descriptor_set(buffer, fill_pass_bindings);
+
+                    vkCmdDispatchIndirect(buffer, draw_count_buffer.buffer, 0);
+
+                    render::cmd_stage_barrier(
+                        buffer,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
                         VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
                 }
 
@@ -848,9 +887,7 @@ int app::instance::run(const int argc, char* argv[])
                         render::vk_descriptor_info(
                             depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL)};
 
-                    const render::vk_pipeline& cull_pass = enable_meshlets_pipeline
-                                                             ? pipelines[pso_id::task_occlusion_cull_pipeline]
-                                                             : pipelines[pso_id::indexed_cull_occlusion_pipeline];
+                    const render::vk_pipeline& cull_pass = pipelines[pso_id::task_occlusion_cull_pipeline];
 
                     cull_pass.bind(buffer);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
@@ -862,6 +899,44 @@ int app::instance::run(const int argc, char* argv[])
                         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                         VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                        VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                }
+
+                if (!enable_meshlets_pipeline)
+                {
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "build index buffer late"));
+
+                    app::zero_buffer(buffer, indexed_count_buffer, sizeof(u32));
+#if defined(__APPLE__)
+                    app::zero_buffer(buffer, indexed_draw_indirect_buffer);
+#endif
+                    const render::vk_descriptor_info fill_pass_bindings[] = {
+                        geometry_pool.meshlets.buffer.buffer,
+                        geometry_pool.meshlets_payload.buffer.buffer,
+                        geometry_pool.primitives.buffer.buffer,
+                        geometry_pool.instances.buffer.buffer,
+                        meshlets_draw_indirect_buffer.buffer,
+                        frame_cull_data_buffer.buffer,
+                        indexed_indices_buffer.buffer,
+                        indexed_draw_indirect_buffer.buffer,
+                        indexed_count_buffer.buffer,
+                        meshlets_visibility_buffer.buffer,
+                        render::vk_descriptor_info(
+                            depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL),
+                    };
+
+                    const render::vk_pipeline& fill_pass = pipelines[pso_id::indexed_fill_late_pipeline];
+
+                    fill_pass.bind(buffer);
+                    fill_pass.push_descriptor_set(buffer, fill_pass_bindings);
+
+                    vkCmdDispatchIndirect(buffer, draw_count_buffer.buffer, 0);
+
+                    render::cmd_stage_barrier(
+                        buffer,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
                         VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
                 }
 
@@ -903,7 +978,7 @@ int app::instance::run(const int argc, char* argv[])
                             VK_NULL_HANDLE, m_renderer.get_frame_swapchain_image().image_view, VK_IMAGE_LAYOUT_GENERAL),
                         render::vk_descriptor_info(
                             VK_NULL_HANDLE, vis_buffer.vis_buffer_img.view, VK_IMAGE_LAYOUT_GENERAL),
-                        geometry_pool.index.buffer.buffer,
+                        indexed_indices_buffer.buffer,
                         geometry_pool.vertex.buffer.buffer,
                         geometry_pool.meshlets.buffer.buffer,
                         geometry_pool.meshlets_payload.buffer.buffer,
@@ -1181,7 +1256,6 @@ int app::instance::run(const int argc, char* argv[])
 
     render::destroy_command_buffer(m_renderer.get_context().device, geometry_pool.transfer.staging_command_buffer);
 
-    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.index.buffer);
     render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.vertex.buffer);
     render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.meshlets.buffer);
     render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.primitives.buffer);
@@ -1193,6 +1267,8 @@ int app::instance::run(const int argc, char* argv[])
     render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.transfer.staging_buffer);
 
     render::destroy_buffer(m_renderer.get_context().allocator, draw_count_buffer);
+    render::destroy_buffer(m_renderer.get_context().allocator, indexed_count_buffer);
+    render::destroy_buffer(m_renderer.get_context().allocator, indexed_indices_buffer);
     render::destroy_buffer(m_renderer.get_context().allocator, mesh_visibility_buffer);
     render::destroy_buffer(m_renderer.get_context().allocator, meshlets_visibility_buffer);
     render::destroy_buffer(m_renderer.get_context().allocator, indexed_draw_indirect_buffer);

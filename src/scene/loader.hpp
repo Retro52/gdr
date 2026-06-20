@@ -38,7 +38,6 @@ namespace loader
 
         struct lod_layout
         {
-            u64 index_offset;
             u64 meshlet_offset;
             u64 meshlet_data_offset;
         };
@@ -68,7 +67,6 @@ namespace loader
     struct loader_context
     {
         cpp::heap_array<loader::vertex> vertices;
-        cpp::heap_array<u32> indices;
 
         cpp::heap_array<loader::meshlet> meshlets;
         cpp::heap_array<u8> meshlets_data;

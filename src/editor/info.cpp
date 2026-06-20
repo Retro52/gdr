@@ -47,13 +47,11 @@ namespace
     void draw_scene_geometry_pool(const render::vk_scene_geometry_pool& buffer)
     {
         ZoneScoped;
-        const u64 acc_size = buffer.primitives.size + buffer.meshlets.size + buffer.index.size
-                           + buffer.meshlets_payload.size + buffer.instances.size + buffer.vertex.size
-                           + buffer.materials.size;
+        const u64 acc_size = buffer.primitives.size + buffer.meshlets.size + buffer.meshlets_payload.size
+                           + buffer.instances.size + buffer.vertex.size + buffer.materials.size;
 
-        const u64 acc_offset = buffer.primitives.offset + buffer.meshlets.offset + buffer.index.offset
-                             + buffer.meshlets_payload.offset + buffer.instances.offset + buffer.vertex.offset
-                             + buffer.materials.offset;
+        const u64 acc_offset = buffer.primitives.offset + buffer.meshlets.offset + buffer.meshlets_payload.offset
+                             + buffer.instances.offset + buffer.vertex.offset + buffer.materials.offset;
 
         const auto fraction = static_cast<f32>(acc_offset) / static_cast<f32>(acc_size);
 
@@ -85,7 +83,6 @@ void editor::info_widget_context::draw() const
     if (ImGui::CollapsingHeader("Geometry pool stats"))
     {
         draw_shared_buffer_stats("Vertices", m_geometry_pool.vertex);
-        draw_shared_buffer_stats("Indices", m_geometry_pool.index);
         draw_shared_buffer_stats("Meshlets", m_geometry_pool.meshlets);
         draw_shared_buffer_stats("Instances", m_geometry_pool.instances);
         draw_shared_buffer_stats("Primitives", m_geometry_pool.primitives);
