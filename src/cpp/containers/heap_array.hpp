@@ -7,6 +7,7 @@
 
 #include <cstring>
 #include <type_traits>
+#include <new>
 #include <utility>
 
 namespace cpp

@@ -52,10 +52,16 @@ void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& 
 {
     ZoneScoped;
 
+#ifdef __APPLE__
+    constexpr auto stage_bits = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+#else
+    constexpr auto stage_bits = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT
+                              | VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+#endif
+
     render::cmd_buffer_barrier(cmd,
                                draw_count_buffer.buffer,
-                               VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT
-                                   | VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                               stage_bits,
                                VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
                                    | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                                VK_PIPELINE_STAGE_2_CLEAR_BIT,
@@ -166,7 +172,11 @@ app::depth_pyramid_data app::create_depth_pyramid(const ivec2& size, const VkFor
                                                     VK_FILTER_LINEAR,
                                                     VK_SAMPLER_MIPMAP_MODE_NEAREST,
                                                     VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+#ifdef __APPLE__
+                                                    VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE);
+#else
                                                     VK_SAMPLER_REDUCTION_MODE_MIN);
+#endif
 
     for (u32 i = 0; i < depth_pyramid.pyramid_count; ++i)
     {

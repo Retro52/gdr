@@ -221,6 +221,11 @@ void vk_renderer::set_vsync(bool vsync)
     return m_frame_index.get_flag(tagged_bits::vsync_bit);
 }
 
+[[nodiscard]] bool vk_renderer::is_feature_supported(feature_flag feature) const
+{
+    return m_context.enabled_device_features.supported(feature);
+}
+
 void vk_renderer::recreate_swapchain(ivec2 new_size, bool vsync)
 {
     if ((new_size == m_swapchain_size || new_size.x < 1 || new_size.y < 1) && vsync == get_vsync())

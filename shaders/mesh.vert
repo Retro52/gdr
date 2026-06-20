@@ -22,8 +22,14 @@ out VS_OUT {
 
 void main()
 {
-    vs_out.base_index = draw_cmds[gl_DrawID].first_index;
-    vs_out.instance_id = draw_cmds[gl_DrawID].instance_id;
+#ifdef PLATFORM_MVK
+    uint cid = gl_BaseInstance;
+#else
+    uint cid = gl_DrawID;
+#endif
+
+    vs_out.base_index = draw_cmds[cid].first_index;
+    vs_out.instance_id = draw_cmds[cid].instance_id;
     vs_out.uv = vec2(vertices[gl_VertexIndex].ux, vertices[gl_VertexIndex].uy);
 
     vec3 vpos = vec3(vertices[gl_VertexIndex].px, vertices[gl_VertexIndex].py, vertices[gl_VertexIndex].pz);

@@ -27,7 +27,8 @@
     ],
     "options": {
       "color_format": 101
-    }
+    },
+    "capabilities": ["mesh_ext"]
   },
   "task_render_late_pipeline": {
     "shaders": [
@@ -37,7 +38,8 @@
     ],
     "options": {
       "color_format": 101
-    }
+    },
+    "capabilities": ["mesh_ext"]
   },
   "task_occlusion_cull_pipeline": {
     "shaders": [

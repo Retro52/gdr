@@ -56,6 +56,8 @@ namespace render
 
         [[nodiscard]] bool get_vsync() const;
 
+        [[nodiscard]] bool is_feature_supported(feature_flag feature) const;
+
         template<typename Func>
         void submit(Func&& func) const
         {

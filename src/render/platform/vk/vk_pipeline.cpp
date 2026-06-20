@@ -219,10 +219,17 @@ result<vk_shader> vk_shader::load(const vk_renderer& renderer, const fs::path& p
         .pCode    = binary.get<u32>(),
     };
 
+    const auto meta = parse_spirv(binary);
+    if ((meta.stage == VK_SHADER_STAGE_MESH_BIT_EXT || meta.stage == VK_SHADER_STAGE_TASK_BIT_EXT)
+        && !renderer.is_feature_supported(feature_flag::eMeshShading))
+    {
+        return error("mesh shading not supported");
+    }
+
     VkShaderModule shader_module;
     VK_RETURN_ON_FAIL(vkCreateShaderModule(renderer.get_context().device, &module_create_info, nullptr, &shader_module))
 
-    return vk_shader {.module = shader_module, .meta = parse_spirv(binary)};
+    return vk_shader {.module = shader_module, .meta = meta};
 }
 
 vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
@@ -506,8 +513,14 @@ result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, con
 
     VkPipelineLayout pipeline_layout;
     VkDescriptorSetLayout descriptor_set_layout;
-    VK_RETURN_ON_FAIL(create_pipeline_layout(
-        renderer.get_context().device, &shader, 1, desc_set, desc_set_count, pc_range, &pipeline_layout, &descriptor_set_layout));
+    VK_RETURN_ON_FAIL(create_pipeline_layout(renderer.get_context().device,
+                                             &shader,
+                                             1,
+                                             desc_set,
+                                             desc_set_count,
+                                             pc_range,
+                                             &pipeline_layout,
+                                             &descriptor_set_layout));
 
     VkDescriptorUpdateTemplate update_template;
     VK_RETURN_ON_FAIL(create_update_template(

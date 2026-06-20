@@ -3,6 +3,7 @@
 #extension GL_GOOGLE_include_directive: require
 
 #include "utils/math.glsl"
+#include "utils/gather.glsl"
 #include "include/shaders/types.h"
 
 layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
@@ -92,7 +93,11 @@ void main()
         vec2 pmd_size = vec2(p_aabb.z - p_aabb.x, p_aabb.w - p_aabb.y) * frame_cull.pyramid_size;
         float level = ceil(log2(max(pmd_size.x, pmd_size.y)));
 
+#ifndef PLATFORM_MVK
         float pmd_depth = textureLod(depth_pyramid, (p_aabb.xy + p_aabb.zw) * 0.5, level).x;
+#else
+        float pmd_depth = textureGatherLodMin(depth_pyramid, (p_aabb.xy + p_aabb.zw) * 0.5, level, 0);
+#endif
         float spr_depth = -frame_cull.frustum[4] / (center.z + radius);
 
         visible = visible && spr_depth >= pmd_depth;
@@ -141,7 +146,11 @@ void main()
 #else
         uint dci = atomicAdd(draw_commands_count, 1);
         draw_indirect_cmds[dci].instance_count = 1;
+#ifndef PLATFORM_MVK
         draw_indirect_cmds[dci].first_instance = 0;
+#else
+        draw_indirect_cmds[dci].first_instance = dci;
+#endif
         draw_indirect_cmds[dci].vertex_offset = int(meshes_data[mesh_idx].base_vertex);
 
         draw_indirect_cmds[dci].instance_id = idx;

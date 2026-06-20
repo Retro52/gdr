@@ -30,6 +30,19 @@ void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_d
         compiled_shaders.clear();
         const auto& shaders = pipeline_info["shaders"];
 
+        if (pipeline_info.contains("capabilities"))
+        {
+            const auto& capabilities = pipeline_info["capabilities"];
+            for (auto it = capabilities.begin(); it != capabilities.end(); ++it)
+            {
+                if (it.value() == "mesh_ext" && !renderer.is_feature_supported(render::feature_flag::eMeshShading))
+                {
+                    LOG_WARNING("pipeline is skipped because mesh shaders are unsupported on this platform");
+                    return;
+                }
+            }
+        }
+
         for (const auto& shader : shaders)
         {
             const auto id        = shader.get<std::string>();
@@ -43,6 +56,11 @@ void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_d
                 {
                     cache.emplace(shader_id, *compiled_shader);
                     compiled_shaders.emplace_back(*compiled_shader);
+                }
+                else
+                {
+                    LOG_WARNING("Failed to load shader {}", id);
+                    return;
                 }
             }
             else

@@ -80,6 +80,10 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
     set(SHADER_INPUT_PATH "${PROJECT_SOURCE_DIR}/${SHADER}")
     set(SHADER_BIN_OUTPUT "${SHADERS_BIN_FOLDER}/${SHADER_BIN}")
 
+    if (APPLE)
+        list(APPEND SHADER_DEF "-DPLATFORM_MVK")
+    endif ()
+
     add_custom_command(
             OUTPUT "${SHADER_BIN_OUTPUT}"
             COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}

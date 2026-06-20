@@ -209,12 +209,14 @@ render::vk_renderer create_vk_renderer(window& app_window)
 #if !NO_PERF_QUERY
                                         .request(render::feature_flag::ePipelineStats)
 #endif
+#if !defined(__APPLE__)
+                                        .require(render::feature_flag::eSamplerMinMax)
+#endif
                                         .request(render::feature_flag::eMeshShading)
                                         .require(render::feature_flag::e8BitIntegers)
                                         .require(render::feature_flag::e16BitTypes)
                                         .require(render::feature_flag::eDrawIndirect)
                                         .require(render::feature_flag::eDynamicRender)
-                                        .require(render::feature_flag::eSamplerMinMax)
                                         .require(render::feature_flag::eBindlessTextures)
                                         .require(render::feature_flag::eScalarBlockLayout)
                                         .require(render::feature_flag::eSynchronization2);
@@ -346,22 +348,18 @@ int app::instance::run(const int argc, char* argv[])
     render::vk_scene_geometry_pool geometry_pool {
         .index = render::vk_shared_buffer(
             m_renderer, 128_MB, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-        .vertex     = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-        .primitives = render::vk_shared_buffer(m_renderer, 1_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-        .instances  = render::vk_shared_buffer(m_renderer, 48_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
-        .materials  = render::vk_shared_buffer(m_renderer, 48_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .vertex           = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .meshlets         = render::vk_shared_buffer(m_renderer, 16_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .primitives       = render::vk_shared_buffer(m_renderer, 1_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .instances        = render::vk_shared_buffer(m_renderer, 48_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .materials        = render::vk_shared_buffer(m_renderer, 48_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
+        .meshlets_payload = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
 
         .transfer = *render::create_buffer_transfer(m_renderer.get_context().device,
                                                     m_renderer.get_context().allocator,
                                                     m_renderer.get_context().queues[render::queue_kind::eTransfer],
-                                                    128_MB)};
-
-    if (mesh_shading_supported)
-    {
-        geometry_pool.meshlets = render::vk_shared_buffer(m_renderer, 16_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-        geometry_pool.meshlets_payload =
-            render::vk_shared_buffer(m_renderer, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-    }
+                                                    128_MB),
+    };
 
     loader::stats stats;
     cpp::heap_array<render::vk_image> textures;
@@ -604,6 +602,14 @@ int app::instance::run(const int argc, char* argv[])
             pipeline.bind_descriptor_set(cmd, bindless_textures_desc_set);
 
             vkCmdBindIndexBuffer(cmd, geometry_pool.index.buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+#if defined(__APPLE__)
+            vkCmdDrawIndexedIndirect(cmd,
+                                     indexed_draw_indirect_buffer.buffer,
+                                     0,
+                                     stats.primitives,
+                                     sizeof(shader_types::DrawIndexedIndirect));
+#else
             vkCmdDrawIndexedIndirectCount(cmd,
                                           indexed_draw_indirect_buffer.buffer,
                                           0,
@@ -611,6 +617,7 @@ int app::instance::run(const int argc, char* argv[])
                                           0,
                                           stats.primitives,
                                           sizeof(shader_types::DrawIndexedIndirect));
+#endif
         }
     };
 
