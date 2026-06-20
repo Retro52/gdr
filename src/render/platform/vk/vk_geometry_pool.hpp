@@ -8,7 +8,6 @@ namespace render
 {
     struct vk_scene_geometry_pool
     {
-        vk_shared_buffer index;
         vk_shared_buffer vertex;
         vk_shared_buffer meshlets;
         vk_shared_buffer primitives;

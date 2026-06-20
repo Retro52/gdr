@@ -1,19 +1,25 @@
 #version 460
 
-#extension GL_EXT_mesh_shader: require
 #extension GL_GOOGLE_include_directive: require
 
 #include "utils/math.glsl"
+#include "utils/gather.glsl"
 #include "include/shaders/types.h"
 
-layout (local_size_x = kTaskWorkGroups, local_size_y = 1, local_size_z = 1) in;
+layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-layout (binding = 3, set = 0) readonly buffer Meshlets      { Meshlet meshlets[]; };
-layout (binding = 5, set = 0) readonly buffer MeshesData    { MeshData meshes_data[]; };
-layout (binding = 6, scalar)  readonly buffer MeshInstances { MeshInstance mesh_instances[]; };
+layout (binding = 0, set = 0) readonly buffer Meshlets        { Meshlet meshlets[]; };
+layout (binding = 1, set = 0) readonly buffer MeshletVertices { uint meshlets_vertices[]; };
+layout (binding = 1, set = 0) readonly buffer MeshletIndices  { uint8_t meshlets_indices[]; };
+layout (binding = 2, set = 0) readonly buffer MeshesData      { MeshData meshes_data[]; };
+layout (binding = 3, scalar)  readonly buffer MeshInstances   { MeshInstance mesh_instances[]; };
 
-layout (binding = 7, set = 0) readonly buffer DrawMeshletsIndirects { DrawTaskCommandIndirect draw_mesh_cmds[]; };
-layout (binding = 8, set = 0) readonly buffer FrameCullDataBuffer   { FrameCullData frame_cull; };
+layout (binding = 4, set = 0) readonly buffer DrawMeshletsIndirects { DrawTaskCommandIndirect draw_mesh_cmds[]; };
+layout (binding = 5, set = 0) readonly buffer FrameCullDataBuffer   { FrameCullData frame_cull; };
+
+layout (binding = 6, set = 0) writeonly buffer Indices              { uint indices[]; };
+layout (binding = 7, set = 0) writeonly buffer DrawindexedIndirects { DrawIndexedIndirect draw_indirects[]; };
+layout (binding = 8, set = 0) buffer IndexedDrawCounts              { uint indexed_draw_counts[2]; };
 
 #ifdef FOR_LATE_OCCLUSION_TEST
 layout (binding = 9)  buffer MeshletsVisibilityBuffer { uint meshlets_visibility_buffer[]; };
@@ -22,13 +28,9 @@ layout (binding = 10) uniform sampler2D depth_pyramid;
 layout (binding = 9) readonly buffer MeshletsVisibilityBuffer { uint meshlets_visibility_buffer[]; };
 #endif
 
-layout (push_constant) uniform constants
-{
-    DrawPushConstants pc;
-};
-
-shared uint meshlets_count;
-taskPayloadSharedEXT DrawMeshletsTask meshlet_task;
+shared uint s_meshlets_count;
+shared uint s_indices_count;
+shared uint s_indices_offset_global;
 
 void main()
 {
@@ -36,11 +38,14 @@ void main()
     uint meshlets_in_task = draw_mesh_cmds[gl_WorkGroupID.x].meshlet_count & 0x7Fu;
     uint meshlet_id = draw_mesh_cmds[gl_WorkGroupID.x].meshlet_offset + gl_LocalInvocationID.x;
     uint visibility_bit = draw_mesh_cmds[gl_WorkGroupID.x].visibility_offset + gl_LocalInvocationID.x;
+    uint cmd_base_vertex = meshes_data[mesh_instances[instance_id].mesh_data_index].base_vertex;
 
-    meshlet_task.instance_id = instance_id;
-    meshlet_task.base_vertex = meshes_data[mesh_instances[instance_id].mesh_data_index].base_vertex;
-
-    meshlets_count = 0;
+    if (gl_LocalInvocationID.x == 0)
+    {
+        s_indices_count = 0;
+        s_meshlets_count = 0;
+        s_indices_offset_global = 0;
+    }
     barrier();
 
     vec3 cull_cone_axis = vec3(
@@ -90,25 +95,17 @@ void main()
     {
         vec2 pmd_size = vec2(p_aabb.z - p_aabb.x, p_aabb.w - p_aabb.y) * frame_cull.pyramid_size;
         float level = ceil(log2(max(pmd_size.x, pmd_size.y)));
-
-        float pmd_depth = textureLod(depth_pyramid, (p_aabb.xy + p_aabb.zw) * 0.5, level).x;
         float spr_depth = -frame_cull.frustum[4] / (view_center.z + sphere_radius);
+
+#ifndef PLATFORM_MVK
+        float pmd_depth = textureLod(depth_pyramid, (p_aabb.xy + p_aabb.zw) * 0.5, level).x;
+#else
+        float pmd_depth = textureGatherLodMin(depth_pyramid, (p_aabb.xy + p_aabb.zw) * 0.5, level, 0);
+#endif
 
         visible = visible && spr_depth >= pmd_depth;
     }
 
-    emit = emit && visible && (!drawn_in_early || GET_BIT(frame_cull.flags, kMeshletOcclusionCullBit) == 0);
-#else
-    emit = emit && (was_visible_last_frame || GET_BIT(frame_cull.flags, kMeshletOcclusionCullBit) == 0);
-#endif
-
-    if (emit)
-    {
-        uint idx = atomicAdd(meshlets_count, 1);
-        meshlet_task.meshlet_ids[idx] = meshlet_id;
-    }
-
-#ifdef FOR_LATE_OCCLUSION_TEST
     if (gl_LocalInvocationID.x < meshlets_in_task)
     {
         if (visible)
@@ -116,8 +113,50 @@ void main()
         else
             atomicAnd(meshlets_visibility_buffer[visibility_bit >> 5], ~(1u << (visibility_bit & 31)));
     }
+
+    emit = emit && visible && (!drawn_in_early || GET_BIT(frame_cull.flags, kMeshletOcclusionCullBit) == 0);
+#else
+    emit = emit && (was_visible_last_frame || GET_BIT(frame_cull.flags, kMeshletOcclusionCullBit) == 0);
 #endif
 
+    uint idx = emit ? atomicAdd(s_meshlets_count, 1) : 0;
+    uint indices_offset_local = emit ? atomicAdd(s_indices_count, uint(meshlets[meshlet_id].triangles_count) * 3) : 0;
+
     barrier();
-    EmitMeshTasksEXT(meshlets_count, 1, 1);
+    if (gl_LocalInvocationID.x == 0)
+    {
+        s_indices_offset_global = atomicAdd(indexed_draw_counts[0], s_indices_count);
+        uint dci = atomicAdd(indexed_draw_counts[1], 1);
+
+#ifndef PLATFORM_MVK
+        draw_indirects[dci].first_instance = 0;
+#else
+        draw_indirects[dci].first_instance = dci;
+#endif
+        draw_indirects[dci].instance_count = 1;
+        draw_indirects[dci].instance_id = instance_id;
+        draw_indirects[dci].vertex_offset = int(cmd_base_vertex);
+
+        draw_indirects[dci].index_count = s_indices_count;
+        draw_indirects[dci].first_index = s_indices_offset_global;
+    }
+
+    barrier();
+    if (emit)
+    {
+        indices_offset_local += s_indices_offset_global;
+
+        const uint base_vertex = meshlets[meshlet_id].data_offset / 4;
+        const uint base_index  = meshlets[meshlet_id].data_offset + uint(meshlets[meshlet_id].vertices_count) * 4;
+
+        for (uint i = 0; i < int(meshlets[meshlet_id].triangles_count); ++i)
+        {
+            const uint store_base = indices_offset_local + i * 3;
+            const uint iid = base_index + i * 3;
+
+            indices[store_base + 0] = meshlets_vertices[base_vertex + uint(meshlets_indices[iid + 0])];
+            indices[store_base + 1] = meshlets_vertices[base_vertex + uint(meshlets_indices[iid + 1])];
+            indices[store_base + 2] = meshlets_vertices[base_vertex + uint(meshlets_indices[iid + 2])];
+        }
+    }
 }
