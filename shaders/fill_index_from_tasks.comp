@@ -6,7 +6,7 @@
 #include "utils/gather.glsl"
 #include "include/shaders/types.h"
 
-layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+layout (local_size_x = kTaskWorkGroups, local_size_y = 1, local_size_z = 1) in;
 
 layout (binding = 0, set = 0) readonly buffer Meshlets        { Meshlet meshlets[]; };
 layout (binding = 1, set = 0) readonly buffer MeshletVertices { uint meshlets_vertices[]; };
@@ -28,7 +28,6 @@ layout (binding = 10) uniform sampler2D depth_pyramid;
 layout (binding = 9) readonly buffer MeshletsVisibilityBuffer { uint meshlets_visibility_buffer[]; };
 #endif
 
-shared uint s_meshlets_count;
 shared uint s_indices_count;
 shared uint s_indices_offset_global;
 
@@ -43,7 +42,6 @@ void main()
     if (gl_LocalInvocationID.x == 0)
     {
         s_indices_count = 0;
-        s_meshlets_count = 0;
         s_indices_offset_global = 0;
     }
     barrier();
@@ -119,7 +117,6 @@ void main()
     emit = emit && (was_visible_last_frame || GET_BIT(frame_cull.flags, kMeshletOcclusionCullBit) == 0);
 #endif
 
-    uint idx = emit ? atomicAdd(s_meshlets_count, 1) : 0;
     uint indices_offset_local = emit ? atomicAdd(s_indices_count, uint(meshlets[meshlet_id].triangles_count) * 3) : 0;
 
     barrier();

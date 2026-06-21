@@ -369,12 +369,12 @@ static result<render::vk_image> upload_texture(const parsed_texture& texture, co
     return *image_r;
 }
 
-u32 loader::get_max_lod_tris(const loader::primitive& prim)
+u32 loader::get_max_lod_tris(const mesh::raw_mesh& mesh)
 {
     u32 res = 0;
-    for (u32 i = 0; i < prim.lod_count; ++i)
+    for (u32 i = 0; i < mesh.lod_count; ++i)
     {
-        // res = cpp::max(prim.lod_array[i].indices_count / 3, res);
+        res = cpp::max(static_cast<u32>(mesh.lod_array[i].raw_indices.size() / 3), res);
     }
 
     return res;
@@ -636,7 +636,7 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
                         : 0;
 
                 ++instance_count;
-                triangles_max += get_max_lod_tris(ctx.primitives[desc.offset + j]);
+                triangles_max += get_max_lod_tris(raw_meshes[desc.offset + j]);
                 visibility_offset += get_max_lod_meshlets(ctx.primitives[desc.offset + j]);
             }
         }
