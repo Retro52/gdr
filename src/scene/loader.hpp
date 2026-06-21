@@ -75,7 +75,7 @@ namespace loader
         cpp::heap_array<loader::primitive> primitives;
     };
 
-    u32 get_max_lod_tris(const loader::primitive& prim);
+    u32 get_max_lod_tris(const mesh::raw_mesh& mesh);
 
     u32 get_max_lod_meshlets(const loader::primitive& prim);
 

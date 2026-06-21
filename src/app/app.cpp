@@ -172,7 +172,7 @@ namespace
                 glm::mix(0.0F, 1.0F, static_cast<f32>((i / kVolumeItemsPerSide) % kVolumeItemsPerSide) / kMixMax);
             material.met_roughness_factor.b = glm::mix(0.0F, 1.0F, static_cast<f32>(i % kVolumeItemsPerSide) / kMixMax);
 
-            triangles_max += loader::get_max_lod_tris(ctx.primitives[id_random]);
+            triangles_max += loader::get_max_lod_tris(primitives[id_random]);
             visibility_offset += loader::get_max_lod_meshlets(ctx.primitives[id_random]);
         }
 
@@ -494,7 +494,7 @@ int app::instance::run(const int argc, char* argv[])
 
     render::vk_buffer indexed_indices_buffer =
         *render::create_buffer(96_MB,
-                               VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                               VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                m_renderer.get_context().allocator,
                                0);
 
@@ -882,8 +882,7 @@ int app::instance::run(const int argc, char* argv[])
                         draw_count_buffer.buffer,
                         mesh_visibility_buffer.buffer,
                         frame_cull_data_buffer.buffer,
-                        enable_meshlets_pipeline ? meshlets_draw_indirect_buffer.buffer
-                                                 : indexed_draw_indirect_buffer.buffer,
+                        meshlets_draw_indirect_buffer.buffer,
                         render::vk_descriptor_info(
                             depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL)};
 

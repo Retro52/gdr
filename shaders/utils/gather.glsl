@@ -29,4 +29,3 @@ float textureGatherLodMin(sampler2D tex, vec2 uv, float lod, int comp)
     vec4 gresult = textureGatherLod(tex, uv, lod, comp);
     return min(gresult.r, min(gresult.g, min(gresult.b, gresult.a)));
 }
-

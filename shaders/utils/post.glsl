@@ -27,7 +27,7 @@ vec3 tonemap(vec3 color)
 vec4 from_linear(vec4 rgb_linear)
 {
     bvec4 cutoff = lessThan(rgb_linear, vec4(0.0031308));
-    vec4 higher = vec4(1.055)*pow(rgb_linear, vec4(1.0/2.4)) - vec4(0.055);
+    vec4 higher = vec4(1.055) * pow(rgb_linear, vec4(1.0 / 2.4)) - vec4(0.055);
     vec4 lower = rgb_linear * vec4(12.92);
 
     return mix(higher, lower, cutoff);
