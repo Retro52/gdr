@@ -46,11 +46,6 @@
       "cull_occlusion_tasks.comp.spv"
     ]
   },
-  "indexed_cull_pipeline": {
-    "shaders": [
-      "cull_mesh.comp.spv"
-    ]
-  },
   "indexed_render_pipeline": {
     "shaders": [
       "mesh.vert.spv",
@@ -59,11 +54,6 @@
     "options": {
       "color_format": 101
     }
-  },
-  "indexed_cull_occlusion_pipeline": {
-    "shaders": [
-      "cull_occlusion_mesh.comp.spv"
-    ]
   },
   "depth_reduce_pipeline": {
     "shaders": [
