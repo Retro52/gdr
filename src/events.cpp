@@ -306,7 +306,7 @@ void events_queue::hide_cursor() const
 void events_queue::show_cursor() const
 {
     ZoneScoped;
-    SDL_HideCursor();
+    SDL_ShowCursor();
     if (auto* ctx = ImGui::GetCurrentContext())
     {
         ctx->IO.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
