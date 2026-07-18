@@ -28,7 +28,9 @@
     "options": {
       "color_format": 101
     },
-    "capabilities": ["mesh_ext"]
+    "capabilities": [
+      "mesh_ext"
+    ]
   },
   "task_render_late_pipeline": {
     "shaders": [
@@ -39,7 +41,9 @@
     "options": {
       "color_format": 101
     },
-    "capabilities": ["mesh_ext"]
+    "capabilities": [
+      "mesh_ext"
+    ]
   },
   "task_occlusion_cull_pipeline": {
     "shaders": [
@@ -78,6 +82,16 @@
   "vert_resolve_pipeline": {
     "shaders": [
       "resolve_vert.comp.spv"
+    ]
+  },
+  "equirect_unpack_pipeline": {
+    "shaders": [
+      "equirect_unpack.comp.spv"
+    ]
+  },
+  "cubemap_convolute_pipeline": {
+    "shaders": [
+      "cubemap_convolute.comp.spv"
     ]
   }
 }

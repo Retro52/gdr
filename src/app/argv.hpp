@@ -37,17 +37,18 @@ namespace app
             return -1;
         }
 
-        cpp::stack_string read_string(const char* name, const char* default_value = "") const noexcept
+        template<typename T = cpp::stack_string>
+        T read_string(const char* name, const char* default_value = "") const noexcept
         {
             for (int i = 1; i < m_argc - 1; ++i)
             {
                 if (cpp::cx_streq(name, m_argv[i]))
                 {
-                    return m_argv[i + 1];
+                    return T {m_argv[i + 1]};
                 }
             }
 
-            return default_value;
+            return T {default_value};
         }
 
         int read_numeric(const char* name, int default_value = 0) const noexcept
