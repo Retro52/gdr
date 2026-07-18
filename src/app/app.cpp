@@ -4,6 +4,7 @@
 
 #include <app/app.hpp>
 #include <app/argv.hpp>
+#include <app/environment.hpp>
 #include <app/gpu_stats.hpp>
 #include <app/pso.hpp>
 #include <app/render.hpp>
@@ -38,8 +39,9 @@
 
 namespace
 {
-    REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_specular, uv, normal, tangent, world_pos, color, metallic,
-                  roughness, albedo_texture, normal_texture, omr_texture, triangle_id, instance_id);
+    REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_ambient, lit_specular, uv, normal, tangent, world_pos,
+                  color, metallic, roughness, albedo_texture, normal_texture, omr_texture, triangle_id, instance_id,
+                  environment_map, irradiance_map);
 
     void build_frustum(shader_types::FrameCullData& data, const glm::mat4& iproj, const glm::mat4& iview)
     {
@@ -253,6 +255,8 @@ int app::instance::run(const int argc, char* argv[])
                                                             m_renderer.get_context().device,
                                                             m_renderer.get_context().allocator);
 
+    app::environment environment {m_renderer, VK_FORMAT_R16G16B16A16_SFLOAT, 1024, 32, 128};
+
     bool exit = false;
     bool mesh_shading_supported =
         m_renderer.get_context().enabled_device_features.supported(render::feature_flag::eMeshShading);
@@ -360,6 +364,7 @@ int app::instance::run(const int argc, char* argv[])
     app::argv_handler argv_handler(argc, argv);
     const int instance_count = argv_handler.read_numeric("--instances");
     const int first_instance = argv_handler.get_positional_args_start();
+    auto env_map             = argv_handler.read_string<fs::path_string>("--environment");
 
     assert2(instance_count == 0 || first_instance > 0);
 
@@ -383,7 +388,7 @@ int app::instance::run(const int argc, char* argv[])
     }
     else
     {
-        stats = loader::load_scene(argv[1], client_scene, m_renderer, geometry_pool, textures);
+        stats = loader::load_scene(argv[first_instance], client_scene, m_renderer, geometry_pool, textures);
     }
 
     entity camera = client_scene.empty();
@@ -399,7 +404,7 @@ int app::instance::run(const int argc, char* argv[])
     editor_camera.add_component<camera_component>(camera_component {
         .near_plane     = 0.01F,
         .aspect_ratio   = 16.0F / 9.0F,
-        .horizontal_fov = glm::radians(90.0F),
+        .horizontal_fov = glm::radians(60.0F),
     });
 
     if (!camera)
@@ -492,11 +497,11 @@ int app::instance::run(const int argc, char* argv[])
     render::fill_buffer(geometry_pool.transfer, mesh_visibility_buffer, 0_u8);
     render::fill_buffer(geometry_pool.transfer, meshlets_visibility_buffer, 0_u8);
 
-    render::vk_buffer indexed_indices_buffer =
-        *render::create_buffer(96_MB,
-                               VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                               m_renderer.get_context().allocator,
-                               0);
+    render::vk_buffer indexed_indices_buffer = *render::create_buffer(
+        96_MB,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        m_renderer.get_context().allocator,
+        0);
 
     render::vk_buffer indexed_draw_indirect_buffer = *render::create_buffer(
         16_MB,
@@ -625,6 +630,43 @@ int app::instance::run(const int argc, char* argv[])
 #endif
         }
     };
+
+    m_renderer.submit(
+        [&](VkCommandBuffer cmd)
+        {
+            ZoneScopedN("app.instance.run.preload");
+
+            do
+            {
+            } while (!m_renderer.acquire_frame());
+            constexpr VkCommandBufferBeginInfo command_buffer_begin_info {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = 0};
+
+            const auto viewport = m_renderer.get_viewport();
+            const auto scissor  = m_renderer.get_scissor();
+
+            vkBeginCommandBuffer(cmd, &command_buffer_begin_info);
+            vkCmdSetScissor(cmd, 0, 1, &scissor);
+            vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+            if (!env_map.empty())
+            {
+                TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "load environment"));
+                environment.load(env_map, pipelines, m_renderer, geometry_pool.transfer);
+            }
+
+            render::transition_image(cmd,
+                                     m_renderer.get_frame_swapchain_image().image,
+                                     VK_IMAGE_LAYOUT_UNDEFINED,
+                                     VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                     VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                     VK_PIPELINE_STAGE_2_NONE,
+                                     VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                                     VK_ACCESS_2_NONE);
+
+            vkEndCommandBuffer(cmd);
+            m_renderer.present_frame(cmd);
+        });
 
     auto render_loop = [&]()
     {
@@ -972,7 +1014,7 @@ int app::instance::run(const int argc, char* argv[])
                     ZoneScopedN("Resolve pass");
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "vb resolve"));
 
-                    const render::vk_descriptor_info cull_pass_bindings[] = {
+                    const render::vk_descriptor_info resolve_pass_bindings[] = {
                         render::vk_descriptor_info(
                             VK_NULL_HANDLE, m_renderer.get_frame_swapchain_image().image_view, VK_IMAGE_LAYOUT_GENERAL),
                         render::vk_descriptor_info(
@@ -988,19 +1030,21 @@ int app::instance::run(const int argc, char* argv[])
                         render::vk_descriptor_info(
                             bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED),
                         render::vk_descriptor_info(depth_texture_sampler, depth_image.view, VK_IMAGE_LAYOUT_GENERAL),
+                        environment.get_cube_descriptor_info(),
+                        environment.get_conv_descriptor_info(),
                     };
 
-                    const render::vk_pipeline& cull_pass =
+                    const render::vk_pipeline& resolve_pass =
                         pipelines[enable_meshlets_pipeline ? pso_id::mesh_resolve_pipeline
                                                            : pso_id::vert_resolve_pipeline];
 
-                    cull_pass.bind(buffer);
-                    cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
-                    cull_pass.bind_descriptor_set(buffer, bindless_textures_desc_set);
+                    resolve_pass.bind(buffer);
+                    resolve_pass.push_descriptor_set(buffer, resolve_pass_bindings);
+                    resolve_pass.bind_descriptor_set(buffer, bindless_textures_desc_set);
 
-                    cull_pass.push_constant(buffer, shader_types::DrawPushConstants(camera_proj_view));
+                    resolve_pass.push_constant(buffer, shader_types::DrawPushConstants(camera_proj_view));
 
-                    cull_pass.dispatch(buffer, m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1);
+                    resolve_pass.dispatch(buffer, m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1);
 
                     render::cmd_stage_barrier(buffer,
                                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
@@ -1072,6 +1116,15 @@ int app::instance::run(const int argc, char* argv[])
                                 auto tmp = glm::inverse(debug_camera_view);
                                 ImGuiWidgets::Gizmo(camera_view, camera_proj, tmp, op);
                                 debug_camera_view = glm::inverse(tmp);
+                            }
+                        }
+
+                        if (ImGui::CollapsingHeader("Environment map", ImGuiTreeNodeFlags_DefaultOpen))
+                        {
+                            ImGui::InputText("Env map", env_map.data(), fs::path_string::capacity());
+                            if (ImGui::Button("Load"))
+                            {
+                                environment.load(env_map, pipelines, m_renderer, geometry_pool.transfer);
                             }
                         }
 
@@ -1245,6 +1298,8 @@ int app::instance::run(const int argc, char* argv[])
     vkDeviceWaitIdle(m_renderer.get_context().device);
 
     pipelines.shutdown(m_renderer);
+    environment.shutdown(m_renderer);
+
     render::destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, depth_image);
     render::destroy_image(
         m_renderer.get_context().device, m_renderer.get_context().allocator, vis_buffer.vis_buffer_img);
@@ -1276,6 +1331,10 @@ int app::instance::run(const int argc, char* argv[])
     render::destroy_descriptor_set(m_renderer.get_context().device, bindless_textures_desc_set);
 
     for (auto& buffer : frame_cull_data_buffers)
+    {
+        render::destroy_buffer_mapped(m_renderer.get_context().allocator, buffer);
+    }
+    for (auto& buffer : world_data_buffers)
     {
         render::destroy_buffer_mapped(m_renderer.get_context().allocator, buffer);
     }

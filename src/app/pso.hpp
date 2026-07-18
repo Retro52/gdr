@@ -28,6 +28,8 @@ namespace app
         indexed_fill_late_pipeline      = "indexed_fill_late_pipeline"_crc32,
 
         depth_reduce_pipeline = "depth_reduce_pipeline"_crc32,
+        equirect_unpack_pipeline = "equirect_unpack_pipeline"_crc32,
+        cubemap_convolute_pipeline = "cubemap_convolute_pipeline"_crc32,
     };
 
     struct pso_data

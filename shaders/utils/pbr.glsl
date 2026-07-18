@@ -1,8 +1,8 @@
 const float kPI = 3.14159265359;
 
-vec3 fresnel_schlick(float h_dot_v, vec3 f0)
+vec3 fresnel_schlick_roughness(float h_dot_v, vec3 f0, float roughness)
 {
-    return f0 + (1.0F - f0) * pow(1.0 - h_dot_v, 5.0F);
+    return f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(1.0 - h_dot_v, 5.0F);
 }
 
 float geometry_schlick_ggx(float n_dot_v, float k)

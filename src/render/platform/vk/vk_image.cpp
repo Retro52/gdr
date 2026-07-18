@@ -92,7 +92,14 @@ result<render::vk_image> render::create_image(VkDevice device, const VkImageCrea
     constexpr VmaAllocationCreateInfo alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO};
     VK_RETURN_ON_FAIL(
         vmaCreateImage(allocator, &image_create_info, &alloc_info, &image.image, &image.allocation, nullptr));
-    image.view = *render::create_image_view(device, image.image, image_create_info.format, aspect_flags);
+    image.view = *render::create_image_view(device,
+                                            image.image,
+                                            image_create_info.arrayLayers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY
+                                                                              : VK_IMAGE_VIEW_TYPE_2D,
+                                            image_create_info.format,
+                                            aspect_flags,
+                                            0,
+                                            VK_REMAINING_MIP_LEVELS);
 
     return image;
 }
@@ -101,10 +108,11 @@ result<VkImageView> render::create_image_view(VkDevice device, VkImage image, Vk
                                               VkImageAspectFlags aspect_flags)
 {
     ZoneScoped;
-    return render::create_image_view(device, image, format, aspect_flags, 0, VK_REMAINING_MIP_LEVELS);
+    return render::create_image_view(
+        device, image, VK_IMAGE_VIEW_TYPE_2D, format, aspect_flags, 0, VK_REMAINING_MIP_LEVELS);
 }
 
-result<VkImageView> render::create_image_view(VkDevice device, VkImage image, VkFormat format,
+result<VkImageView> render::create_image_view(VkDevice device, VkImage image, VkImageViewType type, VkFormat format,
                                               VkImageAspectFlags aspect_flags, u32 mip_level, u32 levels_count)
 {
     ZoneScoped;
@@ -112,7 +120,7 @@ result<VkImageView> render::create_image_view(VkDevice device, VkImage image, Vk
         .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .pNext            = nullptr,
         .image            = image,
-        .viewType         = VK_IMAGE_VIEW_TYPE_2D,
+        .viewType         = type,
         .format           = format,
         .subresourceRange = image_subresource_range(aspect_flags, mip_level, levels_count)};
 

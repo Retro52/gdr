@@ -35,7 +35,7 @@ namespace render
     result<VkImageView> create_image_view(VkDevice device, VkImage image, VkFormat format,
                                           VkImageAspectFlags aspect_flags);
 
-    result<VkImageView> create_image_view(VkDevice device, VkImage image, VkFormat format,
+    result<VkImageView> create_image_view(VkDevice device, VkImage image, VkImageViewType type, VkFormat format,
                                           VkImageAspectFlags aspect_flags, u32 mip_level, u32 levels_count);
 
     result<VkSampler> create_sampler(VkDevice device, VkFilter filter, VkSamplerMipmapMode mipmap_mode,

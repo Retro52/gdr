@@ -209,8 +209,8 @@ app::depth_pyramid_data app::create_depth_pyramid(const ivec2& size, const VkFor
 
     for (u32 i = 0; i < depth_pyramid.pyramid_count; ++i)
     {
-        depth_pyramid.views[i] =
-            *render::create_image_view(device, depth_pyramid.image.image, format, VK_IMAGE_ASPECT_COLOR_BIT, i, 1);
+        depth_pyramid.views[i] = *render::create_image_view(
+            device, depth_pyramid.image.image, VK_IMAGE_VIEW_TYPE_2D, format, VK_IMAGE_ASPECT_COLOR_BIT, i, 1);
     }
 
     return depth_pyramid;

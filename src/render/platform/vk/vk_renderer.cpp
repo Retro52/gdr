@@ -41,6 +41,8 @@ vk_renderer::~vk_renderer()
     ZoneScoped;
     for (auto& frame : m_in_flight_frames)
     {
+        flush_delete_callbacks(frame.delete_callbacks);
+
         vkDestroyFence(m_context.device, frame.fence, nullptr);
         vkDestroySemaphore(m_context.device, frame.acquire_semaphore, nullptr);
 
@@ -83,8 +85,9 @@ void vk_renderer::resize_swapchain(ivec2 new_size)
                                                       m_in_flight_frames[m_frame_index].acquire_semaphore,
                                                       VK_NULL_HANDLE,
                                                       &new_image_index);
-
+    flush_delete_callbacks(m_frame_index);
     m_image_index = new_image_index & 0xFF;
+
     switch (acquire_result)
     {
     case VK_SUCCESS :
@@ -211,6 +214,11 @@ u8 vk_renderer::get_frames_in_flight() const
     return m_swapchain.images[m_image_index];
 }
 
+[[nodiscard]] cpp::heap_array<vk_renderer::delete_callback_t>& vk_renderer::get_frame_callbacks_queue()
+{
+    return m_in_flight_frames[m_frame_index].delete_callbacks;
+}
+
 void vk_renderer::set_vsync(bool vsync)
 {
     recreate_swapchain(m_swapchain_size, vsync);
@@ -224,6 +232,21 @@ void vk_renderer::set_vsync(bool vsync)
 [[nodiscard]] bool vk_renderer::is_feature_supported(feature_flag feature) const
 {
     return m_context.enabled_device_features.supported(feature);
+}
+
+void vk_renderer::flush_delete_callbacks(u32 frame_index)
+{
+    flush_delete_callbacks(m_in_flight_frames[frame_index].delete_callbacks);
+}
+
+void vk_renderer::flush_delete_callbacks(cpp::heap_array<vk_renderer::delete_callback_t>& callbacks)
+{
+    for (auto& callback : callbacks)
+    {
+        std::invoke(callback, m_context.device, m_context.allocator);
+    }
+
+    callbacks.clear();
 }
 
 void vk_renderer::recreate_swapchain(ivec2 new_size, bool vsync)

@@ -11,6 +11,9 @@ namespace render
 {
     class vk_renderer
     {
+    public:
+        using delete_callback_t = std::function<void(VkDevice device, VmaAllocator allocator)>;
+
     private:
         struct frame_data
         {
@@ -19,6 +22,7 @@ namespace render
 
             VkFence fence {VK_NULL_HANDLE};
             VkSemaphore acquire_semaphore {VK_NULL_HANDLE};
+            cpp::heap_array<delete_callback_t> delete_callbacks;
         };
 
     public:
@@ -52,6 +56,8 @@ namespace render
 
         [[nodiscard]] render::swapchain_image get_frame_swapchain_image() const;
 
+        [[nodiscard]] cpp::heap_array<delete_callback_t>& get_frame_callbacks_queue();
+
         void set_vsync(bool vsync);
 
         [[nodiscard]] bool get_vsync() const;
@@ -64,7 +70,17 @@ namespace render
             std::invoke(func, get_frame_command_buffer());
         }
 
+        template<typename Func>
+        void schedule_delete(Func&& func)
+        {
+            get_frame_callbacks_queue().emplace_back(std::forward<Func>(func));
+        }
+
     private:
+        void flush_delete_callbacks(u32 frame_index);
+
+        void flush_delete_callbacks(cpp::heap_array<delete_callback_t>& callbacks);
+
         void recreate_swapchain(ivec2 new_size, bool vsync);
 
         void force_recreate_swapchain(ivec2 new_size, bool vsync);

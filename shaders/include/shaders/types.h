@@ -3,6 +3,7 @@
 #pragma once
 #include <cpp/f16.hpp>
 #include <glm/fwd.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/mat4x4.hpp>
 #include <pod_types.hpp>
 #include <shaders/constants.h>

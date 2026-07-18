@@ -405,7 +405,7 @@ static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfa
                                  vk13_features.maintenance4 && mesh_features.meshShader && mesh_features.taskShader);
     features_table.set_supported(render::feature_flag::eDrawIndirect,
 #if !defined(__APPLE__)
-                                     vk12_features.drawIndirectCount &&
+                                 vk12_features.drawIndirectCount &&
 #endif
                                      device_features2.features.multiDrawIndirect && vk11_features.shaderDrawParameters);
     features_table.set_supported(render::feature_flag::ePipelineStats,
@@ -423,7 +423,8 @@ static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfa
                                      && vk11_features.uniformAndStorageBuffer16BitAccess);
 
     return not_found_extensions.empty() && features_table.all_required_supported()
-        && device_features2.features.samplerAnisotropy;
+        && device_features2.features.samplerAnisotropy
+        && device_features2.features.shaderStorageImageWriteWithoutFormat;
 }
 
 static ext_array build_extensions_from_feature_table(const rendering_features_table& features_table,
@@ -653,10 +654,10 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
         .maintenance4     = rendering_features.wanted(render::feature_flag::eMeshShading)};
 
     VkPhysicalDeviceVulkan12Features vk12_features {
-        .sType                                     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        .pNext                                     = &vk13_features,
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .pNext = &vk13_features,
 #if !defined(__APPLE__)
-        .drawIndirectCount                         = rendering_features.wanted(render::feature_flag::eDrawIndirect),
+        .drawIndirectCount = rendering_features.wanted(render::feature_flag::eDrawIndirect),
 #endif
         .storageBuffer8BitAccess                   = rendering_features.wanted(render::feature_flag::e8BitIntegers),
         .descriptorIndexing                        = rendering_features.wanted(render::feature_flag::eBindlessTextures),
@@ -683,11 +684,12 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
         .pNext    = &vk11_features,
         .features = {
 #if !defined(__APPLE__)
-                     .geometryShader          = VK_TRUE,
+                     .geometryShader = VK_TRUE,
 #endif
-                     .multiDrawIndirect       = rendering_features.wanted(render::feature_flag::eDrawIndirect),
-                     .samplerAnisotropy       = VK_TRUE,
-                     .pipelineStatisticsQuery = rendering_features.wanted(render::feature_flag::ePipelineStats),
+                     .multiDrawIndirect                    = rendering_features.wanted(render::feature_flag::eDrawIndirect),
+                     .samplerAnisotropy                    = VK_TRUE,
+                     .pipelineStatisticsQuery              = rendering_features.wanted(render::feature_flag::ePipelineStats),
+                     .shaderStorageImageWriteWithoutFormat = VK_TRUE,
                      }
     };
 
