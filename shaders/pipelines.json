@@ -93,5 +93,10 @@
     "shaders": [
       "cubemap_convolute.comp.spv"
     ]
+  },
+  "brdf_lut_generate_pipeline": {
+    "shaders": [
+      "brdf_lut_generate.comp.spv"
+    ]
   }
 }

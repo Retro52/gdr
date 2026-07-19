@@ -6,6 +6,12 @@
 
 #include <cmath>
 
+namespace
+{
+    const u32 kSampler2D      = 0;
+    const u32 kSampler2DArray = 1;
+}
+
 imgui_layer::imgui_layer(const window& window, const render::vk_renderer& renderer, const render::vk_pipeline& pipeline)
     : m_renderer(renderer)
     , m_blit_pipeline(pipeline)
@@ -164,19 +170,47 @@ bool imgui_layer::allocate_region(u32 w, u32 h, VkOffset2D& out_offset)
     return true;
 }
 
-void imgui_layer::image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size, f32 brightness)
+void imgui_layer::image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size, f32 brightness,
+                        f32 mip)
 {
-    image_impl(image, view, size, {uv.x, uv.y}, {uv.z, uv.w}, src_layout, brightness, VK_IMAGE_ASPECT_COLOR_BIT);
+    image_impl(image,
+               view,
+               size,
+               {uv.x, uv.y},
+               {uv.z, uv.w},
+               src_layout,
+               VK_IMAGE_ASPECT_COLOR_BIT,
+               {kSampler2D, mip, brightness, 0.0F});
+}
+
+void imgui_layer::image_array(VkImage image, VkImageView view, VkImageLayout src_layout, f32 layer, vec4 uv,
+                              ImVec2 size, f32 brightness, f32 mip)
+{
+    image_impl(image,
+               view,
+               size,
+               {uv.x, uv.y},
+               {uv.z, uv.w},
+               src_layout,
+               VK_IMAGE_ASPECT_COLOR_BIT,
+               {kSampler2DArray, mip, brightness, layer});
 }
 
 void imgui_layer::depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size,
-                              f32 brightness)
+                              f32 brightness, f32 mip)
 {
-    image_impl(image, view, size, {uv.x, uv.y}, {uv.z, uv.w}, src_layout, brightness, VK_IMAGE_ASPECT_DEPTH_BIT);
+    image_impl(image,
+               view,
+               size,
+               {uv.x, uv.y},
+               {uv.z, uv.w},
+               src_layout,
+               VK_IMAGE_ASPECT_DEPTH_BIT,
+               {kSampler2D, mip, brightness, 0.0F});
 }
 
 void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec2 uv0, ImVec2 uv1,
-                             VkImageLayout src_layout, f32 brightness, VkImageAspectFlags aspect)
+                             VkImageLayout src_layout, VkImageAspectFlags aspect, const pc_data& push_constant)
 {
     VkOffset2D offset;
     if (!allocate_region(static_cast<u32>(size.x), static_cast<u32>(size.y), offset))
@@ -186,13 +220,13 @@ void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec
     }
 
     m_pending_uploads.push_back({
-        .img        = image,
-        .view       = view,
-        .offset     = offset,
-        .extent     = {static_cast<u32>(size.x), static_cast<u32>(size.y)},
-        .src_layout = src_layout,
-        .aspect     = aspect,
-        .brightness = brightness
+        .img           = image,
+        .view          = view,
+        .offset        = offset,
+        .extent        = {static_cast<u32>(size.x), static_cast<u32>(size.y)},
+        .src_layout    = src_layout,
+        .aspect        = aspect,
+        .push_constant = push_constant
     });
 
     ImVec2 atlas_uv0 {static_cast<f32>(offset.x) / kAtlasWidth, static_cast<f32>(offset.y) / kAtlasHeight};
@@ -274,11 +308,13 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
         vkCmdSetViewport(cmd, 0, 1, &viewport);
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        m_blit_pipeline.push_constant(cmd, req.brightness);
+        m_blit_pipeline.push_constant(cmd, req.push_constant);
 
-        render::vk_descriptor_info descriptor {
-            m_atlas_data.sampler, req.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-        m_blit_pipeline.push_descriptor_set(cmd, &descriptor);
+        render::vk_descriptor_info bindings[] {
+            {m_atlas_data.sampler, req.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+            {m_atlas_data.sampler, req.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}
+        };
+        m_blit_pipeline.push_descriptor_set(cmd, bindings);
 
         vkCmdDraw(cmd, 3, 1, 0, 0);
     }

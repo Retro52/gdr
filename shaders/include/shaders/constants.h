@@ -27,6 +27,8 @@ namespace shader_constants
 
     const uint kTaskWorkGroups = 64;
     const uint kMeshWorkGroups = 64;
+
+    const uint kEnvironmentMaxMips = 5;
 #ifdef __cplusplus
 }
 #endif

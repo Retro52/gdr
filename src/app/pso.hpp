@@ -30,6 +30,7 @@ namespace app
         depth_reduce_pipeline = "depth_reduce_pipeline"_crc32,
         equirect_unpack_pipeline = "equirect_unpack_pipeline"_crc32,
         cubemap_convolute_pipeline = "cubemap_convolute_pipeline"_crc32,
+        brdf_lut_generate_pipeline = "brdf_lut_generate_pipeline"_crc32,
     };
 
     struct pso_data
