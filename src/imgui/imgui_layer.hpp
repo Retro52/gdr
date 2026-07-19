@@ -19,11 +19,23 @@ public:
     void end_frame(const render::vk_renderer& renderer);
 
     void image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv = {0, 0, 1, 1},
-               ImVec2 size = {256, 256}, f32 brightness = 0.0f);
+               ImVec2 size = {256, 256}, f32 brightness = 0.0F, f32 mip = 0.0F);
+
+    void image_array(VkImage image, VkImageView view, VkImageLayout src_layout, f32 layer, vec4 uv = {0, 0, 1, 1},
+                     ImVec2 size = {256, 256}, f32 brightness = 0.0F, f32 mip = 0.0F);
+
     void depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv = {0, 0, 1, 1},
-                     ImVec2 size = {256, 256}, f32 brightness = 1.0f);
+                     ImVec2 size = {256, 256}, f32 brightness = 1.0F, f32 mip = 0.0F);
 
 private:
+    struct pc_data
+    {
+        u32 type;
+        f32 mip_level;
+        f32 brightness;
+        f32 array_layer;
+    };
+
     struct blit_request
     {
         VkImage img;
@@ -33,7 +45,7 @@ private:
         VkImageLayout src_layout;
         VkImageAspectFlags aspect;
 
-        f32 brightness;  // normalized [0, 1]
+        pc_data push_constant;
     };
 
     struct atlas_data
@@ -59,7 +71,7 @@ private:
     bool allocate_region(u32 w, u32 h, VkOffset2D& out_offset);
 
     void image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec2 uv0, ImVec2 uv1, VkImageLayout src_layout,
-                    f32 brightness, VkImageAspectFlags aspect);
+                    VkImageAspectFlags aspect, const pc_data& push_constant);
 
 private:
     constexpr static u32 kAtlasWidth   = 4096;

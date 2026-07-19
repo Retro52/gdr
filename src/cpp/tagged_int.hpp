@@ -18,7 +18,7 @@ namespace cpp
         constexpr static u8 kTotalBits = sizeof(T) * 8;
         constexpr static u8 kValueBits = sizeof(T) * 8 - N;
 
-        constexpr static T kMaxValue = (kIdentity << kValueBits) - 1;
+        constexpr static T kMaxValue = kIdentity << static_cast<T>(kValueBits) - 1;
 
 #if 0
         // I think it can support signed integers as well, but then I'd have to overcomplicate the

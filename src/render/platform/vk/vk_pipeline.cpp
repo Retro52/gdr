@@ -212,7 +212,13 @@ namespace
 result<vk_shader> vk_shader::load(const vk_renderer& renderer, const fs::path& path)
 {
     ZoneScoped;
-    const auto binary = *fs::read_file(path);
+    const auto r_binary = fs::read_file(path);
+    if (!r_binary)
+    {
+        return error(r_binary.message);
+    }
+
+    auto& binary = r_binary.value;
     const VkShaderModuleCreateInfo module_create_info {
         .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = binary.size(),

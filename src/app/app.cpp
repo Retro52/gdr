@@ -43,6 +43,8 @@ namespace
                   color, metallic, roughness, albedo_texture, normal_texture, omr_texture, triangle_id, instance_id,
                   environment_map, irradiance_map);
 
+    REGISTER_ENUM(cubemap_face, XP, XN, YP, YN, ZP, ZN);
+
     void build_frustum(shader_types::FrameCullData& data, const glm::mat4& iproj, const glm::mat4& iview)
     {
         ZoneScoped;
@@ -1125,6 +1127,24 @@ int app::instance::run(const int argc, char* argv[])
                             if (ImGui::Button("Load"))
                             {
                                 environment.load(env_map, pipelines, m_renderer, geometry_pool.transfer);
+                            }
+
+                            if (environment.valid())
+                            {
+                                static i32 level = 0;
+                                static f32 mip   = 0.0F;
+
+                                ImGui::DragInt("Cubemap layer", &level);
+                                ImGui::DragFloat("Cubemap mip", &mip, 1.0F, 0.0F, 12.0F);
+
+                                editor.image_array(environment.cubemap.image,
+                                                   environment.cubemap.view,
+                                                   VK_IMAGE_LAYOUT_GENERAL,
+                                                   static_cast<f32>(level),
+                                                   {0, 1, 1, 0},
+                                                   {ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().x},
+                                                   0.0F,
+                                                   mip);
                             }
                         }
 
