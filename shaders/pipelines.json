@@ -98,5 +98,10 @@
     "shaders": [
       "brdf_lut_generate.comp.spv"
     ]
+  },
+  "fxaa_pipeline": {
+    "shaders": [
+      "fxaa.comp.spv"
+    ]
   }
 }

@@ -15,6 +15,8 @@ namespace app
         imgui_blit    = "imgui_blit"_crc32,
         frustum_debug = "frustum_debug"_crc32,
 
+        fxaa_pipeline    = "fxaa_pipeline"_crc32,
+
         mesh_resolve_pipeline = "mesh_resolve_pipeline"_crc32,
         vert_resolve_pipeline = "vert_resolve_pipeline"_crc32,
 

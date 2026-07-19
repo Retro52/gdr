@@ -1,0 +1,109 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive: require
+
+#include "utils/post.glsl"
+#include "utils/math.glsl"
+#include "include/shaders/types.h"
+
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout (binding = 0) uniform writeonly image2D o_color;
+layout (binding = 1) uniform sampler2D color_texture_sampler;
+layout (binding = 2) uniform sampler2D depth_texture_sampler;
+
+layout (scalar, push_constant) uniform PushConstants
+{
+    float camera_near;
+} pc;
+
+const float kFxaaSpanMax        = 8.0F;
+const float kFxaaReduceMul      = 1.0F / 8.0F;
+const float kFxaaReduceMin      = 1.0F / 128.0F;
+const float kFxaaLumaThreshold  = 1.0F / 16.0F;
+const float kDepthEdgeThreshold = 0.02F;
+const float kTextureEdgeBlend   = 0.5F;
+
+float fxaa_luma(vec3 rgb)
+{
+    return dot(rgb, vec3(0.299F, 0.587F, 0.114F));
+}
+
+float linearize_depth(float depth)
+{
+    return pc.camera_near / max(depth, 1e-7F);
+}
+
+float fetch_view_z(ivec2 px, ivec2 image_size)
+{
+    return linearize_depth(texelFetch(depth_texture_sampler, clamp(px, ivec2(0), image_size - 1), 0).r);
+}
+
+void main()
+{
+    ivec2 image_size = imageSize(o_color);
+    ivec2 px = ivec2(gl_GlobalInvocationID.xy);
+
+    if (any(greaterThanEqual(px, image_size)))
+    return;
+
+    vec2 inv_size = 1.0F / vec2(image_size);
+    vec2 uv = (vec2(px) + 0.5F) * inv_size;
+
+    vec3 rgb_m = textureLod(color_texture_sampler, uv, 0.0F).rgb;
+    vec3 rgb_nw = textureLod(color_texture_sampler, uv + vec2(-1.0F, -1.0F) * inv_size, 0.0F).rgb;
+    vec3 rgb_ne = textureLod(color_texture_sampler, uv + vec2(1.0F, -1.0F) * inv_size, 0.0F).rgb;
+    vec3 rgb_sw = textureLod(color_texture_sampler, uv + vec2(-1.0F, 1.0F) * inv_size, 0.0F).rgb;
+    vec3 rgb_se = textureLod(color_texture_sampler, uv + vec2(1.0F, 1.0F) * inv_size, 0.0F).rgb;
+
+    float luma_m = fxaa_luma(rgb_m);
+    float luma_nw = fxaa_luma(rgb_nw);
+    float luma_ne = fxaa_luma(rgb_ne);
+    float luma_sw = fxaa_luma(rgb_sw);
+    float luma_se = fxaa_luma(rgb_se);
+
+    float luma_min = min(luma_m, min(min(luma_nw, luma_ne), min(luma_sw, luma_se)));
+    float luma_max = max(luma_m, max(max(luma_nw, luma_ne), max(luma_sw, luma_se)));
+    float contrast = luma_max - luma_min;
+
+    float z_m = fetch_view_z(px, image_size);
+    float z_nw = fetch_view_z(px + ivec2(-1, -1), image_size);
+    float z_ne = fetch_view_z(px + ivec2(1, -1), image_size);
+    float z_sw = fetch_view_z(px + ivec2(-1, 1), image_size);
+    float z_se = fetch_view_z(px + ivec2(1, 1), image_size);
+
+    float depth_delta = max(max(abs(z_m - z_nw), abs(z_m - z_ne)),
+                            max(abs(z_m - z_sw), abs(z_m - z_se)));
+
+    bool geometric_edge = depth_delta > z_m * kDepthEdgeThreshold;
+    bool luma_edge = contrast >= max(kFxaaReduceMin, luma_max * kFxaaLumaThreshold);
+
+    if (!geometric_edge && !luma_edge)
+    {
+        imageStore(o_color, px, vec4(rgb_m, 1.0F));
+        return;
+    }
+
+    vec2 dir;
+    dir.x = -((luma_nw + luma_ne) - (luma_sw + luma_se));
+    dir.y = ((luma_nw + luma_sw) - (luma_ne + luma_se));
+
+    float dir_reduce = max((luma_nw + luma_ne + luma_sw + luma_se) * (0.25F * kFxaaReduceMul), kFxaaReduceMin);
+    float rcp_dir_min = 1.0F / (min(abs(dir.x), abs(dir.y)) + dir_reduce);
+
+    dir = clamp(dir * rcp_dir_min, vec2(-kFxaaSpanMax), vec2(kFxaaSpanMax)) * inv_size;
+
+    vec3 rgb_a = 0.5F * (
+    textureLod(color_texture_sampler, uv + dir * (1.0F / 3.0F - 0.5F), 0.0F).rgb +
+    textureLod(color_texture_sampler, uv + dir * (2.0F / 3.0F - 0.5F), 0.0F).rgb);
+
+    vec3 rgb_b = rgb_a * 0.5F + 0.25F * (
+    textureLod(color_texture_sampler, uv + dir * (0.0F / 3.0F - 0.5F), 0.0F).rgb +
+    textureLod(color_texture_sampler, uv + dir * (3.0F / 3.0F - 0.5F), 0.0F).rgb);
+
+    float luma_b = fxaa_luma(rgb_b);
+    vec3 filtered = (luma_b < luma_min || luma_b > luma_max) ? rgb_a : rgb_b;
+
+    float blend = geometric_edge ? 1.0F : kTextureEdgeBlend;
+    imageStore(o_color, px, vec4(mix(rgb_m, filtered, blend), 1.0F));
+}

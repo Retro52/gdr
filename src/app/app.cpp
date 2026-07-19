@@ -34,6 +34,8 @@
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
 
+#include "quill/bundled/fmt/color.h"
+
 #define NO_EDITOR     0
 #define NO_PERF_QUERY 0
 
@@ -249,6 +251,11 @@ int app::instance::run(const int argc, char* argv[])
                                                       m_renderer.get_context().device,
                                                       m_renderer.get_context().allocator);
 
+    render::vk_image render_target = create_color_image(m_window.get_size_in_px(),
+                                                        m_renderer.get_swapchain().surface_format.format,
+                                                        m_renderer.get_context().device,
+                                                        m_renderer.get_context().allocator);
+
     vis_buffer_data vis_buffer = create_vis_buffer_data(
         m_window.get_size_in_px(), m_renderer.get_context().device, m_renderer.get_context().allocator);
 
@@ -257,7 +264,9 @@ int app::instance::run(const int argc, char* argv[])
                                                             m_renderer.get_context().device,
                                                             m_renderer.get_context().allocator);
 
-    app::environment environment {m_renderer, VK_FORMAT_R16G16B16A16_SFLOAT, 1024, 32, 128};
+    app::environment environment {
+        m_renderer, VK_FORMAT_R16G16B16A16_SFLOAT, {1024, 512, 128, 32}
+    };
 
     bool exit = false;
     bool mesh_shading_supported =
@@ -290,8 +299,9 @@ int app::instance::run(const int argc, char* argv[])
 
         vis_buffer_data& vis_buffer;
         render::vk_image& depth_image;
+        render::vk_image& render_target;
         depth_pyramid_data& depth_pyramid;
-    } resize_ctx(m_renderer, vis_buffer, depth_image, depth_pyramid);
+    } resize_ctx(m_renderer, vis_buffer, depth_image, render_target, depth_pyramid);
 
     m_events_queue.add_watcher(
         event_type::window_size_changed,
@@ -309,6 +319,11 @@ int app::instance::run(const int argc, char* argv[])
                                                  ctx.renderer.get_swapchain().depth_format,
                                                  ctx.renderer.get_context().device,
                                                  ctx.renderer.get_context().allocator);
+
+            ctx.render_target = create_color_image(payload.window.size_px,
+                                                   ctx.renderer.get_swapchain().surface_format.format,
+                                                   ctx.renderer.get_context().device,
+                                                   ctx.renderer.get_context().allocator);
 
             destroy_depth_pyramid(
                 ctx.depth_pyramid, ctx.renderer.get_context().device, ctx.renderer.get_context().allocator);
@@ -333,6 +348,11 @@ int app::instance::run(const int argc, char* argv[])
                                                                   VK_SAMPLER_ADDRESS_MODE_REPEAT,
                                                                   VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
                                                                   16.0F);
+
+    VkSampler color_sampler = *render::create_sampler(m_renderer.get_context().device,
+                                                      VK_FILTER_LINEAR,
+                                                      VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                                                      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
     VkSampler depth_texture_sampler = *render::create_sampler(m_renderer.get_context().device,
                                                               VK_FILTER_NEAREST,
@@ -816,6 +836,9 @@ int app::instance::run(const int argc, char* argv[])
                         VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
                 }
 
+                render::transition_image(
+                    buffer, render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
                 render::transition_image(buffer,
                                          m_renderer.get_frame_swapchain_image().image,
                                          VK_IMAGE_LAYOUT_UNDEFINED,
@@ -1017,8 +1040,7 @@ int app::instance::run(const int argc, char* argv[])
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "vb resolve"));
 
                     const render::vk_descriptor_info resolve_pass_bindings[] = {
-                        render::vk_descriptor_info(
-                            VK_NULL_HANDLE, m_renderer.get_frame_swapchain_image().image_view, VK_IMAGE_LAYOUT_GENERAL),
+                        render::vk_descriptor_info(VK_NULL_HANDLE, render_target.view, VK_IMAGE_LAYOUT_GENERAL),
                         render::vk_descriptor_info(
                             VK_NULL_HANDLE, vis_buffer.vis_buffer_img.view, VK_IMAGE_LAYOUT_GENERAL),
                         indexed_indices_buffer.buffer,
@@ -1047,6 +1069,33 @@ int app::instance::run(const int argc, char* argv[])
                     resolve_pass.push_constant(buffer, shader_types::DrawPushConstants(camera_proj_view));
 
                     resolve_pass.dispatch(buffer, m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1);
+
+                    render::cmd_stage_barrier(buffer,
+                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                              VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                              VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                              VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+                }
+
+                {
+                    ZoneScopedN("FXAA pass");
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "vb resolve"));
+
+                    const render::vk_descriptor_info fxaa_pass_bindings[] = {
+                        render::vk_descriptor_info(
+                            VK_NULL_HANDLE, m_renderer.get_frame_swapchain_image().image_view, VK_IMAGE_LAYOUT_GENERAL),
+                        render::vk_descriptor_info(color_sampler, render_target.view, VK_IMAGE_LAYOUT_GENERAL),
+                        render::vk_descriptor_info(depth_texture_sampler, depth_image.view, VK_IMAGE_LAYOUT_GENERAL),
+                    };
+
+                    const render::vk_pipeline& fxaa_pass = pipelines[pso_id::fxaa_pipeline];
+
+                    fxaa_pass.bind(buffer);
+                    fxaa_pass.push_descriptor_set(buffer, fxaa_pass_bindings);
+
+                    fxaa_pass.push_constant(buffer, camera_data.near_plane);
+
+                    fxaa_pass.dispatch(buffer, m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1);
 
                     render::cmd_stage_barrier(buffer,
                                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,

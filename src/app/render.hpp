@@ -28,6 +28,8 @@ namespace app
 
     void reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& draw_count_buffer);
 
+    render::vk_image create_color_image(const ivec2& size, VkFormat format, VkDevice device, VmaAllocator allocator);
+
     render::vk_image create_depth_image(const ivec2& size, VkFormat format, VkDevice device, VmaAllocator allocator);
 
     void destroy_depth_pyramid(depth_pyramid_data& pyramid, VkDevice device, VmaAllocator allocator);
