@@ -107,6 +107,26 @@ void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& 
                                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 }
 
+render::vk_image app::create_color_image(const ivec2& size, VkFormat format, VkDevice device, VmaAllocator allocator)
+{
+    ZoneScoped;
+    const VkImageCreateInfo image_create_info {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .format        = format,
+        .extent        = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .tiling        = VK_IMAGE_TILING_OPTIMAL,
+        .usage         = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    return *render::create_image(device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, allocator);
+}
+
 render::vk_image app::create_depth_image(const ivec2& size, const VkFormat format, VkDevice device,
                                          VmaAllocator allocator)
 {

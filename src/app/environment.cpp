@@ -89,8 +89,8 @@ app::environment::environment(const render::vk_renderer& renderer, VkFormat form
 
     {
         image_create_info.mipLevels = 1;
-        image_create_info.extent    = {static_cast<u32>(irradiance_resolution),
-                                       static_cast<u32>(irradiance_resolution),
+        image_create_info.extent    = {static_cast<u32>(irradiance_resolution.value()),
+                                       static_cast<u32>(irradiance_resolution.value()),
                                        1},
         convolution                 = *render::create_image(renderer.get_context().device,
                                             image_create_info,
@@ -228,9 +228,9 @@ void app::environment::load(const fs::path& path, app::pso_data& pso, render::vk
                 }
 
                 {
-                    TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), cmd, "brdf lut generation"));
-                    generate_brdf_lut(
-                        cmd, pso[pso_id::brdf_lut_generate_pipeline], sampler, brdf_lut, brdf_lut_resolution);
+                    // TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), cmd, "brdf lut generation"));
+                    // generate_brdf_lut(
+                    //     cmd, pso[pso_id::brdf_lut_generate_pipeline], sampler, brdf_lut, brdf_lut_resolution);
                 }
 
                 {
