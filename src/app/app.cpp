@@ -790,6 +790,7 @@ int app::instance::run(const int argc, char* argv[])
             vkCmdSetScissor(cmd, 0, 1, &scissor);
             vkCmdSetViewport(cmd, 0, 1, &viewport);
 
+            environment.init(pipelines, m_renderer);
             if (!env_map.empty())
             {
                 TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "load environment"));
@@ -1090,8 +1091,10 @@ int app::instance::run(const int argc, char* argv[])
                         render::vk_descriptor_info(
                             bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED),
                         render::vk_descriptor_info(depth_texture_sampler, depth_image.view, VK_IMAGE_LAYOUT_GENERAL),
+                        environment.get_lut_descriptor_info(),
                         environment.get_cube_descriptor_info(),
                         environment.get_conv_descriptor_info(),
+                        environment.get_pref_descriptor_info(),
                     };
 
                     const render::vk_pipeline& resolve_pass =
@@ -1237,7 +1240,7 @@ int app::instance::run(const int argc, char* argv[])
                                 environment.load(env_map, pipelines, m_renderer, geometry_pool.transfer);
                             }
 
-                            if (environment.valid())
+                            if (!env_map.empty())
                             {
                                 static i32 level = 0;
                                 static f32 mip   = 0.0F;
@@ -1253,6 +1256,29 @@ int app::instance::run(const int argc, char* argv[])
                                                    {ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().x},
                                                    0.0F,
                                                    mip);
+
+                                static i32 pref_level = 0;
+                                static f32 pref_mip   = 0.0F;
+
+                                ImGui::SliderInt("Pref layer", &pref_level, 0, 5);
+                                ImGui::SliderFloat(
+                                    "Pref mip", &pref_mip, 0.0F, static_cast<f32>(shader_constants::kEnvPrefilterMips - 1));
+
+                                editor.image_array(environment.prefiltered.image,
+                                                   environment.prefiltered.view,
+                                                   VK_IMAGE_LAYOUT_GENERAL,
+                                                   static_cast<f32>(pref_level),
+                                                   {0, 1, 1, 0},
+                                                   {ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().x},
+                                                   0.0F,
+                                                   pref_mip);
+
+                                ImGui::Text("BRDF LUT:");
+                                editor.image(environment.brdf_lut.image,
+                                             environment.brdf_lut.view,
+                                             VK_IMAGE_LAYOUT_GENERAL,
+                                             {0, 0, 1, 1},
+                                             {ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().x});
                             }
                         }
 
