@@ -1,0 +1,60 @@
+#version 460
+#extension GL_GOOGLE_include_directive: require
+
+#include "utils/pbr.glsl"
+#include "include/shaders/types.h"
+
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout (set = 0, binding = 0) writeonly uniform image2D o_lut;
+
+vec2 approx_brdf(float n_dot_v, float roughness)
+{
+    vec3 view;
+    view.x = sqrt(1.0 - n_dot_v * n_dot_v);
+    view.y = 0.0;
+    view.z = n_dot_v;
+
+    float u = 0.0;
+    float v = 0.0;
+
+    vec3 nv = vec3(0.0, 0.0, 1.0);
+    float alpha = roughness * roughness / 2;
+
+    const uint kSampleCount = 1024u;
+    for(uint i = 0U; i < kSampleCount; ++i)
+    {
+        vec2 xi = hammersley(i, kSampleCount);
+        vec3 hv  = importance_sample_ggx(xi, nv, roughness);
+        vec3 lv  = normalize(2.0 * dot(view, hv) * hv - view);
+
+        float n_dot_l = max(lv.z, 0.0);
+        float n_dot_h = max(hv.z, 0.0);
+        float v_dot_h = max(dot(view, hv), 0.0);
+
+        if(n_dot_l > 0.0)
+        {
+            float gsmt = geometry_smith(n_dot_v, n_dot_l, alpha);
+            float gvis = (gsmt * v_dot_h) / (n_dot_h * n_dot_v);
+            float f_c = pow(1.0 - v_dot_h, 5.0);
+
+            u += (1.0 - f_c) * gvis;
+            v += f_c * gvis;
+        }
+    }
+
+    return vec2(u, v) / float(kSampleCount);
+}
+
+layout (scalar, push_constant) uniform PushConstants
+{
+    int resolution;
+} pc;
+
+void main()
+{
+    ivec2 px = ivec2(gl_GlobalInvocationID.xy);
+    vec2 uv = (vec2(px) + 0.5F) / float(pc.resolution);
+
+    imageStore(o_lut, px, vec4(approx_brdf(uv.x, uv.y), 0.0F, 0.0F));
+}

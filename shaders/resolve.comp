@@ -27,8 +27,12 @@ layout (binding = 9, scalar)  readonly buffer FrameWorldDatas { FrameWorldData w
 
 layout (binding = 10, set = 0) uniform sampler   textures_sampler;
 layout (binding = 11, set = 0) uniform sampler2D depth_texture_sampler;
-layout (binding = 12, set = 0) uniform samplerCube sky_cubemap_sampler;
-layout (binding = 13, set = 0) uniform samplerCube irradiance_map_sampler;
+
+layout (binding = 12, set = 0) uniform sampler2D   brdf_lut_sampler;
+layout (binding = 13, set = 0) uniform samplerCube sky_cubemap_sampler;
+layout (binding = 14, set = 0) uniform samplerCube irradiance_map_sampler;
+layout (binding = 15, set = 0) uniform samplerCube prefiltered_map_sampler;
+
 layout (binding = 0,  set = 1) uniform texture2D textures[];
 
 layout (scalar, push_constant) uniform constants
@@ -243,25 +247,41 @@ void main()
 
     float n_dot_v = max(dot(nrm, view), 0.0F);
     float n_dot_h = max(dot(nrm, halfw), 0.0F);
+    float h_dot_v = max(dot(halfw, view), 0.0F);
     float n_dot_l = max(dot(nrm, world.sun_direction), 0.0F);
 
     float alpha = roughness * roughness;
 
-    float geom = geometry_smith(n_dot_v, n_dot_l, alpha / 2);
+    // Diffuse + specular diffuse
+    float k_d = (roughness + 1.0F) * (roughness + 1.0F) / 8.0F;
+    float geom = geometry_smith(n_dot_v, n_dot_l, k_d);
+
     float ndf = distribution_townbridge_reitz_ggx(n_dot_h, alpha);
 
-    float h_dot_v = max(dot(halfw, view), 0.0F);
-    vec3 fresnel = fresnel_schlick_roughness(h_dot_v, mix(vec3(0.04F), albedo, metallic), roughness);
-    vec3 kd = vec3(1.0F) - fresnel;
+    vec3 f0 = mix(vec3(0.04F), albedo, metallic);
+    vec3 frensel_d = fresnel_schlick(h_dot_v, f0);
 
-    vec3 ambient = textureLod(irradiance_map_sampler, nrm, 0.0F).rgb * kd;
-    vec3 diffuse = kd * (1.0F - metallic);
-    vec3 specular = pbr_specular(fresnel, ndf, geom, n_dot_v, n_dot_l);
+    vec3 spec_direct = pbr_specular(frensel_d, ndf, geom, n_dot_v, n_dot_l);
+    vec3 sun_radiance = world.sun_color.rgb * world.sun_color.w;
+    vec3 diffuse = (vec3(1.0F) - frensel_d) * (1.0F - metallic);
+    vec3 direct = (diffuse * albedo / kPI + spec_direct) * sun_radiance * n_dot_l;
+
+    // Ambient + specular ambient
+    vec3 fresnel_a = fresnel_schlick_roughness(n_dot_v, f0, roughness);
+    vec3 ambient = (vec3(1.0F) - fresnel_a) * (1.0F - metallic);
+
+    vec3 irradiance = textureLod(irradiance_map_sampler, nrm, 0.0F).rgb;
+    vec3 ambient_diffuse = irradiance * albedo * ambient;
+
+    vec3 rv = reflect(-view, nrm);
+    const float kMaxReflectionSampleLod = float(kEnvPrefilterMips - 1);
+    vec3 env_prefiltered_color = textureLod(prefiltered_map_sampler, rv,  roughness * kMaxReflectionSampleLod).rgb;
+    vec2 env_brdf  = texture(brdf_lut_sampler, vec2(n_dot_v, roughness)).rg;
+
+    vec3 ambient_specular =  env_prefiltered_color * (fresnel_a * env_brdf.x + env_brdf.y);
 
     const float ev100 = 1.0 / (1.2 * exp2(world.camera_exposure));
-
-    vec3 sun_color_hdr = world.sun_color.rgb * world.sun_color.w * ev100;
-    vec3 color = (diffuse * albedo / kPI + specular) * sun_color_hdr * n_dot_l + ambient * albedo;
+    vec3 color = (direct) * ev100 + ambient_diffuse + ambient_specular;
 
     vec4 result = from_linear(vec4(tonemap(color), 1.0F));
 
@@ -269,10 +289,10 @@ void main()
     if (world.debug_mode != draw_debug_shaded)
     {
         vec3 color;
-        if (world.debug_mode == draw_debug_lit)            { color = tonemap((diffuse / kPI + specular) * sun_color_hdr * n_dot_l + ambient); }
-        if (world.debug_mode == draw_debug_lit_diffuse)    { color = tonemap(diffuse * sun_color_hdr * n_dot_l / kPI); }
-        if (world.debug_mode == draw_debug_lit_ambient)    { color = tonemap(ambient); }
-        if (world.debug_mode == draw_debug_lit_specular)   { color = tonemap(specular * sun_color_hdr * n_dot_l); }
+//        if (world.debug_mode == draw_debug_lit)            { color = tonemap((diffuse / kPI + specular) * sun_color_hdr * n_dot_l + ambient); }
+        if (world.debug_mode == draw_debug_lit_diffuse)    { color = tonemap(direct * ev100); }
+        if (world.debug_mode == draw_debug_lit_ambient)    { color = tonemap(ambient_diffuse); }
+        if (world.debug_mode == draw_debug_lit_specular)   { color = tonemap(ambient_specular); }
         if (world.debug_mode == draw_debug_uv)             { color = vec3(uv, 0.0F); }
         if (world.debug_mode == draw_debug_normal)         { color = nrm; }
         if (world.debug_mode == draw_debug_tangent)        { color = tangent.xyz; }

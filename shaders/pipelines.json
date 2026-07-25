@@ -145,9 +145,19 @@
       "cubemap_convolute.comp.spv"
     ]
   },
+  "cubemap_prefilter_pipeline": {
+    "shaders": [
+      "cubemap_prefilter.comp.spv"
+    ]
+  },
   "fxaa_pipeline": {
     "shaders": [
       "fxaa.comp.spv"
+    ]
+  },
+  "make_brdf_lookup_pipeline": {
+    "shaders": [
+      "make_brdf_lookup.comp.spv"
     ]
   }
 }

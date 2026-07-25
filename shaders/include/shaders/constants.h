@@ -24,6 +24,8 @@ namespace shader_constants
     const uint kMatClassTranslucent = 2;
     const uint kMatClassCount       = 3;
 
+    const uint kEnvPrefilterMips = 5;
+
     const uint kMaxVerticesPerMeshlet  = 64;
     const uint kMaxTrianglesPerMeshlet = 94;
     const uint kMaxIndicesPerMeshlet   = kMaxTrianglesPerMeshlet * 3;
