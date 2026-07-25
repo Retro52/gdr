@@ -11,7 +11,7 @@ namespace editor
     struct info_widget_context
     {
         void draw() const;
-        void draw(const char* label, const app::pipeline_statistics_data& pipeline_stats) const;
+        void draw(const char* label, const cpp::heap_array<app::pipeline_statistics_data>& pipeline_stats) const;
 
         camera_controller& m_camera;
         gpu_profile_data& m_gpu_profile;

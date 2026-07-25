@@ -575,8 +575,9 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
         };
     }
 
-    constexpr VkDynamicState dynamic_state[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-    constexpr u32 dynamic_state_count        = COUNT_OF(dynamic_state);
+    constexpr VkDynamicState dynamic_state[] = {
+        VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_CULL_MODE};
+    constexpr u32 dynamic_state_count = COUNT_OF(dynamic_state);
 
     const VkPipelineDynamicStateCreateInfo dynamic_state_create_info {
         .sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,

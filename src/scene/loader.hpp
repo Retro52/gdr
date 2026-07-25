@@ -24,12 +24,13 @@ namespace loader
     using material  = shader_types::MeshMaterial;
     using instance  = shader_types::MeshInstance;
 
-    struct stats
+    struct scene_info
     {
         u64 meshes     = 0;
         u64 meshlets   = 0;
         u64 triangles  = 0;
         u64 primitives = 0;
+        std::array<u32, shader_constants::kMatClassCount> mat_offset_table;
     };
 
     struct prim_layout
@@ -82,8 +83,8 @@ namespace loader
     result<render::vk_image> load_texture(const fs::path& path, const render::vk_renderer& renderer,
                                           const render::vk_buffer_transfer& scratch);
 
-    stats load_scene(const fs::path& path, scene& scene, const render::vk_renderer& renderer,
-                     render::vk_scene_geometry_pool& geometry_pool, cpp::heap_array<render::vk_image>& textures);
+    scene_info load_scene(const fs::path& path, scene& scene, const render::vk_renderer& renderer,
+                          render::vk_scene_geometry_pool& geometry_pool, cpp::heap_array<render::vk_image>& textures);
 
     result<meshes_context> load_meshes(const fs::path& path);
 

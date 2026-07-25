@@ -10,20 +10,26 @@ layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
 layout (binding = 0, set = 0) readonly buffer MeshesData     { MeshData meshes_data[]; };
 layout (binding = 1, scalar)  readonly buffer MeshInstances  { MeshInstance mesh_instances[]; };
-layout (binding = 2, set = 0) buffer MeshesDrawCommandsCount { uint draw_commands_count; };
+layout (binding = 2, set = 0) readonly buffer MeshMaterials  { MeshMaterial mesh_materials[]; };
+layout (binding = 3, set = 0) buffer MeshesDrawCommandsCount { uint draw_commands_count[kMatClassCount * 3]; };
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-layout (binding = 3) buffer MeshVisibilityBuffer { uint mesh_visibility_buffer[]; };
+layout (binding = 4) buffer MeshVisibilityBuffer { uint mesh_visibility_buffer[]; };
 #else
-layout (binding = 3) readonly buffer MeshVisibilityBuffer { uint mesh_visibility_buffer[]; };
+layout (binding = 4) readonly buffer MeshVisibilityBuffer { uint mesh_visibility_buffer[]; };
 #endif
 
-layout (binding = 4, set = 0) readonly buffer FrameCullDataBuffer { FrameCullData frame_cull; };
-layout (binding = 5, set = 0) writeonly buffer DrawMeshletsIndirects { DrawTaskCommandIndirect draw_indirect_cmds[]; };
+layout (binding = 5, set = 0) readonly buffer FrameCullDataBuffer { FrameCullData frame_cull; };
+layout (binding = 6, set = 0) writeonly buffer DrawMeshletsIndirects { DrawTaskCommandIndirect draw_indirect_cmds[]; };
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-layout (binding = 6, set = 0) uniform sampler2D depth_pyramid;
+layout (binding = 7, set = 0) uniform sampler2D depth_pyramid;
 #endif
+
+layout (scalar, push_constant) uniform PushConstants
+{
+    uint offset_table[kMatClassCount];
+} pc;
 
 void main()
 {
@@ -34,9 +40,9 @@ void main()
     bool inv_visibility_bit = (GET_BIT(mesh_visibility_buffer[idx >> 5], idx & 31u) == 0);
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-    const bool early_out = GET_BIT(frame_cull.flags, kOcclusionCullBit) == 0;
+    const bool early_out = DBG_GET_BIT1(frame_cull.flags, kOcclusionCullBit) == 0;
 #else
-    bool early_out = inv_visibility_bit && GET_BIT(frame_cull.flags, kOcclusionCullBit) == 1;
+    bool early_out = inv_visibility_bit && DBG_GET_BIT1(frame_cull.flags, kOcclusionCullBit) == 1;
 #endif
 
     if (idx >= frame_cull.draw_count || early_out)
@@ -56,11 +62,11 @@ void main()
     visible = visible && center.z * frame_cull.frustum[1] - abs(center.x) * frame_cull.frustum[0] > -radius;
     visible = visible && center.z * frame_cull.frustum[3] - abs(center.y) * frame_cull.frustum[2] > -radius;
     visible = visible && center.z - radius < -frame_cull.frustum[4] && center.z + radius > -frame_cull.frustum[5];
-    visible = visible || GET_BIT(frame_cull.flags, kFrustumCullBit) == 0;
+    visible = visible || DBG_GET_BIT1(frame_cull.flags, kFrustumCullBit) == 0;
 
 #ifdef FOR_LATE_OCCLUSION_TEST
     vec4 p_aabb;
-    if (visible && GET_BIT(frame_cull.flags, kOcclusionCullBit) == 1 && project_sphere(center, radius, frame_cull.frustum[4], frame_cull.p00, frame_cull.p11, p_aabb))
+    if (visible && DBG_GET_BIT1(frame_cull.flags, kOcclusionCullBit) == 1 && project_sphere(center, radius, frame_cull.frustum[4], frame_cull.p00, frame_cull.p11, p_aabb))
     {
         vec2 pmd_size = vec2(p_aabb.z - p_aabb.x, p_aabb.w - p_aabb.y) * frame_cull.pyramid_size;
         float level = ceil(log2(max(pmd_size.x, pmd_size.y)));
@@ -89,11 +95,12 @@ void main()
                 break;
         }
 
-        lod_base = GET_BIT(frame_cull.flags, kLodFlagBit) == 0 ? 0 : lod_base;
+        lod_base = DBG_GET_BIT1(frame_cull.flags, kLodFlagBit) == 0 ? 0 : lod_base;
         MeshLod selected_lod = meshes_data[mesh_idx].lod_array[lod_base];
 
+        uint material_class = uint(mesh_materials[mesh_instances[idx].material_index].material_class);
         uint task_count = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
-        uint dci = atomicAdd(draw_commands_count, task_count);
+        uint dci = atomicAdd(draw_commands_count[material_class * 3], task_count) + pc.offset_table[material_class];
         for (uint i = task_count; i > 0; i--)
         {
             uint dcii = dci + task_count - i;

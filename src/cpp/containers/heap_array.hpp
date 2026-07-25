@@ -6,8 +6,8 @@
 #include <tracy/Tracy.hpp>
 
 #include <cstring>
-#include <type_traits>
 #include <new>
+#include <type_traits>
 #include <utility>
 
 namespace cpp
@@ -96,6 +96,14 @@ namespace cpp
         [[nodiscard]] T* begin() { return m_data; }
 
         [[nodiscard]] const T* begin() const { return m_data; }
+
+        [[nodiscard]] T& front() { return m_data[0]; }
+
+        [[nodiscard]] const T& front() const { return m_data[0]; }
+
+        [[nodiscard]] T& back() { return *(m_end - 1); }
+
+        [[nodiscard]] const T& back() const { return *(m_end - 1); }
 
         [[nodiscard]] T* end() { return m_end; }
 

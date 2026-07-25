@@ -6,15 +6,9 @@
 
 #include <cmath>
 
-namespace
-{
-    const u32 kSampler2D      = 0;
-    const u32 kSampler2DArray = 1;
-}
-
-imgui_layer::imgui_layer(const window& window, const render::vk_renderer& renderer, const render::vk_pipeline& pipeline)
-    : m_renderer(renderer)
-    , m_blit_pipeline(pipeline)
+imgui_layer::imgui_layer(const window& window, const render::vk_renderer& renderer, app::pso_data& pipelines)
+    : m_pipelines(pipelines)
+    , m_renderer(renderer)
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -180,7 +174,8 @@ void imgui_layer::image(VkImage image, VkImageView view, VkImageLayout src_layou
                {uv.z, uv.w},
                src_layout,
                VK_IMAGE_ASPECT_COLOR_BIT,
-               {kSampler2D, mip, brightness, 0.0F});
+               sampler_type::sampler2d,
+               {mip, brightness, 0.0F});
 }
 
 void imgui_layer::image_array(VkImage image, VkImageView view, VkImageLayout src_layout, f32 layer, vec4 uv,
@@ -193,7 +188,8 @@ void imgui_layer::image_array(VkImage image, VkImageView view, VkImageLayout src
                {uv.z, uv.w},
                src_layout,
                VK_IMAGE_ASPECT_COLOR_BIT,
-               {kSampler2DArray, mip, brightness, layer});
+               sampler_type::sampler2d_array,
+               {mip, brightness, layer});
 }
 
 void imgui_layer::depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size,
@@ -206,11 +202,13 @@ void imgui_layer::depth_image(VkImage image, VkImageView view, VkImageLayout src
                {uv.z, uv.w},
                src_layout,
                VK_IMAGE_ASPECT_DEPTH_BIT,
-               {kSampler2D, mip, brightness, 0.0F});
+               sampler_type::sampler2d,
+               {mip, brightness, 0.0F});
 }
 
 void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec2 uv0, ImVec2 uv1,
-                             VkImageLayout src_layout, VkImageAspectFlags aspect, const pc_data& push_constant)
+                             VkImageLayout src_layout, VkImageAspectFlags aspect, sampler_type type,
+                             const pc_data& push_constant)
 {
     VkOffset2D offset;
     if (!allocate_region(static_cast<u32>(size.x), static_cast<u32>(size.y), offset))
@@ -226,6 +224,7 @@ void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec
         .extent        = {static_cast<u32>(size.x), static_cast<u32>(size.y)},
         .src_layout    = src_layout,
         .aspect        = aspect,
+        .type          = type,
         .push_constant = push_constant
     });
 
@@ -291,10 +290,13 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
     };
 
     vkCmdBeginRendering(cmd, &rendering_info);
-    m_blit_pipeline.bind(cmd);
 
     for (const auto& req : m_pending_uploads)
     {
+        auto& pipeline = m_pipelines[req.type == sampler_type::sampler2d ? app::pso_id::blit_sampler2d_pipeline
+                                                                         : app::pso_id::blit_sampler2d_array_pipeline];
+
+        pipeline.bind(cmd);
         VkViewport viewport {
             .x        = static_cast<f32>(req.offset.x),
             .y        = static_cast<f32>(req.offset.y),
@@ -307,14 +309,14 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
 
         vkCmdSetViewport(cmd, 0, 1, &viewport);
         vkCmdSetScissor(cmd, 0, 1, &scissor);
+        vkCmdSetCullMode(cmd, VK_CULL_MODE_BACK_BIT);
 
-        m_blit_pipeline.push_constant(cmd, req.push_constant);
+        pipeline.push_constant(cmd, req.push_constant);
 
-        render::vk_descriptor_info bindings[] {
-            {m_atlas_data.sampler, req.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        const render::vk_descriptor_info bindings[] {
             {m_atlas_data.sampler, req.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}
         };
-        m_blit_pipeline.push_descriptor_set(cmd, bindings);
+        pipeline.push_descriptor_set(cmd, bindings);
 
         vkCmdDraw(cmd, 3, 1, 0, 0);
     }

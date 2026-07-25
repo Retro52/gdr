@@ -218,16 +218,29 @@ static loader::material build_material(const cgltf_data* data, const cgltf_mater
                                           material.pbr_specular_glossiness.specular_factor[1],
                                           material.pbr_specular_glossiness.specular_factor[2]);
 
-        mat.material_flags       = 1 << shader_constants::kMatGlossBit;
+        mat.material_bits        = 1 << shader_constants::kMatGlossBit;
         mat.met_roughness_factor = vec4(1.0F, material.pbr_specular_glossiness.glossiness_factor, max_specular, 1.0F);
     }
 
-    if (material.has_transmission && vec3(mat.diffuse_factor) == vec3(1.0F))
+    if (material.has_transmission || material.alpha_mode == cgltf_alpha_mode_blend)
     {
-        mat.diffuse_factor.a = 0.0F;
+        mat.material_class = shader_constants::kMatClassTranslucent;
+    }
+    else if (material.double_sided || material.alpha_mode == cgltf_alpha_mode_mask)
+    {
+        mat.material_class = shader_constants::kMatClassMasked;
+    }
+    else
+    {
+        mat.material_class = shader_constants::kMatClassOpaque;
     }
 
     return mat;
+}
+
+static u32 get_max_draw_commands(u32 meshlets_count)
+{
+    return (meshlets_count + shader_constants::kTaskWorkGroups - 1) / shader_constants::kTaskWorkGroups;
 }
 
 static cpp::heap_array<loader::prim_info> collect_primitives(const cgltf_data* data,
@@ -403,9 +416,9 @@ result<render::vk_image> loader::load_texture(const fs::path& path, const render
     return error("failed to read texture");
 }
 
-loader::stats loader::load_scene(const fs::path& path, scene& scene, const render::vk_renderer& renderer,
-                                 render::vk_scene_geometry_pool& geometry_pool,
-                                 cpp::heap_array<render::vk_image>& textures)
+loader::scene_info loader::load_scene(const fs::path& path, scene& scene, const render::vk_renderer& renderer,
+                                      render::vk_scene_geometry_pool& geometry_pool,
+                                      cpp::heap_array<render::vk_image>& textures)
 {
     ZoneScoped;
     LOG_INFO("loading GLTF scene {}", path.c_str());
@@ -608,6 +621,7 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
     u32 triangles_max     = 0;
     u32 instance_count    = 0;
     u32 visibility_offset = 0;
+    std::array<u32, shader_constants::kMatClassCount> mat_offset_table {};
 
     for (size_t i = 0; i < data->nodes_count; ++i)
     {
@@ -634,6 +648,8 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
                     node->mesh->primitives[j].material
                         ? (cgltf_material_index(data, node->mesh->primitives[j].material) + 1)
                         : 0;
+                mat_offset_table[ctx.materials[instances[instance_count].material_index].material_class] +=
+                    get_max_draw_commands(get_max_lod_meshlets(ctx.primitives[desc.offset + j]));
 
                 ++instance_count;
                 triangles_max += get_max_lod_tris(raw_meshes[desc.offset + j]);
@@ -684,12 +700,11 @@ loader::stats loader::load_scene(const fs::path& path, scene& scene, const rende
     geometry_pool.instances.offset += instance_count * sizeof(loader::instance);
     // TODO
 
-    return {
-        .meshes     = meshes.size(),
-        .meshlets   = visibility_offset,
-        .triangles  = triangles_max,
-        .primitives = instance_count,
-    };
+    return {.meshes           = meshes.size(),
+            .meshlets         = visibility_offset,
+            .triangles        = triangles_max,
+            .primitives       = instance_count,
+            .mat_offset_table = mat_offset_table};
 }
 
 result<loader::meshes_context> loader::load_meshes(const fs::path& path)

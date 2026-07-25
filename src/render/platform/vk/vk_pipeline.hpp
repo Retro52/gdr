@@ -41,6 +41,23 @@ namespace render
         }
     };
 
+    struct vk_descriptor_bindings
+    {
+        constexpr static u32 kMaxSetZeroBindings = 32;
+
+        u32 curr_bind = 0;
+        render::vk_descriptor_info render_bindings[kMaxSetZeroBindings] {};
+
+        render::vk_descriptor_info* get() { return render_bindings; }
+
+        auto& bind(const render::vk_descriptor_info& next)
+        {
+            assert2(curr_bind < kMaxSetZeroBindings);
+            render_bindings[curr_bind++] = next;
+            return *this;
+        }
+    };
+
     struct vk_shader
     {
         struct shader_meta

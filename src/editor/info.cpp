@@ -92,19 +92,29 @@ void editor::info_widget_context::draw() const
     }
 }
 
-void editor::info_widget_context::draw(const char* label, const app::pipeline_statistics_data& pipeline_stats) const
+void editor::info_widget_context::draw(const char* label,
+                                       const cpp::heap_array<app::pipeline_statistics_data>& pipeline_stats) const
 {
-#if !NO_PERF_QUERY
+#define TABLE_FILL_ENTRY(entry)                                                \
+    for (u32 i = 0; i < pipeline_stats.size(); ++i)                            \
+    {                                                                          \
+        ImGui::TableNextRow();                                                 \
+        ImGui::Text(#entry " :");                                              \
+        ImGui::Text("%s", format_big_number(pipeline_stats[i].entry).c_str()); \
+        ImGui::TableNextColumn();                                              \
+    }
+
     if (ImGui::CollapsingHeader(label))
     {
-        ImGui::Text("input_assembly_vertices: %s", format_big_number(pipeline_stats.input_assembly_vertices).c_str());
-        ImGui::Text("input_assembly_primitives: %s",
-                    format_big_number(pipeline_stats.input_assembly_primitives).c_str());
-        ImGui::Text("vertex_shader_invocations: %s",
-                    format_big_number(pipeline_stats.vertex_shader_invocations).c_str());
-        ImGui::Text("triangles_count: %s", format_big_number(pipeline_stats.triangles_count).c_str());
-        ImGui::Text("fragment_shader_invocations: %s",
-                    format_big_number(pipeline_stats.fragment_shader_invocations).c_str());
+        if (ImGui::BeginTable(label, pipeline_stats.size() + 1))
+        {
+            TABLE_FILL_ENTRY(input_assembly_vertices);
+            TABLE_FILL_ENTRY(input_assembly_primitives);
+            TABLE_FILL_ENTRY(vertex_shader_invocations);
+            TABLE_FILL_ENTRY(triangles_count);
+            TABLE_FILL_ENTRY(fragment_shader_invocations);
+
+            ImGui::EndTable();
+        }
     }
-#endif
 }

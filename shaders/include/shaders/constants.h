@@ -19,6 +19,11 @@ namespace shader_constants
 
     const uint kMatGlossBit = 0;
 
+    const uint kMatClassOpaque      = 0;
+    const uint kMatClassMasked      = 1;
+    const uint kMatClassTranslucent = 2;
+    const uint kMatClassCount       = 3;
+
     const uint kMaxVerticesPerMeshlet  = 64;
     const uint kMaxTrianglesPerMeshlet = 94;
     const uint kMaxIndicesPerMeshlet   = kMaxTrianglesPerMeshlet * 3;
@@ -33,5 +38,12 @@ namespace shader_constants
 }
 #endif
 
-#define GET_BIT(flags, bit)   ((flags >> bit) & 1)
-#define CHECK_BIT(flags, bit) GET_BIT(flags, bit) == 1
+#define GET_BIT(flags, bit) ((flags >> bit) & 1)
+
+#if SHADERS_DEBUG
+#define DBG_GET_BIT1(flags, bit) GET_BIT(flags, bit)
+#define DBG_GET_BIT0(flags, bit) GET_BIT(flags, bit)
+#else
+#define DBG_GET_BIT1(flags, bit) 1
+#define DBG_GET_BIT0(flags, bit) 0
+#endif

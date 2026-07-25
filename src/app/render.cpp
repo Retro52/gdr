@@ -1,5 +1,6 @@
 #include <app/render.hpp>
 #include <render/platform/vk/vk_barrier.hpp>
+#include <shaders/constants.h>
 #include <tracy/Tracy.hpp>
 
 #include <cmath>
@@ -96,9 +97,15 @@ void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& 
                                VK_PIPELINE_STAGE_2_CLEAR_BIT,
                                VK_ACCESS_2_TRANSFER_WRITE_BIT);
 
-    vkCmdFillBuffer(cmd, draw_count_buffer.buffer, 0, sizeof(u32), 0);
-    vkCmdFillBuffer(cmd, draw_count_buffer.buffer, sizeof(u32), sizeof(u32[2]), 1);
+    u32 counts[shader_constants::kMatClassCount * 3];
+    for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
+    {
+        counts[i * 3]     = 0;
+        counts[i * 3 + 1] = 1;
+        counts[i * 3 + 2] = 1;
+    }
 
+    vkCmdUpdateBuffer(cmd, draw_count_buffer.buffer, 0, sizeof(u32) * COUNT_OF(counts), counts);
     render::cmd_buffer_barrier(cmd,
                                draw_count_buffer.buffer,
                                VK_PIPELINE_STAGE_2_CLEAR_BIT,
