@@ -91,7 +91,8 @@ namespace shader_types
         uint albedo_idx;
         uint normal_idx;
         uint met_roughness_idx;
-        uint material_flags;
+        uint16_t material_bits;
+        uint16_t material_class;
     };
 
     struct DrawIndexedIndirect
@@ -115,7 +116,20 @@ namespace shader_types
     struct DrawPushConstants
     {
 #ifdef __cplusplus
-        DrawPushConstants(const glm::mat4& ivp)
+        DrawPushConstants(const glm::mat4& ivp, const uint ico)
+            : vp(ivp)
+            , cmd_offset(ico)
+        {
+        }
+#endif
+        mat4 vp;
+        uint cmd_offset;
+    };
+
+    struct ResolvePassPushConstants
+    {
+#ifdef __cplusplus
+        ResolvePassPushConstants(const glm::mat4& ivp)
             : vp(ivp)
             , vp_inverse(glm::inverse(ivp))
         {

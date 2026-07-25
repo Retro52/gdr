@@ -32,10 +32,10 @@ taskPayloadSharedEXT DrawMeshletsTask meshlet_task;
 
 void main()
 {
-    uint instance_id = draw_mesh_cmds[gl_WorkGroupID.x].instance_id;
-    uint meshlets_in_task = draw_mesh_cmds[gl_WorkGroupID.x].meshlet_count & 0x7Fu;
-    uint meshlet_id = draw_mesh_cmds[gl_WorkGroupID.x].meshlet_offset + gl_LocalInvocationID.x;
-    uint visibility_bit = draw_mesh_cmds[gl_WorkGroupID.x].visibility_offset + gl_LocalInvocationID.x;
+    uint instance_id       = draw_mesh_cmds[gl_WorkGroupID.x + pc.cmd_offset].instance_id;
+    uint meshlets_in_task  = draw_mesh_cmds[gl_WorkGroupID.x + pc.cmd_offset].meshlet_count & 0x7Fu;
+    uint meshlet_id        = draw_mesh_cmds[gl_WorkGroupID.x + pc.cmd_offset].meshlet_offset + gl_LocalInvocationID.x;
+    uint visibility_bit    = draw_mesh_cmds[gl_WorkGroupID.x + pc.cmd_offset].visibility_offset + gl_LocalInvocationID.x;
 
     meshlet_task.instance_id = instance_id;
     meshlet_task.base_vertex = meshes_data[mesh_instances[instance_id].mesh_data_index].base_vertex;
@@ -43,27 +43,30 @@ void main()
     meshlets_count = 0;
     barrier();
 
-    vec3 cull_cone_axis = vec3(
-        meshlets[meshlet_id].cone_axis[0],
-        meshlets[meshlet_id].cone_axis[1],
-        meshlets[meshlet_id].cone_axis[2]
-    );
-
     vec3 sphere_center = vec3(
         meshlets[meshlet_id].sphere_center[0],
         meshlets[meshlet_id].sphere_center[1],
         meshlets[meshlet_id].sphere_center[2]
     );
-
     float sphere_radius = float(meshlets[meshlet_id].sphere_radius) * mesh_instances[instance_id].pos_and_scale.w;
-
-    vec3 view_axis = (frame_cull.view * vec4(quat_rotate_vec3(cull_cone_axis, mesh_instances[instance_id].rotation_quat), 0.0F)).xyz;
     vec3 view_center = (frame_cull.view * vec4(transform_vec3(sphere_center, mesh_instances[instance_id].pos_and_scale, mesh_instances[instance_id].rotation_quat), 1.0F)).xyz;
 
     bool visible = true;
-    visible = GET_BIT(frame_cull.flags, kMeshletConeCullBit) == 0 || (dot(view_center, view_axis) < float(meshlets[meshlet_id].cone_cutoff) * length(view_center) + sphere_radius);
+#ifdef ENABLE_CONE_CULL
+    if (DBG_GET_BIT1(frame_cull.flags, kMeshletConeCullBit) == 1)
+    {
+        vec3 cull_cone_axis = vec3(
+            meshlets[meshlet_id].cone_axis[0],
+            meshlets[meshlet_id].cone_axis[1],
+            meshlets[meshlet_id].cone_axis[2]
+        );
 
-    if (GET_BIT(frame_cull.flags, kMeshletFrustumCullBit) == 1)
+        vec3 view_axis = (frame_cull.view * vec4(quat_rotate_vec3(cull_cone_axis, mesh_instances[instance_id].rotation_quat), 0.0F)).xyz;
+        visible = dot(view_center, view_axis) < float(meshlets[meshlet_id].cone_cutoff) * length(view_center) + sphere_radius;
+    }
+#endif
+
+    if (DBG_GET_BIT1(frame_cull.flags, kMeshletFrustumCullBit) == 1)
     {
         visible = visible && view_center.z * frame_cull.frustum[1] - abs(view_center.x) * frame_cull.frustum[0] > -sphere_radius;
         visible = visible && view_center.z * frame_cull.frustum[3] - abs(view_center.y) * frame_cull.frustum[2] > -sphere_radius;
@@ -71,7 +74,7 @@ void main()
     }
 
     vec4 p_aabb;
-    if (visible && GET_BIT(frame_cull.flags, kSmallMeshletsCullBit) == 1 && project_sphere(view_center, sphere_radius, frame_cull.frustum[4], frame_cull.p00, frame_cull.p11, p_aabb))
+    if (visible && DBG_GET_BIT1(frame_cull.flags, kSmallMeshletsCullBit) == 1 && project_sphere(view_center, sphere_radius, frame_cull.frustum[4], frame_cull.p00, frame_cull.p11, p_aabb))
     {
         vec2 pmin = p_aabb.xy * frame_cull.viewport_size;
         vec2 pmax = p_aabb.zw * frame_cull.viewport_size;
@@ -86,7 +89,7 @@ void main()
 
 #ifdef FOR_LATE_OCCLUSION_TEST
     bool drawn_in_early = was_visible_last_frame && visible && GET_BIT(draw_mesh_cmds[gl_WorkGroupID.x].meshlet_count, 31) == 1;
-    if (visible && GET_BIT(frame_cull.flags, kMeshletOcclusionCullBit) == 1 && project_sphere(view_center, sphere_radius, frame_cull.frustum[4], frame_cull.p00, frame_cull.p11, p_aabb))
+    if (visible && DBG_GET_BIT1(frame_cull.flags, kMeshletOcclusionCullBit) == 1 && project_sphere(view_center, sphere_radius, frame_cull.frustum[4], frame_cull.p00, frame_cull.p11, p_aabb))
     {
         vec2 pmd_size = vec2(p_aabb.z - p_aabb.x, p_aabb.w - p_aabb.y) * frame_cull.pyramid_size;
         float level = ceil(log2(max(pmd_size.x, pmd_size.y)));
@@ -97,9 +100,9 @@ void main()
         visible = visible && spr_depth >= pmd_depth;
     }
 
-    emit = emit && visible && (!drawn_in_early || GET_BIT(frame_cull.flags, kMeshletOcclusionCullBit) == 0);
+    emit = emit && visible && (!drawn_in_early || DBG_GET_BIT1(frame_cull.flags, kMeshletOcclusionCullBit) == 0);
 #else
-    emit = emit && (was_visible_last_frame || GET_BIT(frame_cull.flags, kMeshletOcclusionCullBit) == 0);
+    emit = emit && (was_visible_last_frame || DBG_GET_BIT1(frame_cull.flags, kMeshletOcclusionCullBit) == 0);
 #endif
 
     if (emit)

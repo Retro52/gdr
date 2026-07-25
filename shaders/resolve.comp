@@ -33,7 +33,7 @@ layout (binding = 0,  set = 1) uniform texture2D textures[];
 
 layout (scalar, push_constant) uniform constants
 {
-    DrawPushConstants pc;
+    ResolvePassPushConstants pc;
 };
 
 const uint draw_debug_shaded           = 0;
@@ -53,8 +53,6 @@ const uint draw_debug_normal_texture   = 13;
 const uint draw_debug_omr_texture      = 14;
 const uint draw_debug_triangle_id      = 15;
 const uint draw_debug_instance_id      = 16;
-const uint draw_debug_environment_map  = 17;
-const uint draw_debug_irradiance_map   = 18;
 
 #define TEXTURE2DG(id, uv, dfdx, dfdy) textureGrad(sampler2D(textures[nonuniformEXT(id)], textures_sampler), uv, dfdx, dfdy)
 #define DTEXTURE2D(id, uv, dfdx, dfdy) (id > 0 ? textureGrad(sampler2D(textures[nonuniformEXT(id)], textures_sampler), uv, dfdx, dfdy) : vec4(1.0F, 0.25F, 0.95F, 1.0F))
@@ -136,26 +134,12 @@ void main()
 
     uint instance_id = data.r;
 
-    if (instance_id == ~0U
-#ifdef SHADERS_DEBUG
-        || world.debug_mode == draw_debug_environment_map
-        || world.debug_mode == draw_debug_irradiance_map
-#endif
-    )
+    if (instance_id == ~0U)
     {
         vec4 p = pc.vp_inverse * vec4(vtp, 1.0F, 1.0F);
         vec3 dir = normalize(p.xyz / p.w - world.camera_pos);
-#ifdef SHADERS_DEBUG
-        vec3 sky = vec3(0.0F);
-        switch (world.debug_mode)
-        {
-            case draw_debug_irradiance_map:  sky = textureLod(irradiance_map_sampler, dir, 0.0F).rgb; break;
-            case draw_debug_environment_map:
-            default: sky = textureLod(sky_cubemap_sampler, dir, 0.0F).rgb; break;
-        }
-#else
         vec3 sky = textureLod(sky_cubemap_sampler, dir, 0.0F).rgb;
-#endif
+
         imageStore(o_color, ivec2(gl_GlobalInvocationID.xy), from_linear(vec4(tonemap(sky), 1.0F)));
         return;
     }
@@ -232,7 +216,7 @@ void main()
 
 #if 1
     vec4 met_roughness_factor = vec4(1.0F);
-    if (GET_BIT(materials[material_id].material_flags, kMatGlossBit) == 1)
+    if (GET_BIT(uint(materials[material_id].material_bits), kMatGlossBit) == 1)
     {
         vec4 factor = materials[material_id].met_roughness_factor;
         met_roughness_factor = met_roughness_idx > 0

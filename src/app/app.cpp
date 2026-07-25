@@ -42,8 +42,7 @@
 namespace
 {
     REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_ambient, lit_specular, uv, normal, tangent, world_pos,
-                  color, metallic, roughness, albedo_texture, normal_texture, omr_texture, triangle_id, instance_id,
-                  environment_map, irradiance_map);
+                  color, metallic, roughness, albedo_texture, normal_texture, omr_texture, triangle_id, instance_id);
 
     REGISTER_ENUM(cubemap_face, XP, XN, YP, YN, ZP, ZN);
 
@@ -86,8 +85,8 @@ namespace
         return min + (static_cast<T>(rand()) / RAND_MAX) * (max - min);
     }
 
-    loader::stats populate_scene(const u32 draw_count, const cpp::heap_array<mesh::raw_mesh>& primitives, scene& scene,
-                                 render::vk_scene_geometry_pool& geometry_pool)
+    loader::scene_info populate_scene(const u32 draw_count, const cpp::heap_array<mesh::raw_mesh>& primitives,
+                                      scene& scene, render::vk_scene_geometry_pool& geometry_pool)
     {
         ZoneScoped;
 
@@ -134,6 +133,7 @@ namespace
         u64 triangles_max     = 0;
         u64 visibility_offset = 0;
 
+        std::array<u32, shader_constants::kMatClassCount> mat_offset_table {};
         for (u32 i = 0; i < draw_count; ++i)
         {
             ZoneScopedN("create models within the scene");
@@ -171,6 +171,7 @@ namespace
             instance.mesh_data_index   = layouts[id_random].prim_index;
 
             auto& material          = ctx.materials[i];
+            material.material_class = shader_constants::kMatClassOpaque;
             material.diffuse_factor = vec4(1.0F, 0.0F, 0.0F, 1.0);
 
             const f32 kMixMax = static_cast<f32>(kVolumeItemsPerSide) - 1;
@@ -180,6 +181,10 @@ namespace
 
             triangles_max += loader::get_max_lod_tris(primitives[id_random]);
             visibility_offset += loader::get_max_lod_meshlets(ctx.primitives[id_random]);
+
+            mat_offset_table[material.material_class] +=
+                (loader::get_max_lod_meshlets(ctx.primitives[id_random]) + shader_constants::kTaskWorkGroups - 1)
+                / shader_constants::kTaskWorkGroups;
         }
 
         render::upload_data(
@@ -192,11 +197,55 @@ namespace
             geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
         render::upload_data(geometry_pool.transfer, geometry_pool.instances, instances.data(), instances.size());
 
-        return {.meshes     = primitives.size(),
-                .meshlets   = visibility_offset,
-                .triangles  = triangles_max,
-                .primitives = draw_count};
+        return {.meshes           = primitives.size(),
+                .meshlets         = visibility_offset,
+                .triangles        = triangles_max,
+                .primitives       = draw_count,
+                .mat_offset_table = mat_offset_table};
     }
+}
+
+static std::array<u32, shader_constants::kMatClassCount> make_offset_table(
+    const std::array<u32, shader_constants::kMatClassCount>& materials)
+{
+    std::array<u32, shader_constants::kMatClassCount> result {};
+
+    u32 sum = 0;
+    for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
+    {
+        result[i] = sum;
+        sum += materials[i];
+    }
+
+    return result;
+}
+
+static const render::vk_pipeline& get_render_pipeline(app::pso_data& pipelines, u32 material_class, bool occlusion_cull,
+                                                      bool enable_meshlets)
+{
+    app::pso_id id {};
+    switch (material_class)
+    {
+    case shader_constants::kMatClassMasked :
+    case shader_constants::kMatClassTranslucent :
+
+    {
+        id = enable_meshlets
+               ? (occlusion_cull ? app::pso_id::task_render_ds_late_pipeline : app::pso_id::task_render_ds_pipeline)
+               : app::pso_id::indexed_render_ds_pipeline;
+        break;
+    }
+    default :
+    case shader_constants::kMatClassOpaque :
+    {
+        id = enable_meshlets
+               ? (occlusion_cull ? app::pso_id::task_render_late_pipeline : app::pso_id::task_render_pipeline)
+               : app::pso_id::indexed_render_pipeline;
+        break;
+    }
+    }
+
+    return pipelines[id];
 }
 
 render::vk_renderer create_vk_renderer(window& app_window)
@@ -314,6 +363,8 @@ int app::instance::run(const int argc, char* argv[])
 
             render::destroy_image(
                 ctx.renderer.get_context().device, ctx.renderer.get_context().allocator, ctx.depth_image);
+            render::destroy_image(
+                ctx.renderer.get_context().device, ctx.renderer.get_context().allocator, ctx.render_target);
 
             ctx.depth_image = create_depth_image(payload.window.size_px,
                                                  ctx.renderer.get_swapchain().depth_format,
@@ -363,7 +414,7 @@ int app::instance::run(const int argc, char* argv[])
     pipelines.load(m_renderer, bindless_textures_desc_set);
 
 #if !NO_EDITOR
-    imgui_layer editor(m_window, m_renderer, pipelines[pso_id::imgui_blit]);
+    imgui_layer editor(m_window, m_renderer, pipelines);
 #endif
 
     render::vk_scene_geometry_pool geometry_pool {
@@ -380,7 +431,7 @@ int app::instance::run(const int argc, char* argv[])
                                                     128_MB),
     };
 
-    loader::stats stats;
+    loader::scene_info scene_info;
     cpp::heap_array<render::vk_image> textures;
 
     app::argv_handler argv_handler(argc, argv);
@@ -406,11 +457,11 @@ int app::instance::run(const int argc, char* argv[])
             meshes.append(ctx->primitives);
         }
 
-        stats = populate_scene(instance_count, meshes, client_scene, geometry_pool);
+        scene_info = populate_scene(instance_count, meshes, client_scene, geometry_pool);
     }
     else
     {
-        stats = loader::load_scene(argv[first_instance], client_scene, m_renderer, geometry_pool, textures);
+        scene_info = loader::load_scene(argv[first_instance], client_scene, m_renderer, geometry_pool, textures);
     }
 
     entity camera = client_scene.empty();
@@ -477,6 +528,7 @@ int app::instance::run(const int argc, char* argv[])
     render::vk_query timestamp_query_pool =
         *render::create_query_pool(m_renderer.get_context().device, kQueryPoolCount, VK_QUERY_TYPE_TIMESTAMP);
 
+    u32 pipeline_statistics_query_index = 0;
     render::vk_query pipeline_statistics_query;
 #if !NO_PERF_QUERY
     if (pipeline_stats_supported)
@@ -493,7 +545,7 @@ int app::instance::run(const int argc, char* argv[])
 #endif
 
     render::vk_buffer draw_count_buffer = *render::create_buffer(
-        sizeof(u32[3]),
+        sizeof(u32[shader_constants::kMatClassCount * 3]),
         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         m_renderer.get_context().allocator,
         0);
@@ -505,13 +557,13 @@ int app::instance::run(const int argc, char* argv[])
         0);
 
     render::vk_buffer mesh_visibility_buffer = *render::create_buffer(
-        (stats.primitives + 31) / 8,
+        (scene_info.primitives + 31) / 8,
         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         m_renderer.get_context().allocator,
         0);
 
     render::vk_buffer meshlets_visibility_buffer = *render::create_buffer(
-        (stats.meshlets + 31) / 8,
+        (scene_info.meshlets + 31) / 8,
         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         m_renderer.get_context().allocator,
         0);
@@ -556,14 +608,14 @@ int app::instance::run(const int argc, char* argv[])
 
     gpu_profile_data profile_data;
     render_settings client_render_settings;
-    pipeline_statistics_data pipeline_stats_early;
-    pipeline_statistics_data pipeline_stats_late;
+    cpp::heap_array<pipeline_statistics_data> pipeline_statistics_data;
 
     glm::mat4 camera_proj;
     glm::mat4 camera_view;
     glm::mat4 camera_proj_view;
     glm::mat4 debug_camera_view;
 
+    u32 draw_materials_mask = 0xFFFF;
     debug_mode draw_debug_mode {debug_mode::shaded};
 
     f32 camera_exposure           = 10.0F;
@@ -591,46 +643,110 @@ int app::instance::run(const int argc, char* argv[])
     };
 #endif
 
-    auto draw_scene = [&](VkCommandBuffer cmd, const render::vk_pipeline& pipeline)
+    const auto offset_table = make_offset_table(scene_info.mat_offset_table);
+    auto fill_indexed       = [&](VkCommandBuffer cmd, const u32 material_class, const bool enable_occlusion_cull)
+    {
+        if (enable_meshlets_pipeline)
+        {
+            return;
+        }
+
+        TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "build index buffer late"));
+
+        app::zero_buffer(cmd, indexed_count_buffer, sizeof(u32));
+#if defined(__APPLE__)
+        app::zero_buffer(cmd, indexed_draw_indirect_buffer);
+#endif
+
+        render::vk_descriptor_bindings bindings;
+        bindings.bind(geometry_pool.meshlets.buffer.buffer)
+            .bind(geometry_pool.meshlets_payload.buffer.buffer)
+            .bind(geometry_pool.primitives.buffer.buffer)
+            .bind(geometry_pool.instances.buffer.buffer)
+            .bind(meshlets_draw_indirect_buffer.buffer)
+            .bind(frame_cull_data_buffers[m_renderer.get_frame_index()].buffer)
+            .bind(indexed_indices_buffer.buffer)
+            .bind(indexed_draw_indirect_buffer.buffer)
+            .bind(indexed_count_buffer.buffer)
+            .bind(meshlets_visibility_buffer.buffer);
+
+        if (enable_occlusion_cull)
+        {
+            bindings.bind(
+                render::vk_descriptor_info(depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL));
+        }
+
+        pso_id id;
+        switch (material_class)
+        {
+        case shader_constants::kMatClassMasked :
+        case shader_constants::kMatClassTranslucent :
+            id = enable_occlusion_cull ? pso_id::indexed_fill_ds_late_pipeline : pso_id::indexed_fill_ds_pipeline;
+            break;
+        default :
+        case shader_constants::kMatClassOpaque :
+            id = enable_occlusion_cull ? pso_id::indexed_fill_late_pipeline : pso_id::indexed_fill_pipeline;
+            break;
+        }
+
+        const render::vk_pipeline& fill_pass = pipelines[id];
+
+        fill_pass.bind(cmd);
+        fill_pass.push_constant(cmd, offset_table[material_class]);
+        fill_pass.push_descriptor_set(cmd, bindings.get());
+
+        vkCmdDispatchIndirect(cmd, draw_count_buffer.buffer, material_class * 3 * sizeof(u32));
+
+        render::cmd_stage_barrier(cmd,
+                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                                  VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+    };
+
+    auto draw_scene = [&](VkCommandBuffer cmd,
+                          const render::vk_pipeline& pipeline,
+                          u32 material_class,
+                          VkAttachmentLoadOp load_op = VK_ATTACHMENT_LOAD_OP_LOAD)
     {
         ZoneScopedN("app.instance.run.draw_scene");
+        TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "draw scene"));
 
-        constexpr u32 kMaxSetZeroBindings = 16;
-        render::vk_descriptor_info render_bindings[kMaxSetZeroBindings];
+        begin_rendering(cmd,
+                        vis_buffer.vis_buffer_img.view,
+                        depth_image.view,
+                        load_op,
+                        VK_ATTACHMENT_STORE_OP_STORE,
+                        m_renderer.get_scissor());
+        pipeline_statistics_query.begin(cmd, pipeline_statistics_query_index, 0);
 
-        u32 curr_bind  = 0;
-        auto bind_next = [&](const render::vk_descriptor_info& next)
-        {
-            assert2(curr_bind < kMaxSetZeroBindings);
-            render_bindings[curr_bind++] = next;
-        };
-
-        bind_next(geometry_pool.vertex.buffer.buffer);
-        bind_next(geometry_pool.materials.buffer.buffer);
-        bind_next(render::vk_descriptor_info(bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED));
-        bind_next(geometry_pool.meshlets.buffer.buffer);
-        bind_next(geometry_pool.meshlets_payload.buffer.buffer);
-        bind_next(geometry_pool.primitives.buffer.buffer);
-        bind_next(geometry_pool.instances.buffer.buffer);
+        render::vk_descriptor_bindings bindings;
+        bindings.bind(geometry_pool.vertex.buffer.buffer);
+        bindings.bind(geometry_pool.materials.buffer.buffer);
+        bindings.bind(render::vk_descriptor_info(bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED));
+        bindings.bind(geometry_pool.meshlets.buffer.buffer);
+        bindings.bind(geometry_pool.meshlets_payload.buffer.buffer);
+        bindings.bind(geometry_pool.primitives.buffer.buffer);
+        bindings.bind(geometry_pool.instances.buffer.buffer);
 
         if (enable_meshlets_pipeline)
         {
-            bind_next(meshlets_draw_indirect_buffer.buffer);
-            bind_next(frame_cull_data_buffers[m_renderer.get_frame_index()].buffer);
-            bind_next(meshlets_visibility_buffer.buffer);
-            bind_next(
+            bindings.bind(meshlets_draw_indirect_buffer.buffer);
+            bindings.bind(frame_cull_data_buffers[m_renderer.get_frame_index()].buffer);
+            bindings.bind(meshlets_visibility_buffer.buffer);
+            bindings.bind(
                 render::vk_descriptor_info(depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL));
 
-            pipeline.push_descriptor_set(cmd, render_bindings);
+            pipeline.push_descriptor_set(cmd, bindings.get());
             pipeline.bind_descriptor_set(cmd, bindless_textures_desc_set);
 
-            vkCmdDrawMeshTasksIndirectEXT(cmd, draw_count_buffer.buffer, 0, 1, 0);
+            vkCmdDrawMeshTasksIndirectEXT(cmd, draw_count_buffer.buffer, material_class * 3 * sizeof(u32), 1, 0);
         }
         else
         {
-            bind_next(indexed_draw_indirect_buffer.buffer);
+            bindings.bind(indexed_draw_indirect_buffer.buffer);
 
-            pipeline.push_descriptor_set(cmd, render_bindings);
+            pipeline.push_descriptor_set(cmd, bindings.get());
             pipeline.bind_descriptor_set(cmd, bindless_textures_desc_set);
 
             vkCmdBindIndexBuffer(cmd, indexed_indices_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -639,7 +755,7 @@ int app::instance::run(const int argc, char* argv[])
             vkCmdDrawIndexedIndirect(cmd,
                                      indexed_draw_indirect_buffer.buffer,
                                      0,
-                                     stats.meshlets / shader_constants::kTaskWorkGroups,
+                                     scene_info.mat_offset_table[material_class],
                                      sizeof(shader_types::DrawIndexedIndirect));
 #else
             vkCmdDrawIndexedIndirectCount(cmd,
@@ -647,10 +763,13 @@ int app::instance::run(const int argc, char* argv[])
                                           0,
                                           indexed_count_buffer.buffer,
                                           sizeof(u32),
-                                          stats.meshlets / shader_constants::kTaskWorkGroups,
+                                          scene_info.mat_offset_table[material_class],
                                           sizeof(shader_types::DrawIndexedIndirect));
 #endif
         }
+
+        pipeline_statistics_query.end(cmd, pipeline_statistics_query_index++);
+        vkCmdEndRendering(cmd);
     };
 
     m_renderer.submit(
@@ -727,6 +846,8 @@ int app::instance::run(const int argc, char* argv[])
                 TRACY_ONLY(TracyVkCollect(m_renderer.get_frame_tracy_context(), buffer));
 
                 timestamp_query_pool.reset(buffer, 0, kQueryPoolCount);
+
+                pipeline_statistics_query_index = 0;
                 pipeline_statistics_query.reset(buffer, 0, kQueryPoolCount);
 
                 vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool.handle, 0);
@@ -743,7 +864,7 @@ int app::instance::run(const int argc, char* argv[])
 
                     shader_types::FrameCullData fcd {.pyramid_size  = depth_pyramid.base_size,
                                                      .viewport_size = m_window.get_size_in_px(),
-                                                     .draw_count    = static_cast<u32>(stats.primitives),
+                                                     .draw_count    = static_cast<u32>(scene_info.primitives),
                                                      .flags         = client_render_settings.flags};
                     build_frustum(fcd, projection, view);
                     (*static_cast<shader_types::FrameCullData*>(frame_cull_data_buffer.mapped)) = fcd;
@@ -779,6 +900,7 @@ int app::instance::run(const int argc, char* argv[])
                     reset_draw_count_buffer(buffer, draw_count_buffer);
                     const render::vk_descriptor_info cull_pass_bindings[] = {geometry_pool.primitives.buffer.buffer,
                                                                              geometry_pool.instances.buffer.buffer,
+                                                                             geometry_pool.materials.buffer.buffer,
                                                                              draw_count_buffer.buffer,
                                                                              mesh_visibility_buffer.buffer,
                                                                              frame_cull_data_buffer.buffer,
@@ -787,9 +909,10 @@ int app::instance::run(const int argc, char* argv[])
                     const render::vk_pipeline& cull_pass = pipelines[pso_id::task_cull_pipeline];
 
                     cull_pass.bind(buffer);
+                    cull_pass.push_constant(buffer, offset_table);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
 
-                    cull_pass.dispatch(buffer, static_cast<u32>(stats.primitives), 1, 1);
+                    cull_pass.dispatch(buffer, static_cast<u32>(scene_info.primitives), 1, 1);
 
                     render::cmd_stage_barrier(
                         buffer,
@@ -797,42 +920,6 @@ int app::instance::run(const int argc, char* argv[])
                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
                             | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
-                        VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
-                }
-
-                if (!enable_meshlets_pipeline)
-                {
-                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "build index buffer"));
-
-                    app::zero_buffer(buffer, indexed_count_buffer);
-#if defined(__APPLE__)
-                    app::zero_buffer(buffer, indexed_draw_indirect_buffer);
-#endif
-                    const render::vk_descriptor_info fill_pass_bindings[] = {
-                        geometry_pool.meshlets.buffer.buffer,
-                        geometry_pool.meshlets_payload.buffer.buffer,
-                        geometry_pool.primitives.buffer.buffer,
-                        geometry_pool.instances.buffer.buffer,
-                        meshlets_draw_indirect_buffer.buffer,
-                        frame_cull_data_buffer.buffer,
-                        indexed_indices_buffer.buffer,
-                        indexed_draw_indirect_buffer.buffer,
-                        indexed_count_buffer.buffer,
-                        meshlets_visibility_buffer.buffer,
-                    };
-
-                    const render::vk_pipeline& fill_pass = pipelines[pso_id::indexed_fill_pipeline];
-
-                    fill_pass.bind(buffer);
-                    fill_pass.push_descriptor_set(buffer, fill_pass_bindings);
-
-                    vkCmdDispatchIndirect(buffer, draw_count_buffer.buffer, 0);
-
-                    render::cmd_stage_barrier(
-                        buffer,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
                         VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
                 }
 
@@ -852,35 +939,32 @@ int app::instance::run(const int argc, char* argv[])
                                          VK_IMAGE_LAYOUT_UNDEFINED,
                                          VK_IMAGE_LAYOUT_GENERAL,
                                          VK_IMAGE_ASPECT_DEPTH_BIT);
-                begin_rendering(buffer,
-                                vis_buffer.vis_buffer_img.view,
-                                depth_image.view,
-                                VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                VK_ATTACHMENT_STORE_OP_STORE,
-                                m_renderer.get_scissor());
 
                 vkCmdSetScissor(buffer, 0, 1, &scissor);
                 vkCmdSetViewport(buffer, 0, 1, &viewport);
 
-                pipeline_statistics_query.begin(buffer, 0, 0);
-
+                app::zero_buffer(buffer, indexed_count_buffer, 0);
+                for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
                 {
-                    const auto& render_pipeline = enable_meshlets_pipeline ? pipelines[pso_id::task_render_pipeline]
-                                                                           : pipelines[pso_id::indexed_render_pipeline];
+                    if (!(draw_materials_mask & (1 << i)))
+                    {
+                        continue;
+                    }
+
+                    fill_indexed(buffer, i, false);
+                    const auto& render_pipeline = get_render_pipeline(pipelines, i, false, enable_meshlets_pipeline);
+
                     render_pipeline.bind(buffer);
-                    render_pipeline.push_constant(buffer,
-                                                  shader_types::DrawPushConstants {freeze_cull_data
-                                                                                       ? camera_proj * debug_camera_view
-                                                                                       : camera_proj_view});
+                    render_pipeline.push_constant(
+                        buffer,
+                        shader_types::DrawPushConstants {
+                            freeze_cull_data ? camera_proj * debug_camera_view : camera_proj_view, offset_table[i]});
 
-                    ZoneScopedN("draw last frame occluders");
-                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw last frame occluders"));
-
-                    draw_scene(buffer, render_pipeline);
+                    vkCmdSetCullMode(
+                        buffer, i == shader_constants::kMatClassOpaque ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE);
+                    draw_scene(
+                        buffer, render_pipeline, i, i == 0 ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD);
                 }
-
-                pipeline_statistics_query.end(buffer, 0);
-                vkCmdEndRendering(buffer);
 
                 // Reduce the depth buffer pyramid
                 {
@@ -916,27 +1000,25 @@ int app::instance::run(const int argc, char* argv[])
                     }
                 }
 
-                if (freeze_cull_data)
+                // NOTE: only executed if freeze_cull_data == true
+                for (u32 i = 0; i < shader_constants::kMatClassCount && freeze_cull_data; ++i)
                 {
-                    ZoneScopedN("draw last frame occluders from an actual perspective");
-                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(),
-                                           buffer,
-                                           "draw last frame occluders from an actual perspective"));
+                    if (!(draw_materials_mask & (1 << i)))
+                    {
+                        continue;
+                    }
 
-                    begin_rendering(buffer,
-                                    vis_buffer.vis_buffer_img.view,
-                                    depth_image.view,
-                                    VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                    VK_ATTACHMENT_STORE_OP_STORE,
-                                    m_renderer.get_scissor());
+                    fill_indexed(buffer, i, false);
+                    const auto& render_pipeline = get_render_pipeline(pipelines, i, false, enable_meshlets_pipeline);
 
-                    const auto& render_pipeline = enable_meshlets_pipeline ? pipelines[pso_id::task_render_pipeline]
-                                                                           : pipelines[pso_id::indexed_render_pipeline];
                     render_pipeline.bind(buffer);
-                    render_pipeline.push_constant(buffer, shader_types::DrawPushConstants(camera_proj_view));
+                    render_pipeline.push_constant(buffer,
+                                                  shader_types::DrawPushConstants(camera_proj_view, offset_table[i]));
 
-                    draw_scene(buffer, render_pipeline);
-                    vkCmdEndRendering(buffer);
+                    vkCmdSetCullMode(
+                        buffer, i == shader_constants::kMatClassOpaque ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE);
+                    draw_scene(
+                        buffer, render_pipeline, i, i == 0 ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD);
                 }
 
                 {
@@ -946,6 +1028,7 @@ int app::instance::run(const int argc, char* argv[])
                     const render::vk_descriptor_info cull_pass_bindings[] = {
                         geometry_pool.primitives.buffer.buffer,
                         geometry_pool.instances.buffer.buffer,
+                        geometry_pool.materials.buffer.buffer,
                         draw_count_buffer.buffer,
                         mesh_visibility_buffer.buffer,
                         frame_cull_data_buffer.buffer,
@@ -956,9 +1039,10 @@ int app::instance::run(const int argc, char* argv[])
                     const render::vk_pipeline& cull_pass = pipelines[pso_id::task_occlusion_cull_pipeline];
 
                     cull_pass.bind(buffer);
+                    cull_pass.push_constant(buffer, offset_table);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings);
 
-                    cull_pass.dispatch(buffer, static_cast<u32>(stats.primitives), 1, 1);
+                    cull_pass.dispatch(buffer, static_cast<u32>(scene_info.primitives), 1, 1);
 
                     render::cmd_stage_barrier(
                         buffer,
@@ -968,71 +1052,23 @@ int app::instance::run(const int argc, char* argv[])
                         VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
                 }
 
-                if (!enable_meshlets_pipeline)
+                for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
                 {
-                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "build index buffer late"));
-
-                    app::zero_buffer(buffer, indexed_count_buffer, sizeof(u32));
-#if defined(__APPLE__)
-                    app::zero_buffer(buffer, indexed_draw_indirect_buffer);
-#endif
-                    const render::vk_descriptor_info fill_pass_bindings[] = {
-                        geometry_pool.meshlets.buffer.buffer,
-                        geometry_pool.meshlets_payload.buffer.buffer,
-                        geometry_pool.primitives.buffer.buffer,
-                        geometry_pool.instances.buffer.buffer,
-                        meshlets_draw_indirect_buffer.buffer,
-                        frame_cull_data_buffer.buffer,
-                        indexed_indices_buffer.buffer,
-                        indexed_draw_indirect_buffer.buffer,
-                        indexed_count_buffer.buffer,
-                        meshlets_visibility_buffer.buffer,
-                        render::vk_descriptor_info(
-                            depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL),
-                    };
-
-                    const render::vk_pipeline& fill_pass = pipelines[pso_id::indexed_fill_late_pipeline];
-
-                    fill_pass.bind(buffer);
-                    fill_pass.push_descriptor_set(buffer, fill_pass_bindings);
-
-                    vkCmdDispatchIndirect(buffer, draw_count_buffer.buffer, 0);
-
-                    render::cmd_stage_barrier(
-                        buffer,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
-                        VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
-                }
-
-                {
-                    const auto& render_pipeline = enable_meshlets_pipeline
-                                                    ? pipelines[pso_id::task_render_late_pipeline]
-                                                    : pipelines[pso_id::indexed_render_pipeline];
-                    render_pipeline.bind(buffer);
-                    render_pipeline.push_constant(buffer, shader_types::DrawPushConstants(camera_proj_view));
-
-                    ZoneScopedN("draw new objects");
-                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "draw new objects"));
-
-                    begin_rendering(buffer,
-                                    vis_buffer.vis_buffer_img.view,
-                                    depth_image.view,
-                                    VK_ATTACHMENT_LOAD_OP_LOAD,
-                                    VK_ATTACHMENT_STORE_OP_STORE,
-                                    m_renderer.get_scissor());
-
-                    pipeline_statistics_query.begin(buffer, 1, 0);
-                    draw_scene(buffer, render_pipeline);
-                    pipeline_statistics_query.end(buffer, 1);
-
-                    if (freeze_cull_data)
+                    if (!(draw_materials_mask & (1 << i)))
                     {
-                        frustum_renderer.draw(buffer, camera_proj_view, frame_cull_data_buffer);
+                        continue;
                     }
 
-                    vkCmdEndRendering(buffer);
+                    fill_indexed(buffer, i, true);
+                    const auto& render_pipeline = get_render_pipeline(pipelines, i, true, enable_meshlets_pipeline);
+
+                    render_pipeline.bind(buffer);
+                    render_pipeline.push_constant(buffer,
+                                                  shader_types::DrawPushConstants(camera_proj_view, offset_table[i]));
+
+                    vkCmdSetCullMode(
+                        buffer, i == shader_constants::kMatClassOpaque ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE);
+                    draw_scene(buffer, render_pipeline, i);
                 }
 
                 {
@@ -1066,7 +1102,7 @@ int app::instance::run(const int argc, char* argv[])
                     resolve_pass.push_descriptor_set(buffer, resolve_pass_bindings);
                     resolve_pass.bind_descriptor_set(buffer, bindless_textures_desc_set);
 
-                    resolve_pass.push_constant(buffer, shader_types::DrawPushConstants(camera_proj_view));
+                    resolve_pass.push_constant(buffer, shader_types::ResolvePassPushConstants(camera_proj_view));
 
                     resolve_pass.dispatch(buffer, m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1);
 
@@ -1104,6 +1140,22 @@ int app::instance::run(const int argc, char* argv[])
                                               VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
                 }
 
+                if (freeze_cull_data)
+                {
+                    ZoneScopedN("Frustum debug render pass");
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "frustum debug"));
+
+                    begin_rendering(buffer,
+                                    m_renderer.get_frame_swapchain_image().image_view,
+                                    depth_image.view,
+                                    VK_ATTACHMENT_LOAD_OP_LOAD,
+                                    VK_ATTACHMENT_STORE_OP_STORE,
+                                    m_renderer.get_scissor());
+
+                    frustum_renderer.draw(buffer, camera_proj_view, frame_cull_data_buffer);
+                    vkCmdEndRendering(buffer);
+                }
+
 #if !NO_EDITOR
                 {
                     ZoneScopedN("main.draw.editor");
@@ -1116,8 +1168,7 @@ int app::instance::run(const int argc, char* argv[])
                     if (ImGui::Begin("Render controls"))
                     {
                         info_widget_context.draw();
-                        info_widget_context.draw("Pipeline stats [early]", pipeline_stats_early);
-                        info_widget_context.draw("Pipeline stats [late]", pipeline_stats_late);
+                        info_widget_context.draw("Pipeline stats", pipeline_statistics_data);
                         ImGui::SeparatorText("render controls");
 
                         const char* names[] = {
@@ -1130,6 +1181,14 @@ int app::instance::run(const int argc, char* argv[])
                             "Small meshlets cull",
                         };
                         ImGuiWidgets::Bits(client_render_settings.flags, names, COUNT_OF(names));
+
+                        const char* material_classes[] = {
+                            "Opaque",
+                            "Masked",
+                            "Translucent",
+                        };
+                        ImGuiWidgets::Bits(draw_materials_mask, material_classes, COUNT_OF(material_classes));
+
                         ImGuiWidgets::EnumDrag("Debug mode", draw_debug_mode);
 
                         codegen::draw(client_render_settings);
@@ -1183,8 +1242,8 @@ int app::instance::run(const int argc, char* argv[])
                                 static i32 level = 0;
                                 static f32 mip   = 0.0F;
 
-                                ImGui::DragInt("Cubemap layer", &level);
-                                ImGui::DragFloat("Cubemap mip", &mip, 1.0F, 0.0F, 12.0F);
+                                ImGui::SliderInt("Cubemap layer", &level, 0, 5);
+                                ImGui::SliderFloat("Cubemap mip", &mip, 0.0F, 12.0F);
 
                                 editor.image_array(environment.cubemap.image,
                                                    environment.cubemap.view,
@@ -1315,20 +1374,25 @@ int app::instance::run(const int argc, char* argv[])
 #if !NO_PERF_QUERY
                 vkDeviceWaitIdle(m_renderer.get_context().device);
 
-                auto frame_stats = query_frame_statistics_data(m_renderer.get_context().device, timestamp_query_pool);
+                const auto frame_stats =
+                    query_frame_statistics_data(m_renderer.get_context().device, timestamp_query_pool);
 
-                pipeline_stats_early =
-                    query_pipeline_statistics_data(m_renderer.get_context().device, pipeline_statistics_query, 0);
-                pipeline_stats_late =
-                    query_pipeline_statistics_data(m_renderer.get_context().device, pipeline_statistics_query, 1);
+                u32 tris_total_reported = 0;
+                pipeline_statistics_data.clear();
+                for (u32 i = 0; i < pipeline_statistics_query_index; ++i)
+                {
+                    pipeline_statistics_data.emplace_back(
+                        query_pipeline_statistics_data(m_renderer.get_context().device, pipeline_statistics_query, i));
+                    tris_total_reported += pipeline_statistics_data.back().triangles_count;
+                }
 
                 VkPhysicalDeviceProperties props = {};
                 vkGetPhysicalDeviceProperties(m_renderer.get_context().physical_device, &props);
 
                 profile_data.update(static_cast<f64>(frame_stats.frame_start) * props.limits.timestampPeriod * 1e-6,
                                     static_cast<f64>(frame_stats.frame_end) * props.limits.timestampPeriod * 1e-6,
-                                    pipeline_stats_early.triangles_count + pipeline_stats_late.triangles_count,
-                                    stats.triangles);
+                                    tris_total_reported,
+                                    scene_info.triangles);
 
                 TracyPlotConfig("Total GPU time", tracy::PlotFormatType::Number, false, true, 0);
                 TracyPlot("Total GPU time", profile_data.gpu_render_time);
@@ -1370,6 +1434,7 @@ int app::instance::run(const int argc, char* argv[])
     environment.shutdown(m_renderer);
 
     render::destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, depth_image);
+    render::destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, render_target);
     render::destroy_image(
         m_renderer.get_context().device, m_renderer.get_context().allocator, vis_buffer.vis_buffer_img);
     destroy_depth_pyramid(depth_pyramid, m_renderer.get_context().device, m_renderer.get_context().allocator);

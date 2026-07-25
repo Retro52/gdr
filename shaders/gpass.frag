@@ -25,12 +25,14 @@ layout (binding = 0, set = 1) uniform texture2D textures[];
 
 void main()
 {
-    uint albedo_idx = materials[mesh_instances[vs_in.instance_id].material_index].albedo_idx;
+#ifdef ENABLE_ALPHA_TESTING
+    uint albedo_idx = uint(materials[mesh_instances[vs_in.instance_id].material_index].albedo_idx);
     vec4 frag_color = albedo_idx > 0 ? TEXTURE2D(albedo_idx, vs_in.uv) : vec4(1.0F);
     frag_color *= materials[mesh_instances[vs_in.instance_id].material_index].diffuse_factor;
 
     if (frag_color.a < 0.5F)
         discard;
+#endif
 
 #ifdef FOR_MESH_PIPELINE
     o_indices = uvec2(vs_in.instance_id, gl_PrimitiveID);

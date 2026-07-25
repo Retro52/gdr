@@ -1,5 +1,6 @@
 #pragma once
 
+#include <app/pso.hpp>
 #include <imgui.h>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
@@ -10,7 +11,7 @@
 class imgui_layer
 {
 public:
-    imgui_layer(const window& window, const render::vk_renderer& renderer, const render::vk_pipeline& pipeline);
+    imgui_layer(const window& window, const render::vk_renderer& renderer, app::pso_data& pipelines);
 
     ~imgui_layer();
 
@@ -28,9 +29,14 @@ public:
                      ImVec2 size = {256, 256}, f32 brightness = 1.0F, f32 mip = 0.0F);
 
 private:
+    enum class sampler_type : u8
+    {
+        sampler2d,
+        sampler2d_array,
+    };
+
     struct pc_data
     {
-        u32 type;
         f32 mip_level;
         f32 brightness;
         f32 array_layer;
@@ -45,6 +51,7 @@ private:
         VkImageLayout src_layout;
         VkImageAspectFlags aspect;
 
+        sampler_type type;
         pc_data push_constant;
     };
 
@@ -71,7 +78,7 @@ private:
     bool allocate_region(u32 w, u32 h, VkOffset2D& out_offset);
 
     void image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec2 uv0, ImVec2 uv1, VkImageLayout src_layout,
-                    VkImageAspectFlags aspect, const pc_data& push_constant);
+                    VkImageAspectFlags aspect, sampler_type type, const pc_data& push_constant);
 
 private:
     constexpr static u32 kAtlasWidth   = 4096;
@@ -82,6 +89,6 @@ private:
     atlas_data m_atlas_data;
     std::vector<blit_request> m_pending_uploads;
 
+    app::pso_data& m_pipelines;
     const render::vk_renderer& m_renderer;
-    const render::vk_pipeline& m_blit_pipeline;
 };

@@ -13,7 +13,8 @@ static u32 get_mips_count(i32 resolution)
 
 static void generate_mips(VkCommandBuffer cmd, render::vk_image& cube, i32 resolution)
 {
-    for (u32 i = 1; i < get_mips_count(resolution); ++i)
+    u32 mips = get_mips_count(resolution);
+    for (u32 i = 1; i < mips; ++i)
     {
         i32 mip_resolution = resolution > 1 ? resolution / 2 : resolution;
 
@@ -159,6 +160,7 @@ void app::environment::shutdown(const render::vk_renderer& renderer)
     vkDestroyImageView(renderer.get_context().device, conv_view, nullptr);
     vkDestroyImageView(renderer.get_context().device, pref_view, nullptr);
     render::destroy_image(renderer.get_context().device, renderer.get_context().allocator, cubemap);
+    render::destroy_image(renderer.get_context().device, renderer.get_context().allocator, brdf_lut);
     render::destroy_image(renderer.get_context().device, renderer.get_context().allocator, convolution);
     render::destroy_image(renderer.get_context().device, renderer.get_context().allocator, prefiltered);
 }
@@ -213,13 +215,11 @@ void app::environment::load(const fs::path& path, app::pso_data& pso, render::vk
 
                     pass.dispatch(cmd, resolution, resolution, 6);
 
-                    render::cmd_stage_barrier(
-                        cmd,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
-                            | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
-                        VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                    render::cmd_stage_barrier(cmd,
+                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                              VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                              VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                                              VK_ACCESS_2_TRANSFER_READ_BIT);
                 }
 
                 {

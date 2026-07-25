@@ -1,7 +1,13 @@
 {
-  "imgui_blit": {
+  "blit_sampler2d_pipeline": {
     "shaders": [
-      "imgui_blit.frag.spv",
+      "imgui_blit_2d.frag.spv",
+      "imgui_blit.vert.spv"
+    ]
+  },
+  "blit_sampler2d_array_pipeline": {
+    "shaders": [
+      "imgui_blit_2d_array.frag.spv",
       "imgui_blit.vert.spv"
     ]
   },
@@ -32,11 +38,37 @@
       "mesh_ext"
     ]
   },
+  "task_render_ds_pipeline": {
+    "shaders": [
+      "meshlets_submit_ds.task.spv",
+      "meshlets.mesh.spv",
+      "gpass_mesh_masked.frag.spv"
+    ],
+    "options": {
+      "color_format": 101
+    },
+    "capabilities": [
+      "mesh_ext"
+    ]
+  },
   "task_render_late_pipeline": {
     "shaders": [
       "meshlets_submit_late.task.spv",
       "meshlets.mesh.spv",
       "gpass_mesh.frag.spv"
+    ],
+    "options": {
+      "color_format": 101
+    },
+    "capabilities": [
+      "mesh_ext"
+    ]
+  },
+  "task_render_ds_late_pipeline": {
+    "shaders": [
+      "meshlets_submit_ds_late.task.spv",
+      "meshlets.mesh.spv",
+      "gpass_mesh_masked.frag.spv"
     ],
     "options": {
       "color_format": 101
@@ -59,6 +91,15 @@
       "color_format": 101
     }
   },
+  "indexed_render_ds_pipeline": {
+    "shaders": [
+      "mesh.vert.spv",
+      "gpass_vert_masked.frag.spv"
+    ],
+    "options": {
+      "color_format": 101
+    }
+  },
   "depth_reduce_pipeline": {
     "shaders": [
       "depth_reduce.comp.spv"
@@ -72,6 +113,16 @@
   "indexed_fill_late_pipeline": {
     "shaders": [
       "fill_index_from_tasks_late.comp.spv"
+    ]
+  },
+  "indexed_fill_ds_pipeline": {
+    "shaders": [
+      "fill_index_from_tasks_ds.comp.spv"
+    ]
+  },
+  "indexed_fill_ds_late_pipeline": {
+    "shaders": [
+      "fill_index_from_tasks_ds_late.comp.spv"
     ]
   },
   "mesh_resolve_pipeline": {
@@ -92,11 +143,6 @@
   "cubemap_convolute_pipeline": {
     "shaders": [
       "cubemap_convolute.comp.spv"
-    ]
-  },
-  "brdf_lut_generate_pipeline": {
-    "shaders": [
-      "brdf_lut_generate.comp.spv"
     ]
   },
   "fxaa_pipeline": {
