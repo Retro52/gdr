@@ -20,13 +20,13 @@ public:
     void end_frame(const render::vk_renderer& renderer);
 
     void image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv = {0, 0, 1, 1},
-               ImVec2 size = {256, 256}, f32 brightness = 0.0F, f32 mip = 0.0F);
+               ImVec2 size = {256, 256}, f32 mip = 0.0F, f32 znear = 0.0F);
 
     void image_array(VkImage image, VkImageView view, VkImageLayout src_layout, f32 layer, vec4 uv = {0, 0, 1, 1},
-                     ImVec2 size = {256, 256}, f32 brightness = 0.0F, f32 mip = 0.0F);
+                     ImVec2 size = {256, 256}, f32 mip = 0.0F, f32 znear = 0.0F);
 
     void depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv = {0, 0, 1, 1},
-                     ImVec2 size = {256, 256}, f32 brightness = 1.0F, f32 mip = 0.0F);
+                     ImVec2 size = {256, 256}, f32 mip = 0.0F, f32 znear = 0.0F);
 
 private:
     enum class sampler_type : u8
@@ -37,8 +37,8 @@ private:
 
     struct pc_data
     {
+        f32 znear;
         f32 mip_level;
-        f32 brightness;
         f32 array_layer;
     };
 

@@ -89,7 +89,9 @@ void main()
     vec3 dir = normalize(kFaceForward[face] + uv.x * kFaceRight[face] + uv.y * kFaceUp[face]);
     vec4 color = textureLod(i_equirect, to_equirect(dir), 0.0F);
 
-    imageStore(o_cubemap, ivec3(gl_GlobalInvocationID.xyz), color);
+    // note to self -- this min is not arbitrary, this is to avoid double suns illumination in a scene
+    // maybe, it would make sense to pass it as a parameter of some sort, but for now this will do
+    imageStore(o_cubemap, ivec3(gl_GlobalInvocationID.xyz), min(color, vec4(10.0F)));
 }
 #endif
 

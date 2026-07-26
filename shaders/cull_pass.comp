@@ -38,11 +38,12 @@ void main()
 
     uint idx = mi * gl_WorkGroupSize.x + ti;
     bool inv_visibility_bit = (GET_BIT(mesh_visibility_buffer[idx >> 5], idx & 31u) == 0);
+    uint material_class = uint(mesh_materials[mesh_instances[idx].material_index].material_class);
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-    const bool early_out = DBG_GET_BIT1(frame_cull.flags, kOcclusionCullBit) == 0;
+    const bool early_out = DBG_GET_BIT1(frame_cull.flags, kOcclusionCullBit) == 0 && material_class != kMatClassTranslucent;
 #else
-    bool early_out = inv_visibility_bit && DBG_GET_BIT1(frame_cull.flags, kOcclusionCullBit) == 1;
+    bool early_out = (inv_visibility_bit && DBG_GET_BIT1(frame_cull.flags, kOcclusionCullBit) == 1) || material_class == kMatClassTranslucent;
 #endif
 
     if (idx >= frame_cull.draw_count || early_out)
@@ -98,7 +99,6 @@ void main()
         lod_base = DBG_GET_BIT1(frame_cull.flags, kLodFlagBit) == 0 ? 0 : lod_base;
         MeshLod selected_lod = meshes_data[mesh_idx].lod_array[lod_base];
 
-        uint material_class = uint(mesh_materials[mesh_instances[idx].material_index].material_class);
         uint task_count = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
         uint dci = atomicAdd(draw_commands_count[material_class * 3], task_count) + pc.offset_table[material_class];
         for (uint i = task_count; i > 0; i--)
@@ -109,7 +109,7 @@ void main()
             draw_indirect_cmds[dcii].meshlet_offset = selected_lod.base_meshlet + offset;
             draw_indirect_cmds[dcii].visibility_offset = mesh_instances[idx].visibility_offset + offset;
 #ifdef FOR_LATE_OCCLUSION_TEST
-            uint drawn_in_early_bit = !inv_visibility_bit ? 1 : 0;
+            uint drawn_in_early_bit = (!inv_visibility_bit && material_class != kMatClassTranslucent) ? 1 : 0;
             draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups) | drawn_in_early_bit << 31;
 #else
             draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups);

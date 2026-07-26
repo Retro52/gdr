@@ -34,8 +34,6 @@
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
 
-#include "quill/bundled/fmt/color.h"
-
 #define NO_EDITOR     0
 #define NO_PERF_QUERY 0
 
@@ -501,6 +499,9 @@ int app::instance::run(const int argc, char* argv[])
         t.rotation = glm::quat(vec3(0, 1, 0));
     }
 
+    sun.get_component<transform_component>().rotation = glm::quat(glm::radians(argv_handler.read_vec3(
+        "--sun_direction", glm::eulerAngles(sun.get_component<transform_component>().rotation))));
+
     for (u32 i = 0; i < textures.size(); ++i)
     {
         auto& tex = textures[i];
@@ -618,7 +619,10 @@ int app::instance::run(const int argc, char* argv[])
     u32 draw_materials_mask = 0xFFFF;
     debug_mode draw_debug_mode {debug_mode::shaded};
 
-    f32 camera_exposure           = 10.0F;
+    f32 camera_exposure             = 10.0F;
+    f32 environment_compensation_ev = 0.0f;
+    f32 environment_intensity       = 1250.0f;
+
     bool freeze_cull_data         = false;
     bool enable_vsync             = m_renderer.get_vsync();
     bool enable_fullscreen        = m_window.get_fullscreen();
@@ -884,15 +888,16 @@ int app::instance::run(const int argc, char* argv[])
                 auto& sun_transform = sun.get_component<transform_component>();
                 auto& sun_data      = sun.get_component<directional_light_component>();
 
-                auto sun_direction = glm::normalize(glm::mat3_cast(sun_transform.rotation) * vec3(0, 1, 0));
+                auto sun_direction = glm::normalize(glm::mat3_cast(sun_transform.rotation) * vec3(0, 0, 1));
 
                 auto& world_data_buffer = world_data_buffers[m_renderer.get_frame_index()];
                 (*static_cast<shader_types::FrameWorldData*>(world_data_buffer.mapped)) = shader_types::FrameWorldData {
-                    .sun_color       = {sun_data.rgb_color, sun_data.intensity},
-                    .camera_pos      = camera_transform.position,
-                    .debug_mode      = static_cast<u32>(draw_debug_mode),
-                    .sun_direction   = sun_direction,
-                    .camera_exposure = camera_exposure,
+                    .sun_color         = {sun_data.rgb_color, sun_data.intensity},
+                    .camera_pos        = camera_transform.position,
+                    .debug_mode        = static_cast<u32>(draw_debug_mode),
+                    .sun_direction     = sun_direction,
+                    .camera_exposure   = camera_exposure,
+                    .environment_scale = environment_intensity * glm::exp2(environment_compensation_ev),
                 };
 
                 {
@@ -1055,7 +1060,8 @@ int app::instance::run(const int argc, char* argv[])
 
                 for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
                 {
-                    if (!(draw_materials_mask & (1 << i)))
+                    if (!((draw_materials_mask & ~static_cast<u64>(1 << shader_constants::kMatClassTranslucent))
+                          & (1 << i)))
                     {
                         continue;
                     }
@@ -1105,7 +1111,8 @@ int app::instance::run(const int argc, char* argv[])
                     resolve_pass.push_descriptor_set(buffer, resolve_pass_bindings);
                     resolve_pass.bind_descriptor_set(buffer, bindless_textures_desc_set);
 
-                    resolve_pass.push_constant(buffer, shader_types::ResolvePassPushConstants(camera_proj_view));
+                    resolve_pass.push_constant(buffer,
+                                               shader_types::ResolvePassPushConstants(camera_view, camera_proj));
 
                     resolve_pass.dispatch(buffer, m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1);
 
@@ -1240,45 +1247,62 @@ int app::instance::run(const int argc, char* argv[])
                                 environment.load(env_map, pipelines, m_renderer, geometry_pool.transfer);
                             }
 
-                            if (!env_map.empty())
-                            {
-                                static i32 level = 0;
-                                static f32 mip   = 0.0F;
+                            constexpr ImGuiTableFlags flags =
+                                ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame;
 
-                                ImGui::SliderInt("Cubemap layer", &level, 0, 5);
-                                ImGui::SliderFloat("Cubemap mip", &mip, 0.0F, 12.0F);
+                            ImGui::DragFloat("Env intensity", &environment_intensity);
+                            ImGui::DragFloat("Env compensation", &environment_compensation_ev);
+
+                            if (!env_map.empty() && ImGui::BeginTable("Environment maps", 3, flags))
+                            {
+                                ImGui::TableSetupColumn("Environment");
+                                ImGui::TableSetupColumn("Convolution");
+                                ImGui::TableSetupColumn("Prefiltered");
+                                ImGui::TableHeadersRow();
+
+                                ImGui::TableNextRow();
+
+                                const auto image_size = []
+                                {
+                                    const f32 width = ImGui::GetContentRegionAvail().x;
+                                    return ImVec2 {width, width};
+                                };
+
+                                ImGui::TableSetColumnIndex(0);
+                                auto env_params = ImGuiWidgets::ImageControls("Environment", 12.0F, 5.0F);
 
                                 editor.image_array(environment.cubemap.image,
                                                    environment.cubemap.view,
                                                    VK_IMAGE_LAYOUT_GENERAL,
-                                                   static_cast<f32>(level),
+                                                   env_params.layer,
                                                    {0, 1, 1, 0},
-                                                   {ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().x},
-                                                   0.0F,
-                                                   mip);
+                                                   image_size(),
+                                                   env_params.mip);
 
-                                static i32 pref_level = 0;
-                                static f32 pref_mip   = 0.0F;
+                                ImGui::TableSetColumnIndex(1);
+                                auto conv_params = ImGuiWidgets::ImageControls("Convolution", 1.0F, 5.0F);
 
-                                ImGui::SliderInt("Pref layer", &pref_level, 0, 5);
-                                ImGui::SliderFloat(
-                                    "Pref mip", &pref_mip, 0.0F, static_cast<f32>(shader_constants::kEnvPrefilterMips - 1));
+                                editor.image_array(environment.convolution.image,
+                                                   environment.convolution.view,
+                                                   VK_IMAGE_LAYOUT_GENERAL,
+                                                   conv_params.layer,
+                                                   {0, 1, 1, 0},
+                                                   image_size(),
+                                                   conv_params.mip);
+
+                                ImGui::TableSetColumnIndex(2);
+                                auto pref_params = ImGuiWidgets::ImageControls(
+                                    "Prefiltered", static_cast<f32>(shader_constants::kEnvPrefilterMips - 1), 5.0F);
 
                                 editor.image_array(environment.prefiltered.image,
                                                    environment.prefiltered.view,
                                                    VK_IMAGE_LAYOUT_GENERAL,
-                                                   static_cast<f32>(pref_level),
+                                                   pref_params.layer,
                                                    {0, 1, 1, 0},
-                                                   {ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().x},
-                                                   0.0F,
-                                                   pref_mip);
+                                                   image_size(),
+                                                   pref_params.mip);
 
-                                ImGui::Text("BRDF LUT:");
-                                editor.image(environment.brdf_lut.image,
-                                             environment.brdf_lut.view,
-                                             VK_IMAGE_LAYOUT_GENERAL,
-                                             {0, 0, 1, 1},
-                                             {ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().x});
+                                ImGui::EndTable();
                             }
                         }
 
@@ -1333,48 +1357,21 @@ int app::instance::run(const int argc, char* argv[])
                                 });
                         }
 
-                        if (ImGui::CollapsingHeader("Render targets", ImGuiTreeNodeFlags_DefaultOpen))
-                        {
-                            static int img_in_line = 2;
-                            ImGui::SliderInt("Images in line", &img_in_line, 1, 2);
-
-                            const auto size_x = ImGui::GetContentRegionAvail().x / static_cast<f32>(img_in_line);
-                            const auto size_y = (ImGui::GetContentRegionAvail().x / static_cast<f32>(img_in_line))
-                                              / camera_data.aspect_ratio;
-
-                            editor.depth_image(depth_image.image,
-                                               depth_image.view,
-                                               VK_IMAGE_LAYOUT_GENERAL,
-                                               {0, 1, 1, 0},
-                                               {size_x, size_y});
-                            if (img_in_line > 1)
-                            {
-                                ImGui::SameLine();
-                            }
-
-                            editor.image(m_renderer.get_frame_swapchain_image().image,
-                                         m_renderer.get_frame_swapchain_image().image_view,
-                                         VK_IMAGE_LAYOUT_GENERAL,
-                                         {0, 1, 1, 0},
-                                         {size_x, size_y});
-                        }
-
                         if (ImGui::CollapsingHeader("Depth pyramid"))
                         {
-                            static int idx = 0;
-                            idx            = std::min(idx, static_cast<int>(depth_pyramid.pyramid_count) - 1);
-
-                            ImGui::SliderInt("Index", &idx, 0, static_cast<int>(depth_pyramid.pyramid_count) - 1);
+                            auto env_params = ImGuiWidgets::ImageControls(
+                                "Pyramid", static_cast<f32>(depth_pyramid.pyramid_count - 1));
 
                             const auto size_x = ImGui::GetContentRegionAvail().x;
                             const auto size_y = ImGui::GetContentRegionAvail().x / camera_data.aspect_ratio;
 
                             editor.image(depth_pyramid.image.image,
-                                         depth_pyramid.views[idx],
+                                         depth_pyramid.image.view,
                                          VK_IMAGE_LAYOUT_GENERAL,
                                          {0, 1, 1, 0},
                                          {size_x, size_y},
-                                         1.0F);
+                                         env_params.mip,
+                                         camera_data.near_plane);
                         }
                     }
 
@@ -1499,6 +1496,7 @@ int app::instance::run(const int argc, char* argv[])
         render::destroy_buffer_mapped(m_renderer.get_context().allocator, buffer);
     }
 
+    vkDestroySampler(m_renderer.get_context().device, color_sampler, nullptr);
     vkDestroySampler(m_renderer.get_context().device, depth_texture_sampler, nullptr);
     vkDestroySampler(m_renderer.get_context().device, bindless_textures_sampler, nullptr);
     for (auto& texture : textures)

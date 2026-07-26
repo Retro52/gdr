@@ -24,6 +24,7 @@ namespace cpp
     {
     public:
         using char_type = char;
+        constexpr static u64 npos = ~static_cast<u64>(0);
 
     public:
         constexpr stack_string_base() = default;
@@ -94,6 +95,27 @@ namespace cpp
             ret.set_value(m_str + off, count);
 
             return ret;
+        }
+
+        [[nodiscard]] constexpr u64 find_next(const char c, const u64 off = 0) const
+        {
+            const u64 len = length();
+            if (off >= len)
+            {
+                return {};
+            }
+
+            for (u64 i = off; i < off + len; ++i)
+            {
+                if (m_str[i] != c)
+                {
+                    continue;
+                }
+
+                return i;
+            }
+
+            return npos;
         }
 
         template<u64 No, typename... Args>

@@ -164,8 +164,8 @@ bool imgui_layer::allocate_region(u32 w, u32 h, VkOffset2D& out_offset)
     return true;
 }
 
-void imgui_layer::image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size, f32 brightness,
-                        f32 mip)
+void imgui_layer::image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size, f32 mip,
+                        f32 znear)
 {
     image_impl(image,
                view,
@@ -175,11 +175,11 @@ void imgui_layer::image(VkImage image, VkImageView view, VkImageLayout src_layou
                src_layout,
                VK_IMAGE_ASPECT_COLOR_BIT,
                sampler_type::sampler2d,
-               {mip, brightness, 0.0F});
+               {znear, mip, 0.0F});
 }
 
 void imgui_layer::image_array(VkImage image, VkImageView view, VkImageLayout src_layout, f32 layer, vec4 uv,
-                              ImVec2 size, f32 brightness, f32 mip)
+                              ImVec2 size, f32 mip, f32 znear)
 {
     image_impl(image,
                view,
@@ -189,11 +189,11 @@ void imgui_layer::image_array(VkImage image, VkImageView view, VkImageLayout src
                src_layout,
                VK_IMAGE_ASPECT_COLOR_BIT,
                sampler_type::sampler2d_array,
-               {mip, brightness, layer});
+               {znear, mip, layer});
 }
 
-void imgui_layer::depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size,
-                              f32 brightness, f32 mip)
+void imgui_layer::depth_image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv, ImVec2 size, f32 mip,
+                              f32 znear)
 {
     image_impl(image,
                view,
@@ -203,7 +203,7 @@ void imgui_layer::depth_image(VkImage image, VkImageView view, VkImageLayout src
                src_layout,
                VK_IMAGE_ASPECT_DEPTH_BIT,
                sampler_type::sampler2d,
-               {mip, brightness, 0.0F});
+               {znear, mip, 0.0F});
 }
 
 void imgui_layer::image_impl(VkImage image, VkImageView view, ImVec2 size, ImVec2 uv0, ImVec2 uv1,

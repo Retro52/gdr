@@ -129,10 +129,11 @@ namespace shader_types
     struct ResolvePassPushConstants
     {
 #ifdef __cplusplus
-        ResolvePassPushConstants(const glm::mat4& ivp)
-            : vp(ivp)
-            , vp_inverse(glm::inverse(ivp))
+        ResolvePassPushConstants(glm::mat4 view, const glm::mat4& proj)
         {
+            view[3]    = glm::vec4(0.0F, 0.0F, 0.0F, 1.0F);
+            vp         = proj * view;
+            vp_inverse = glm::inverse(vp);
         }
 #endif
         mat4 vp;
@@ -146,6 +147,7 @@ namespace shader_types
         uint debug_mode;
         vec3 sun_direction;
         float camera_exposure;
+        float environment_scale;
     };
 
     struct FrameCullData

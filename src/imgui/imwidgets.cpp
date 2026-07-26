@@ -4,6 +4,8 @@
 #include <reflection/enum.hpp>
 
 #include <glm/gtx/norm.inl>
+#include <string_view>
+#include <unordered_map>
 
 namespace
 {
@@ -286,4 +288,26 @@ bool ImGuiWidgets::GizmoOp(const glm::mat4& view, const glm::mat4& proj, const g
                            ImGuizmo::OPERATION& operation)
 {
     return gizmo_op_impl(view, build_gizmo_proj(proj), source, operation);
+}
+
+ImGuiWidgets::CommonImageControls ImGuiWidgets::ImageControls(const char* id, f32 mips_count, f32 layers_count)
+{
+    static std::unordered_map<std::string_view, CommonImageControls> s_storage;
+    auto& data = s_storage[id];
+
+    if (mips_count > 0.0F)
+    {
+        ImGui::SliderFloat(cpp::stack_string::make_formatted("Mip##%s", id).c_str(), &data.mip, 0.0F, mips_count);
+    }
+    else
+    {
+        ImGui::DragFloat(cpp::stack_string::make_formatted("Mip##%s", id).c_str(), &data.mip, 1.0F);
+    }
+
+    if (layers_count > 0.0F)
+    {
+        ImGui::SliderFloat(cpp::stack_string::make_formatted("Layer##%s", id).c_str(), &data.layer, 0.0F, layers_count);
+    }
+
+    return data;
 }
