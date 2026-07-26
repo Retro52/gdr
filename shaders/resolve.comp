@@ -110,9 +110,11 @@ vec2 to_ndc(vec2 px, vec2 size)
     return ((px + vec2(0.5F)) / size) * 2.0F - 1.0F;
 }
 
-vec3 to_world(vec3 local, uint instance)
+vec3 to_camera(vec3 local, uint instance)
 {
-    return transform_vec3(local, instances[instance].pos_and_scale, instances[instance].rotation_quat);
+    vec4 pos_scale = instances[instance].pos_and_scale;
+    pos_scale.xyz -= world.camera_pos;
+    return transform_vec3(local, pos_scale, instances[instance].rotation_quat);
 }
 
 void weight_normal_tangent(uint i0, uint i1, uint i2, uint instance, vec3 weights, out vec3 normal, out vec4 tangent)
@@ -128,6 +130,23 @@ void weight_normal_tangent(uint i0, uint i1, uint i2, uint instance, vec3 weight
     tangent = vec4(normalize(wsum(tangents[0], tangents[1], tangents[2], weights).xyz), tangents[0].w);
 }
 
+vec3 get_sky_direction(vec2 pixel, ivec2 image_size)
+{
+    vec2 ndc = to_ndc(pixel, image_size);
+    vec4 p = pc.vp_inverse * vec4(ndc, 1.0F, 1.0F);
+    return normalize(p.xyz / p.w);
+}
+
+float get_sun_disc_coverage(vec3 view_dir, vec3 sun_dir, float half_angle, float pixel_angle)
+{
+    float inner = max(half_angle - 0.5F * pixel_angle, 0.0F);
+    float outer = half_angle + 0.5F * pixel_angle;
+
+    float cos_theta = dot(view_dir, sun_dir);
+
+    return smoothstep(cos(outer), cos(inner), cos_theta);
+}
+
 void main()
 {
     vec2 px = vec2(gl_GlobalInvocationID.xy);
@@ -138,13 +157,31 @@ void main()
 
     uint instance_id = data.r;
 
+    const float exposure = 1.0 / (1.2 * exp2(world.camera_exposure));
     if (instance_id == ~0U)
     {
-        vec4 p = pc.vp_inverse * vec4(vtp, 1.0F, 1.0F);
-        vec3 dir = normalize(p.xyz / p.w - world.camera_pos);
-        vec3 sky = textureLod(sky_cubemap_sampler, dir, 0.0F).rgb;
+        const float kSunAngularDiameter = radians(0.5357F);
+        const float kSunHalfAngle = 0.5F * kSunAngularDiameter;
+        const float kProjectedSolidAngle = kPI * sin(kSunHalfAngle) * sin(kSunHalfAngle);
 
-        imageStore(o_color, ivec2(gl_GlobalInvocationID.xy), from_linear(vec4(tonemap(sky), 1.0F)));
+        vec3 dir   = get_sky_direction(px, image_size);
+        vec3 dir_x = get_sky_direction(px + vec2(1.0F, 0.0F), image_size);
+        vec3 dir_y = get_sky_direction(px + vec2(0.0F, 1.0F), image_size);
+
+        float pixel_angle = max(
+            acos(clamp(dot(dir, dir_x), -1.0F, 1.0F)),
+            acos(clamp(dot(dir, dir_y), -1.0F, 1.0F))
+        );
+
+        vec3 sky = textureLod(sky_cubemap_sampler, dir, 0.0F).rgb * world.environment_scale;
+        vec3 sun_tint = world.sun_color.rgb /
+            max(dot(world.sun_color.rgb, vec3(0.2126F, 0.7152F, 0.0722F)), 1e-4F);
+
+        float disc_luminance = world.sun_color.w / kProjectedSolidAngle;
+        float disc_coverage = get_sun_disc_coverage(dir, world.sun_direction, kSunHalfAngle, pixel_angle);
+
+        vec3 color = sky + sun_tint * disc_luminance * disc_coverage;
+        imageStore(o_color, ivec2(gl_GlobalInvocationID.xy), from_linear(vec4(tonemap(color * exposure), 1.0F)));
         return;
     }
 
@@ -167,9 +204,9 @@ void main()
     uint i2 = indices[data.g + 2] + base_vertex;
 #endif
 
-    vec3 v0 = to_world(vec3(vertices[i0].px, vertices[i0].py, vertices[i0].pz), instance_id);
-    vec3 v1 = to_world(vec3(vertices[i1].px, vertices[i1].py, vertices[i1].pz), instance_id);
-    vec3 v2 = to_world(vec3(vertices[i2].px, vertices[i2].py, vertices[i2].pz), instance_id);
+    vec3 v0 = to_camera(vec3(vertices[i0].px, vertices[i0].py, vertices[i0].pz), instance_id);
+    vec3 v1 = to_camera(vec3(vertices[i1].px, vertices[i1].py, vertices[i1].pz), instance_id);
+    vec3 v2 = to_camera(vec3(vertices[i2].px, vertices[i2].py, vertices[i2].pz), instance_id);
 
     vec4 vt0 = pc.vp * vec4(v0, 1.0F);
     vec4 vt1 = pc.vp * vec4(v1, 1.0F);
@@ -209,7 +246,24 @@ void main()
     uint met_roughness_idx = materials[material_id].met_roughness_idx;
 
     vec4 frag_col = albedo_idx > 0 ? TEXTURE2DG(albedo_idx, uv, dfdx, dfdy) * materials[material_id].diffuse_factor : materials[material_id].diffuse_factor;
+
+#if SHADERS_DEBUG
+    vec3 albedo;
+    switch (world.debug_mode)
+    {
+        case draw_debug_lit:
+        case draw_debug_lit_diffuse:
+        case draw_debug_lit_ambient:
+        case draw_debug_lit_specular:
+            albedo = vec3(1.0F);
+            break;
+        default:
+            albedo = frag_col.rgb;
+            break;
+    }
+#else
     vec3 albedo = frag_col.rgb;
+#endif
 
     vec3 tex_normal = vec3(0, 0, 1);
     if (normal_idx > 0)
@@ -237,9 +291,9 @@ void main()
     vec4 met_roughness_factor = met_roughness_idx > 0 ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * materials[material_id].met_roughness_factor : materials[material_id].met_roughness_factor;
 #endif
 
-    vec3 world_pos = wsum(v0, v1, v2, bary_perspective);
+    vec3 view_pos = wsum(v0, v1, v2, bary_perspective);
 
-    vec3 view = normalize(world.camera_pos - world_pos);
+    vec3 view = normalize(-view_pos);
     vec3 halfw = normalize(world.sun_direction + view);
 
     float metallic = met_roughness_factor.b;
@@ -271,32 +325,28 @@ void main()
     vec3 ambient = (vec3(1.0F) - fresnel_a) * (1.0F - metallic);
 
     vec3 irradiance = textureLod(irradiance_map_sampler, nrm, 0.0F).rgb;
-    vec3 ambient_diffuse = irradiance * albedo * ambient;
+    vec3 ambient_diffuse = irradiance * albedo * ambient * world.environment_scale;
 
     vec3 rv = reflect(-view, nrm);
     const float kMaxReflectionSampleLod = float(kEnvPrefilterMips - 1);
     vec3 env_prefiltered_color = textureLod(prefiltered_map_sampler, rv,  roughness * kMaxReflectionSampleLod).rgb;
     vec2 env_brdf  = texture(brdf_lut_sampler, vec2(n_dot_v, roughness)).rg;
 
-    vec3 ambient_specular =  env_prefiltered_color * (fresnel_a * env_brdf.x + env_brdf.y);
+    vec3 ambient_specular =  env_prefiltered_color * (f0 * env_brdf.x + vec3(1.0) * env_brdf.y) * world.environment_scale;
 
-    const float ev100 = 1.0 / (1.2 * exp2(world.camera_exposure));
-    vec3 color = (direct) * ev100 + ambient_diffuse + ambient_specular;
-
+    vec3 color = (direct + ambient_diffuse + ambient_specular) * exposure;
     vec4 result = from_linear(vec4(tonemap(color), 1.0F));
 
 #if SHADERS_DEBUG
     if (world.debug_mode != draw_debug_shaded)
     {
-        vec3 color;
-//        if (world.debug_mode == draw_debug_lit)            { color = tonemap((diffuse / kPI + specular) * sun_color_hdr * n_dot_l + ambient); }
-        if (world.debug_mode == draw_debug_lit_diffuse)    { color = tonemap(direct * ev100); }
-        if (world.debug_mode == draw_debug_lit_ambient)    { color = tonemap(ambient_diffuse); }
-        if (world.debug_mode == draw_debug_lit_specular)   { color = tonemap(ambient_specular); }
+        if (world.debug_mode == draw_debug_lit_diffuse)    { color = tonemap(direct * exposure); }
+        if (world.debug_mode == draw_debug_lit_ambient)    { color = tonemap(ambient_diffuse * exposure); }
+        if (world.debug_mode == draw_debug_lit_specular)   { color = tonemap(ambient_specular * exposure); }
         if (world.debug_mode == draw_debug_uv)             { color = vec3(uv, 0.0F); }
         if (world.debug_mode == draw_debug_normal)         { color = nrm; }
         if (world.debug_mode == draw_debug_tangent)        { color = tangent.xyz; }
-        if (world.debug_mode == draw_debug_world_pos)      { color = normalize(world_pos); }
+        if (world.debug_mode == draw_debug_world_pos)      { color = normalize(view_pos); }
         if (world.debug_mode == draw_debug_color)          { color = materials[material_id].diffuse_factor.rgb; }
         if (world.debug_mode == draw_debug_metallic)       { color = vec3(metallic); }
         if (world.debug_mode == draw_debug_roughness)      { color = vec3(roughness); }

@@ -11,10 +11,16 @@ layout (set = 0, binding = 0) uniform sampler2DArray u_source;
 
 layout (push_constant) uniform PushConstants
 {
+    float znear;
     float mip_level;
-    float brightness;
     float array_layer;
 } pc;
+
+float linearize_depth(float depth)
+{
+    const float kVizFar = 250.0F;
+    return 1.0F - clamp((pc.znear / max(depth, 1e-7F) - pc.znear) / (kVizFar - pc.znear), 0.0F, 1.0F);
+}
 
 void main()
 {
@@ -25,6 +31,5 @@ void main()
     sampled = textureLod(u_source, vec3(in_uv, pc.array_layer), pc.mip_level);
 #endif
 
-    const float kContrast = 250.0F;
-    out_color = sampled * mix(1.0F, kContrast, pc.brightness);
+    out_color = pc.znear > 0.0F ? vec4(vec3(linearize_depth(sampled.r)), 1.0F) : sampled;
 }

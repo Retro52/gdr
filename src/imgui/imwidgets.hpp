@@ -11,6 +11,13 @@
 
 namespace ImGuiWidgets
 {
+    struct CommonImageControls
+    {
+        f32 mip;
+        f32 layer;
+        f32 brightness;
+    };
+
     // Common text styles
     template<typename... Args>
     void TextError(const char* fmt, Args&&... args)
@@ -93,4 +100,6 @@ namespace ImGuiWidgets
 
         return false;
     }
+
+    CommonImageControls ImageControls(const char* id, f32 mips_count = 0.0F, f32 layers_count = 0.0F);
 }

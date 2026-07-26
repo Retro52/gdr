@@ -21,12 +21,12 @@ vec2 approx_brdf(float n_dot_v, float roughness)
     vec3 nv = vec3(0.0, 0.0, 1.0);
     float alpha = roughness * roughness / 2;
 
-    const uint kSampleCount = 1024u;
+    const uint kSampleCount = 1024U;
     for(uint i = 0U; i < kSampleCount; ++i)
     {
         vec2 xi = hammersley(i, kSampleCount);
-        vec3 hv  = importance_sample_ggx(xi, nv, roughness);
-        vec3 lv  = normalize(2.0 * dot(view, hv) * hv - view);
+        vec3 hv = importance_sample_ggx(xi, nv, roughness);
+        vec3 lv = normalize(2.0 * dot(view, hv) * hv - view);
 
         float n_dot_l = max(lv.z, 0.0);
         float n_dot_h = max(hv.z, 0.0);

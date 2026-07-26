@@ -39,7 +39,7 @@ layout (scalar, push_constant) uniform PushConstants
 void main()
 {
     uint instance_id      = draw_mesh_cmds[gl_WorkGroupID.x + pc.offset].instance_id;
-    uint meshlets_in_task = draw_mesh_cmds[gl_WorkGroupID.x + pc.offset].meshlet_count & 0x7Fu;
+    uint meshlets_in_task = draw_mesh_cmds[gl_WorkGroupID.x + pc.offset].meshlet_count & 0x7FFFFFFFu;
     uint meshlet_id       = draw_mesh_cmds[gl_WorkGroupID.x + pc.offset].meshlet_offset + gl_LocalInvocationID.x;
     uint visibility_bit   = draw_mesh_cmds[gl_WorkGroupID.x + pc.offset].visibility_offset + gl_LocalInvocationID.x;
     uint cmd_base_vertex = meshes_data[mesh_instances[instance_id].mesh_data_index].base_vertex;
