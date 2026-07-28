@@ -5,27 +5,28 @@
 #include "utils/math.glsl"
 #include "utils/gather.glsl"
 #include "include/shaders/types.h"
+#include "include/shaders/bindings/fill.h"
 
 layout (local_size_x = kTaskWorkGroups, local_size_y = 1, local_size_z = 1) in;
 
-layout (binding = 0, set = 0) readonly buffer Meshlets        { Meshlet meshlets[]; };
-layout (binding = 1, set = 0) readonly buffer MeshletVertices { uint meshlets_vertices[]; };
-layout (binding = 1, set = 0) readonly buffer MeshletIndices  { uint8_t meshlets_indices[]; };
-layout (binding = 2, set = 0) readonly buffer MeshesData      { MeshData meshes_data[]; };
-layout (binding = 3, scalar)  readonly buffer MeshInstances   { MeshInstance mesh_instances[]; };
+layout (binding = kMeshletBinding,     set = 0) readonly buffer Meshlets        { Meshlet meshlets[]; };
+layout (binding = kMeshletDataBinding, set = 0) readonly buffer MeshletVertices { uint meshlets_vertices[]; };
+layout (binding = kMeshletDataBinding, set = 0) readonly buffer MeshletIndices  { uint8_t meshlets_indices[]; };
+layout (binding = kPrimitiveBinding,   set = 0) readonly buffer MeshesData      { MeshData meshes_data[]; };
+layout (binding = kInstanceBinding,    scalar)  readonly buffer MeshInstances   { MeshInstance mesh_instances[]; };
 
-layout (binding = 4, set = 0) readonly buffer DrawMeshletsIndirects { DrawTaskCommandIndirect draw_mesh_cmds[]; };
-layout (binding = 5, set = 0) readonly buffer FrameCullDataBuffer   { FrameCullData frame_cull; };
+layout (binding = kDrawBinding, set = 0) readonly buffer DrawMeshletsIndirects { DrawTaskCommandIndirect draw_mesh_cmds[]; };
+layout (binding = kCullBinding, set = 0) readonly buffer FrameCullDataBuffer   { FrameCullData frame_cull; };
 
-layout (binding = 6, set = 0) writeonly buffer Indices              { uint indices[]; };
-layout (binding = 7, set = 0) writeonly buffer DrawindexedIndirects { DrawIndexedIndirect draw_indirects[]; };
-layout (binding = 8, set = 0) buffer IndexedDrawCounts              { uint indexed_draw_counts[2]; };
+layout (binding = kOutIndicesBinding,  set = 0) writeonly buffer Indices              { uint indices[]; };
+layout (binding = kOutCommandsBinding, set = 0) writeonly buffer DrawindexedIndirects { DrawIndexedIndirect draw_indirects[]; };
+layout (binding = kOutCountBinding,    set = 0) buffer IndexedDrawCounts              { uint indexed_draw_counts[2]; };
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-layout (binding = 9)  buffer MeshletsVisibilityBuffer { uint meshlets_visibility_buffer[]; };
-layout (binding = 10) uniform sampler2D depth_pyramid;
+layout (binding = kVisibilityBinding)  buffer MeshletsVisibilityBuffer { uint meshlets_visibility_buffer[]; };
+layout (binding = kHiZBinding) uniform sampler2D depth_pyramid;
 #else
-layout (binding = 9) readonly buffer MeshletsVisibilityBuffer { uint meshlets_visibility_buffer[]; };
+layout (binding = kVisibilityBinding) readonly buffer MeshletsVisibilityBuffer { uint meshlets_visibility_buffer[]; };
 #endif
 
 shared uint s_indices_count;
@@ -98,7 +99,7 @@ void main()
     bool emit = visible && gl_LocalInvocationID.x < meshlets_in_task;
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-    bool drawn_in_early = was_visible_last_frame && visible && GET_BIT(draw_mesh_cmds[gl_WorkGroupID.x].meshlet_count, 31) == 1;
+    bool drawn_in_early = was_visible_last_frame && visible && GET_BIT(draw_mesh_cmds[gl_WorkGroupID.x + pc.offset].meshlet_count, 31) == 1;
     if (visible && DBG_GET_BIT1(frame_cull.flags, kMeshletOcclusionCullBit) == 1 && project_sphere(view_center, sphere_radius, frame_cull.frustum[4], frame_cull.p00, frame_cull.p11, p_aabb))
     {
         vec2 pmd_size = vec2(p_aabb.z - p_aabb.x, p_aabb.w - p_aabb.y) * frame_cull.pyramid_size;

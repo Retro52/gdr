@@ -14,7 +14,7 @@ namespace app
 {
     struct pso_data;
 
-    struct environment_config
+    struct envmap_config
     {
         i32 env_resolution;
         i32 brdf_lut_resolution;
@@ -22,7 +22,7 @@ namespace app
         i32 irradiance_resolution;
     };
 
-    struct environment
+    struct envmap
     {
         i32 env_resolution;
         i32 brdf_lut_resolution;
@@ -44,7 +44,7 @@ namespace app
 
         render::vk_image brdf_lut;
 
-        environment(const render::vk_renderer& renderer, VkFormat format, const environment_config& cfg);
+        envmap(const render::vk_renderer& renderer, VkFormat format, const envmap_config& cfg);
 
         void shutdown(const render::vk_renderer& renderer);
 

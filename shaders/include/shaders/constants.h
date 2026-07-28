@@ -17,7 +17,8 @@ namespace shader_constants
     const uint kMeshletOcclusionCullBit = 5;
     const uint kSmallMeshletsCullBit    = 6;
 
-    const uint kMatGlossBit = 0;
+    const uint kMatGlossBit        = 0;
+    const uint kMatTransmitanceBit = 1;
 
     const uint kMatClassOpaque      = 0;
     const uint kMatClassMasked      = 1;
@@ -35,7 +36,6 @@ namespace shader_constants
     const uint kTaskWorkGroups = 64;
     const uint kMeshWorkGroups = 64;
 
-    const uint kEnvironmentMaxMips = 5;
     const uint kInstanceIdMask = ~(1 << 31);
 #ifdef __cplusplus
 }

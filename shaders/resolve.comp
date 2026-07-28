@@ -173,7 +173,7 @@ void main()
             acos(clamp(dot(dir, dir_y), -1.0F, 1.0F))
         );
 
-        vec3 sky = textureLod(sky_cubemap_sampler, dir, 0.0F).rgb * world.environment_scale;
+        vec3 sky = textureLod(sky_cubemap_sampler, dir, 0.0F).rgb * world.envmap_scale;
         vec3 sun_tint = world.sun_color.rgb /
             max(dot(world.sun_color.rgb, vec3(0.2126F, 0.7152F, 0.0722F)), 1e-4F);
 
@@ -327,14 +327,14 @@ void main()
     vec3 ambient = (vec3(1.0F) - fresnel_a) * (1.0F - metallic);
 
     vec3 irradiance = textureLod(irradiance_map_sampler, nrm, 0.0F).rgb;
-    vec3 ambient_diffuse = irradiance * albedo * ambient * world.environment_scale;
+    vec3 ambient_diffuse = irradiance * albedo * ambient * world.envmap_scale;
 
     vec3 rv = reflect(-view, nrm);
     const float kMaxReflectionSampleLod = float(kEnvPrefilterMips - 1);
     vec3 env_prefiltered_color = textureLod(prefiltered_map_sampler, rv,  roughness * kMaxReflectionSampleLod).rgb;
     vec2 env_brdf  = texture(brdf_lut_sampler, vec2(n_dot_v, roughness)).rg;
 
-    vec3 ambient_specular =  env_prefiltered_color * (f0 * env_brdf.x + vec3(1.0) * env_brdf.y) * world.environment_scale;
+    vec3 ambient_specular =  env_prefiltered_color * (f0 * env_brdf.x + vec3(1.0) * env_brdf.y) * world.envmap_scale;
 
     vec3 color = (direct + ambient_diffuse + ambient_specular) * exposure;
     vec4 result = from_linear(vec4(tonemap(color), 1.0F));

@@ -147,7 +147,7 @@ namespace shader_types
         uint debug_mode;
         vec3 sun_direction;
         float camera_exposure;
-        float environment_scale;
+        float envmap_scale;
     };
 
     struct FrameCullData

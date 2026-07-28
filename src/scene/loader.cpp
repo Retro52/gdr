@@ -222,6 +222,12 @@ static loader::material build_material(const cgltf_data* data, const cgltf_mater
         mat.met_roughness_factor = vec4(1.0F, material.pbr_specular_glossiness.glossiness_factor, max_specular, 1.0F);
     }
 
+    if (material.has_transmission)
+    {
+        mat.material_bits |= 1 << shader_constants::kMatTransmitanceBit;
+        mat.diffuse_factor.a = material.transmission.transmission_factor;
+    }
+
     if (material.has_transmission || material.alpha_mode == cgltf_alpha_mode_blend)
     {
         mat.material_class = shader_constants::kMatClassTranslucent;

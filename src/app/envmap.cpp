@@ -1,4 +1,4 @@
-#include <app/environment.hpp>
+#include <app/envmap.hpp>
 #include <app/pso.hpp>
 #include <log.hpp>
 #include <render/platform/vk/vk_barrier.hpp>
@@ -60,7 +60,7 @@ static void make_brdf_lut(VkCommandBuffer cmd, const render::vk_pipeline& pso, c
                               VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 }
 
-app::environment::environment(const render::vk_renderer& renderer, VkFormat format, const environment_config& cfg)
+app::envmap::envmap(const render::vk_renderer& renderer, VkFormat format, const envmap_config& cfg)
     : env_resolution(cfg.env_resolution)
     , brdf_lut_resolution(cfg.brdf_lut_resolution)
     , prefilter_resolution(cfg.prefilter_resolution)
@@ -173,7 +173,7 @@ app::environment::environment(const render::vk_renderer& renderer, VkFormat form
                                            VK_REMAINING_MIP_LEVELS);
 }
 
-void app::environment::shutdown(const render::vk_renderer& renderer)
+void app::envmap::shutdown(const render::vk_renderer& renderer)
 {
     vkDestroySampler(renderer.get_context().device, sampler, nullptr);
     vkDestroySampler(renderer.get_context().device, brdf_sampler, nullptr);
@@ -192,27 +192,27 @@ void app::environment::shutdown(const render::vk_renderer& renderer)
     render::destroy_image(renderer.get_context().device, renderer.get_context().allocator, prefiltered);
 }
 
-render::vk_descriptor_info app::environment::get_lut_descriptor_info() const
+render::vk_descriptor_info app::envmap::get_lut_descriptor_info() const
 {
     return {brdf_sampler, brdf_lut.view, VK_IMAGE_LAYOUT_GENERAL};
 }
 
-render::vk_descriptor_info app::environment::get_cube_descriptor_info() const
+render::vk_descriptor_info app::envmap::get_cube_descriptor_info() const
 {
     return {sampler, cube_view, VK_IMAGE_LAYOUT_GENERAL};
 }
 
-render::vk_descriptor_info app::environment::get_conv_descriptor_info() const
+render::vk_descriptor_info app::envmap::get_conv_descriptor_info() const
 {
     return {sampler, conv_view, VK_IMAGE_LAYOUT_GENERAL};
 }
 
-render::vk_descriptor_info app::environment::get_pref_descriptor_info() const
+render::vk_descriptor_info app::envmap::get_pref_descriptor_info() const
 {
     return {sampler, pref_view, VK_IMAGE_LAYOUT_GENERAL};
 }
 
-void app::environment::init(app::pso_data& pso, render::vk_renderer& renderer)
+void app::envmap::init(app::pso_data& pso, render::vk_renderer& renderer)
 {
     renderer.submit(
         [&](VkCommandBuffer cmd)
@@ -229,8 +229,8 @@ void app::environment::init(app::pso_data& pso, render::vk_renderer& renderer)
         });
 }
 
-void app::environment::load(const fs::path& path, app::pso_data& pso, render::vk_renderer& renderer,
-                            const render::vk_buffer_transfer& transfer)
+void app::envmap::load(const fs::path& path, app::pso_data& pso, render::vk_renderer& renderer,
+                       const render::vk_buffer_transfer& transfer)
 {
     if (auto equirect = loader::load_texture(path, renderer, transfer))
     {
@@ -295,12 +295,12 @@ void app::environment::load(const fs::path& path, app::pso_data& pso, render::vk
 
                     pass.dispatch(cmd, irradiance_resolution, irradiance_resolution, 6);
 
-                    render::cmd_stage_barrier(
-                        cmd,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                    render::cmd_stage_barrier(cmd,
+                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                              VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+                                                  | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                              VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
                 }
 
                 {
@@ -335,12 +335,12 @@ void app::environment::load(const fs::path& path, app::pso_data& pso, render::vk
                                                 / static_cast<f32>(shader_constants::kEnvPrefilterMips - 1)});
 
                         pass.dispatch(cmd, mip_resolution, mip_resolution, 6);
-                        render::cmd_stage_barrier(
-                            cmd,
-                            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                        render::cmd_stage_barrier(cmd,
+                                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+                                                      | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                                  VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
                         mip_resolution >>= 1;
                     }

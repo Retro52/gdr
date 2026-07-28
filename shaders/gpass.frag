@@ -4,6 +4,7 @@
 #extension GL_EXT_nonuniform_qualifier: require
 
 #include "include/shaders/types.h"
+#include "include/shaders/bindings/draw.h"
 
 in VS_IN {
     layout (location = 0) in vec2 uv;
@@ -15,9 +16,9 @@ in VS_IN {
 
 layout (location = 0) out uvec2 o_indices;
 
-layout (binding = 1, set = 0) readonly buffer Materials { MeshMaterial materials[]; };
-layout (binding = 2, set = 0) uniform sampler textures_sampler;
-layout (binding = 6, scalar)  readonly buffer MeshInstances   { MeshInstance mesh_instances[]; };
+layout (binding = kMaterialBinding, set = 0) readonly buffer Materials { MeshMaterial materials[]; };
+layout (binding = kTextureBinding,  set = 0) uniform sampler textures_sampler;
+layout (binding = kInstanceBinding, scalar)  readonly buffer MeshInstances   { MeshInstance mesh_instances[]; };
 
 layout (binding = 0, set = 1) uniform texture2D textures[];
 
