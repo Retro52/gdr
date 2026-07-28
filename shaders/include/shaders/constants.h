@@ -36,6 +36,7 @@ namespace shader_constants
     const uint kMeshWorkGroups = 64;
 
     const uint kEnvironmentMaxMips = 5;
+    const uint kInstanceIdMask = ~(1 << 31);
 #ifdef __cplusplus
 }
 #endif

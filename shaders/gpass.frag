@@ -32,11 +32,15 @@ void main()
 
     if (frag_color.a < 0.5F)
         discard;
+
+    uint instance_id = (uint(!gl_FrontFacing) << 31) | (vs_in.instance_id & kInstanceIdMask);
+#else
+    uint instance_id = vs_in.instance_id & kInstanceIdMask;
 #endif
 
 #ifdef FOR_MESH_PIPELINE
-    o_indices = uvec2(vs_in.instance_id, gl_PrimitiveID);
+    o_indices = uvec2(instance_id, gl_PrimitiveID);
 #else
-    o_indices = uvec2(vs_in.instance_id, vs_in.base_index + 3 * gl_PrimitiveID);
+    o_indices = uvec2(instance_id, vs_in.base_index + 3 * gl_PrimitiveID);
 #endif
 }

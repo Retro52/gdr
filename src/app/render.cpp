@@ -74,8 +74,9 @@ void app::zero_buffer(VkCommandBuffer cmd, const render::vk_buffer& buffer, u64 
                                buffer.buffer,
                                VK_PIPELINE_STAGE_2_CLEAR_BIT,
                                VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
+                                   | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
 }
 
 void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& draw_count_buffer)
@@ -94,7 +95,7 @@ void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& 
                                stage_bits,
                                VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
                                    | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                               VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                               VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
                                VK_ACCESS_2_TRANSFER_WRITE_BIT);
 
     u32 counts[shader_constants::kMatClassCount * 3];
@@ -108,10 +109,11 @@ void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& 
     vkCmdUpdateBuffer(cmd, draw_count_buffer.buffer, 0, sizeof(u32) * COUNT_OF(counts), counts);
     render::cmd_buffer_barrier(cmd,
                                draw_count_buffer.buffer,
-                               VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                               VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
                                VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
+                                   | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
 }
 
 render::vk_image app::create_color_image(const ivec2& size, VkFormat format, VkDevice device, VmaAllocator allocator)

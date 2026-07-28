@@ -104,7 +104,7 @@ void imgui_layer::end_frame(const render::vk_renderer& renderer)
     VkRenderingAttachmentInfo color_attachment_info {
         .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView   = renderer.get_frame_swapchain_image().image_view,
-        .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+        .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
         .loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD,
         .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
         .clearValue  = {
