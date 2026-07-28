@@ -4,10 +4,11 @@
 
 #include "utils/math.glsl"
 #include "include/shaders/types.h"
+#include "include/shaders/bindings/draw.h"
 
-layout (binding = 0, set = 0) readonly buffer Vertices             { Vertex vertices[]; };
-layout (binding = 6, scalar)  readonly buffer MeshInstances        { MeshInstance mesh_instances[]; };
-layout (binding = 7, set = 0) readonly buffer DrawIndexedIndirects { DrawIndexedIndirect draw_cmds[]; };
+layout (binding = kVertexBinding,   set = 0) readonly buffer Vertices             { Vertex vertices[]; };
+layout (binding = kInstanceBinding, scalar)  readonly buffer MeshInstances        { MeshInstance mesh_instances[]; };
+layout (binding = kDrawBinding,     set = 0) readonly buffer DrawIndexedIndirects { DrawIndexedIndirect draw_cmds[]; };
 
 layout (push_constant) uniform constants
 {

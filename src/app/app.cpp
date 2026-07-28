@@ -4,7 +4,7 @@
 
 #include <app/app.hpp>
 #include <app/argv.hpp>
-#include <app/environment.hpp>
+#include <app/envmap.hpp>
 #include <app/gpu_stats.hpp>
 #include <app/pso.hpp>
 #include <app/render.hpp>
@@ -31,6 +31,8 @@
 #include <scene/loader.hpp>
 #include <scene/mesh_load.hpp>
 #include <scene/scene.hpp>
+#include <shaders/bindings/draw.h>
+#include <shaders/bindings/fill.h>
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
 
@@ -312,7 +314,7 @@ int app::instance::run(const int argc, char* argv[])
                                                             m_renderer.get_context().device,
                                                             m_renderer.get_context().allocator);
 
-    app::environment environment {
+    app::envmap envmap {
         m_renderer, VK_FORMAT_R16G16B16A16_SFLOAT, {1024, 512, 128, 32}
     };
 
@@ -436,7 +438,7 @@ int app::instance::run(const int argc, char* argv[])
     app::argv_handler argv_handler(argc, argv);
     const int instance_count = argv_handler.read_numeric("--instances");
     const int first_instance = argv_handler.get_positional_args_start();
-    auto env_map             = argv_handler.read_string<fs::path_string>("--environment");
+    auto env_map             = argv_handler.read_string<fs::path_string>("--envmap");
 
     assert2(instance_count == 0 || first_instance > 0);
 
@@ -620,9 +622,9 @@ int app::instance::run(const int argc, char* argv[])
     u32 draw_materials_mask = 0xFFFF;
     debug_mode draw_debug_mode {debug_mode::shaded};
 
-    f32 camera_exposure             = 10.0F;
-    f32 environment_compensation_ev = 0.0f;
-    f32 environment_intensity       = 1250.0f;
+    f32 camera_exposure        = 10.0F;
+    f32 envmap_compensation_ev = 0.0f;
+    f32 envmap_intensity       = 1250.0f;
 
     bool freeze_cull_data         = false;
     bool enable_vsync             = m_renderer.get_vsync();
@@ -664,21 +666,22 @@ int app::instance::run(const int argc, char* argv[])
 #endif
 
         render::vk_descriptor_bindings bindings;
-        bindings.bind(geometry_pool.meshlets.buffer.buffer)
-            .bind(geometry_pool.meshlets_payload.buffer.buffer)
-            .bind(geometry_pool.primitives.buffer.buffer)
-            .bind(geometry_pool.instances.buffer.buffer)
-            .bind(meshlets_draw_indirect_buffer.buffer)
-            .bind(frame_cull_data_buffers[m_renderer.get_frame_index()].buffer)
-            .bind(indexed_indices_buffer.buffer)
-            .bind(indexed_draw_indirect_buffer.buffer)
-            .bind(indexed_count_buffer.buffer)
-            .bind(meshlets_visibility_buffer.buffer);
+        bindings.bind_at(geometry_pool.meshlets.buffer.buffer, shader_bindings::fill::kMeshletBinding)
+            .bind_at(geometry_pool.meshlets_payload.buffer.buffer, shader_bindings::fill::kMeshletDataBinding)
+            .bind_at(geometry_pool.primitives.buffer.buffer, shader_bindings::fill::kPrimitiveBinding)
+            .bind_at(geometry_pool.instances.buffer.buffer, shader_bindings::fill::kInstanceBinding)
+            .bind_at(meshlets_draw_indirect_buffer.buffer, shader_bindings::fill::kDrawBinding)
+            .bind_at(frame_cull_data_buffers[m_renderer.get_frame_index()].buffer, shader_bindings::fill::kCullBinding)
+            .bind_at(indexed_indices_buffer.buffer, shader_bindings::fill::kOutIndicesBinding)
+            .bind_at(indexed_draw_indirect_buffer.buffer, shader_bindings::fill::kOutCommandsBinding)
+            .bind_at(indexed_count_buffer.buffer, shader_bindings::fill::kOutCountBinding)
+            .bind_at(meshlets_visibility_buffer.buffer, shader_bindings::fill::kVisibilityBinding);
 
         if (enable_occlusion_cull)
         {
-            bindings.bind(
-                render::vk_descriptor_info(depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL));
+            bindings.bind_at(
+                render::vk_descriptor_info(depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL),
+                shader_bindings::fill::kHiZBinding);
         }
 
         pso_id id;
@@ -737,21 +740,25 @@ int app::instance::run(const int argc, char* argv[])
         pipeline_statistics_query.begin(cmd, pipeline_statistics_query_index, 0);
 
         render::vk_descriptor_bindings bindings;
-        bindings.bind(geometry_pool.vertex.buffer.buffer);
-        bindings.bind(geometry_pool.materials.buffer.buffer);
-        bindings.bind(render::vk_descriptor_info(bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED));
-        bindings.bind(geometry_pool.meshlets.buffer.buffer);
-        bindings.bind(geometry_pool.meshlets_payload.buffer.buffer);
-        bindings.bind(geometry_pool.primitives.buffer.buffer);
-        bindings.bind(geometry_pool.instances.buffer.buffer);
+        bindings.bind_at(geometry_pool.vertex.buffer.buffer, shader_bindings::draw::kVertexBinding);
+        bindings.bind_at(geometry_pool.materials.buffer.buffer, shader_bindings::draw::kMaterialBinding);
+        bindings.bind_at(
+            render::vk_descriptor_info(bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED),
+            shader_bindings::draw::kTextureBinding);
+        bindings.bind_at(geometry_pool.meshlets.buffer.buffer, shader_bindings::draw::kMeshletBinding);
+        bindings.bind_at(geometry_pool.meshlets_payload.buffer.buffer, shader_bindings::draw::kMeshletDataBinding);
+        bindings.bind_at(geometry_pool.primitives.buffer.buffer, shader_bindings::draw::kPrimitiveBinding);
+        bindings.bind_at(geometry_pool.instances.buffer.buffer, shader_bindings::draw::kInstanceBinding);
 
         if (enable_meshlets_pipeline)
         {
-            bindings.bind(meshlets_draw_indirect_buffer.buffer);
-            bindings.bind(frame_cull_data_buffers[m_renderer.get_frame_index()].buffer);
-            bindings.bind(meshlets_visibility_buffer.buffer);
-            bindings.bind(
-                render::vk_descriptor_info(depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL));
+            bindings.bind_at(meshlets_draw_indirect_buffer.buffer, shader_bindings::draw::kDrawBinding);
+            bindings.bind_at(frame_cull_data_buffers[m_renderer.get_frame_index()].buffer,
+                             shader_bindings::draw::kCullBinding);
+            bindings.bind_at(meshlets_visibility_buffer.buffer, shader_bindings::draw::kVisibilityBinding);
+            bindings.bind_at(
+                render::vk_descriptor_info(depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL),
+                shader_bindings::draw::kHiZBinding);
 
             pipeline.push_descriptor_set(cmd, bindings.get());
             pipeline.bind_descriptor_set(cmd, bindless_textures_desc_set);
@@ -760,7 +767,7 @@ int app::instance::run(const int argc, char* argv[])
         }
         else
         {
-            bindings.bind(indexed_draw_indirect_buffer.buffer);
+            bindings.bind_at(indexed_draw_indirect_buffer.buffer, shader_bindings::draw::kDrawBinding);
 
             pipeline.push_descriptor_set(cmd, bindings.get());
             pipeline.bind_descriptor_set(cmd, bindless_textures_desc_set);
@@ -806,11 +813,11 @@ int app::instance::run(const int argc, char* argv[])
             vkCmdSetScissor(cmd, 0, 1, &scissor);
             vkCmdSetViewport(cmd, 0, 1, &viewport);
 
-            environment.init(pipelines, m_renderer);
+            envmap.init(pipelines, m_renderer);
             if (!env_map.empty())
             {
-                TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "load environment"));
-                environment.load(env_map, pipelines, m_renderer, geometry_pool.transfer);
+                TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "load envmap"));
+                envmap.load(env_map, pipelines, m_renderer, geometry_pool.transfer);
             }
 
             render::transition_image(cmd,
@@ -904,12 +911,12 @@ int app::instance::run(const int argc, char* argv[])
 
                 auto& world_data_buffer = world_data_buffers[m_renderer.get_frame_index()];
                 (*static_cast<shader_types::FrameWorldData*>(world_data_buffer.mapped)) = shader_types::FrameWorldData {
-                    .sun_color         = {sun_data.rgb_color, sun_data.intensity},
-                    .camera_pos        = camera_transform.position,
-                    .debug_mode        = static_cast<u32>(draw_debug_mode),
-                    .sun_direction     = sun_direction,
-                    .camera_exposure   = camera_exposure,
-                    .environment_scale = environment_intensity * glm::exp2(environment_compensation_ev),
+                    .sun_color       = {sun_data.rgb_color, sun_data.intensity},
+                    .camera_pos      = camera_transform.position,
+                    .debug_mode      = static_cast<u32>(draw_debug_mode),
+                    .sun_direction   = sun_direction,
+                    .camera_exposure = camera_exposure,
+                    .envmap_scale    = envmap_intensity * glm::exp2(envmap_compensation_ev),
                 };
 
                 {
@@ -1082,7 +1089,8 @@ int app::instance::run(const int argc, char* argv[])
                 for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
                 {
                     if (!((draw_materials_mask)
-                    // if (!((draw_materials_mask & ~static_cast<u64>(1 << shader_constants::kMatClassTranslucent))
+                          // if (!((draw_materials_mask & ~static_cast<u64>(1 <<
+                          // shader_constants::kMatClassTranslucent))
                           & (1 << i)))
                     {
                         continue;
@@ -1126,10 +1134,10 @@ int app::instance::run(const int argc, char* argv[])
                         render::vk_descriptor_info(
                             bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED),
                         render::vk_descriptor_info(depth_texture_sampler, depth_image.view, VK_IMAGE_LAYOUT_GENERAL),
-                        environment.get_lut_descriptor_info(),
-                        environment.get_cube_descriptor_info(),
-                        environment.get_conv_descriptor_info(),
-                        environment.get_pref_descriptor_info(),
+                        envmap.get_lut_descriptor_info(),
+                        envmap.get_cube_descriptor_info(),
+                        envmap.get_conv_descriptor_info(),
+                        envmap.get_pref_descriptor_info(),
                     };
 
                     const render::vk_pipeline& resolve_pass =
@@ -1274,14 +1282,14 @@ int app::instance::run(const int argc, char* argv[])
                             ImGui::InputText("Env map", env_map.data(), fs::path_string::capacity());
                             if (ImGui::Button("Load"))
                             {
-                                environment.load(env_map, pipelines, m_renderer, geometry_pool.transfer);
+                                envmap.load(env_map, pipelines, m_renderer, geometry_pool.transfer);
                             }
 
                             constexpr ImGuiTableFlags flags =
                                 ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame;
 
-                            ImGui::DragFloat("Env intensity", &environment_intensity);
-                            ImGui::DragFloat("Env compensation", &environment_compensation_ev);
+                            ImGui::DragFloat("Env intensity", &envmap_intensity);
+                            ImGui::DragFloat("Env compensation", &envmap_compensation_ev);
 
                             if (!env_map.empty() && ImGui::BeginTable("Environment maps", 3, flags))
                             {
@@ -1301,8 +1309,8 @@ int app::instance::run(const int argc, char* argv[])
                                 ImGui::TableSetColumnIndex(0);
                                 auto env_params = ImGuiWidgets::ImageControls("Environment", 12.0F, 5.0F);
 
-                                editor.image_array(environment.cubemap.image,
-                                                   environment.cubemap.view,
+                                editor.image_array(envmap.cubemap.image,
+                                                   envmap.cubemap.view,
                                                    VK_IMAGE_LAYOUT_GENERAL,
                                                    env_params.layer,
                                                    {0, 1, 1, 0},
@@ -1312,8 +1320,8 @@ int app::instance::run(const int argc, char* argv[])
                                 ImGui::TableSetColumnIndex(1);
                                 auto conv_params = ImGuiWidgets::ImageControls("Convolution", 1.0F, 5.0F);
 
-                                editor.image_array(environment.convolution.image,
-                                                   environment.convolution.view,
+                                editor.image_array(envmap.convolution.image,
+                                                   envmap.convolution.view,
                                                    VK_IMAGE_LAYOUT_GENERAL,
                                                    conv_params.layer,
                                                    {0, 1, 1, 0},
@@ -1324,8 +1332,8 @@ int app::instance::run(const int argc, char* argv[])
                                 auto pref_params = ImGuiWidgets::ImageControls(
                                     "Prefiltered", static_cast<f32>(shader_constants::kEnvPrefilterMips - 1), 5.0F);
 
-                                editor.image_array(environment.prefiltered.image,
-                                                   environment.prefiltered.view,
+                                editor.image_array(envmap.prefiltered.image,
+                                                   envmap.prefiltered.view,
                                                    VK_IMAGE_LAYOUT_GENERAL,
                                                    pref_params.layer,
                                                    {0, 1, 1, 0},
@@ -1483,8 +1491,8 @@ int app::instance::run(const int argc, char* argv[])
 
     vkDeviceWaitIdle(m_renderer.get_context().device);
 
+    envmap.shutdown(m_renderer);
     pipelines.shutdown(m_renderer);
-    environment.shutdown(m_renderer);
 
     render::destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, depth_image);
     render::destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, render_target);

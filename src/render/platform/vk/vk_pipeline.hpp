@@ -44,16 +44,14 @@ namespace render
     struct vk_descriptor_bindings
     {
         constexpr static u32 kMaxSetZeroBindings = 32;
-
-        u32 curr_bind = 0;
         render::vk_descriptor_info render_bindings[kMaxSetZeroBindings] {};
 
         render::vk_descriptor_info* get() { return render_bindings; }
 
-        auto& bind(const render::vk_descriptor_info& next)
+        auto& bind_at(const render::vk_descriptor_info& next, u32 index)
         {
-            assert2(curr_bind < kMaxSetZeroBindings);
-            render_bindings[curr_bind++] = next;
+            assert2(index < kMaxSetZeroBindings);
+            render_bindings[index] = next;
             return *this;
         }
     };
