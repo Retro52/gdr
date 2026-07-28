@@ -57,6 +57,7 @@ const uint draw_debug_normal_texture   = 13;
 const uint draw_debug_omr_texture      = 14;
 const uint draw_debug_triangle_id      = 15;
 const uint draw_debug_instance_id      = 16;
+const uint draw_debug_triangle_face    = 17;
 
 #define TEXTURE2DG(id, uv, dfdx, dfdy) textureGrad(sampler2D(textures[nonuniformEXT(id)], textures_sampler), uv, dfdx, dfdy)
 #define DTEXTURE2D(id, uv, dfdx, dfdy) (id > 0 ? textureGrad(sampler2D(textures[nonuniformEXT(id)], textures_sampler), uv, dfdx, dfdy) : vec4(1.0F, 0.25F, 0.95F, 1.0F))
@@ -155,10 +156,9 @@ void main()
 
     uvec2 data = imageLoad(i_visbuf, ivec2(gl_GlobalInvocationID.xy)).xy;
 
-    uint instance_id = data.r;
-
+    uint instance_id = data.r & kInstanceIdMask;
     const float exposure = 1.0 / (1.2 * exp2(world.camera_exposure));
-    if (instance_id == ~0U)
+    if (instance_id == kInstanceIdMask)
     {
         const float kSunAngularDiameter = radians(0.5357F);
         const float kSunHalfAngle = 0.5F * kSunAngularDiameter;
@@ -270,7 +270,9 @@ void main()
         tex_normal = TEXTURE2DG(normal_idx, uv, dfdx, dfdy).rgb * 2 - 1;
 
     vec3 bitangent = cross(normal, tangent.xyz) * tangent.w;
-    vec3 nrm = normal_idx > 0 ? normalize(tex_normal.r * tangent.xyz + tex_normal.g * bitangent + tex_normal.b * normal) : normal;
+
+    bool is_front_face = GET_BIT(data.r, 31) == 0;
+    vec3 nrm = (normal_idx > 0 ? normalize(tex_normal.r * tangent.xyz + tex_normal.g * bitangent + tex_normal.b * normal) : normal) * mix(-1, 1, int(is_front_face));
 
 #if 1
     vec4 met_roughness_factor = vec4(1.0F);
@@ -355,6 +357,7 @@ void main()
         if (world.debug_mode == draw_debug_omr_texture)    { color = DTEXTURE2D(met_roughness_idx, uv, dfdx, dfdy).rgb; }
         if (world.debug_mode == draw_debug_triangle_id)    { color = hash_color(i0); }
         if (world.debug_mode == draw_debug_instance_id)    { color = hash_color(instance_id); }
+        if (world.debug_mode == draw_debug_triangle_face)   { color = hash_color(uint(is_front_face)); }
         result = from_linear(vec4(color, 1.0F));
     }
 #endif

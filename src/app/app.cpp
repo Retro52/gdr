@@ -40,7 +40,8 @@
 namespace
 {
     REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_ambient, lit_specular, uv, normal, tangent, world_pos,
-                  color, metallic, roughness, albedo_texture, normal_texture, omr_texture, triangle_id, instance_id);
+                  color, metallic, roughness, albedo_texture, normal_texture, omr_texture, triangle_id, instance_id,
+                  triangle_face);
 
     REGISTER_ENUM(cubemap_face, XP, XN, YP, YN, ZP, ZN);
 
@@ -704,17 +705,28 @@ int app::instance::run(const int argc, char* argv[])
         render::cmd_stage_barrier(cmd,
                                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
-                                  VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
+                                      | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                                  VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+                                      | VK_ACCESS_2_INDEX_READ_BIT);
     };
 
     auto draw_scene = [&](VkCommandBuffer cmd,
                           const render::vk_pipeline& pipeline,
-                          u32 material_class,
-                          VkAttachmentLoadOp load_op = VK_ATTACHMENT_LOAD_OP_LOAD)
+                          const u32 material_class,
+                          const VkAttachmentLoadOp load_op = VK_ATTACHMENT_LOAD_OP_LOAD)
     {
         ZoneScopedN("app.instance.run.draw_scene");
         TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "draw scene"));
+
+        constexpr VkPipelineStageFlags2 kAttachmentStages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
+                                                          | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT
+                                                          | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        constexpr VkAccessFlags2 kAttachmentAccess =
+            VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
+            | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+        render::cmd_stage_barrier(cmd, kAttachmentStages, kAttachmentAccess, kAttachmentStages, kAttachmentAccess);
 
         begin_rendering(cmd,
                         vis_buffer.vis_buffer_img.view,
@@ -976,6 +988,13 @@ int app::instance::run(const int argc, char* argv[])
                 {
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "depth reduce"));
 
+                    render::cmd_stage_barrier(buffer,
+                                              VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT
+                                                  | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+                                              VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                              VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+
                     render::transition_image(
                         buffer, depth_pyramid.image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
@@ -1002,7 +1021,8 @@ int app::instance::run(const int argc, char* argv[])
                                                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                                                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                                  VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                                                  VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
+                                                      | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
                     }
                 }
 
@@ -1054,13 +1074,15 @@ int app::instance::run(const int argc, char* argv[])
                         buffer,
                         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                        VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
+                            | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
                         VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
                 }
 
                 for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
                 {
-                    if (!((draw_materials_mask & ~static_cast<u64>(1 << shader_constants::kMatClassTranslucent))
+                    if (!((draw_materials_mask)
+                    // if (!((draw_materials_mask & ~static_cast<u64>(1 << shader_constants::kMatClassTranslucent))
                           & (1 << i)))
                     {
                         continue;
@@ -1081,6 +1103,13 @@ int app::instance::run(const int argc, char* argv[])
                 {
                     ZoneScopedN("Resolve pass");
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "vb resolve"));
+
+                    render::cmd_stage_barrier(
+                        buffer,
+                        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+                        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
                     const render::vk_descriptor_info resolve_pass_bindings[] = {
                         render::vk_descriptor_info(VK_NULL_HANDLE, render_target.view, VK_IMAGE_LAYOUT_GENERAL),
@@ -1119,8 +1148,8 @@ int app::instance::run(const int argc, char* argv[])
                     render::cmd_stage_barrier(buffer,
                                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                               VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                                              VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                              VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                              VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
                 }
 
                 {
@@ -1147,7 +1176,8 @@ int app::instance::run(const int argc, char* argv[])
                                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                               VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                                               VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                              VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+                                              VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT
+                                                  | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
                 }
 
                 if (freeze_cull_data)

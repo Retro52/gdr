@@ -32,10 +32,10 @@ static void generate_mips(VkCommandBuffer cmd, render::vk_image& cube, i32 resol
                                  cube.image,
                                  VK_IMAGE_LAYOUT_GENERAL,
                                  VK_IMAGE_LAYOUT_GENERAL,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 VK_ACCESS_TRANSFER_WRITE_BIT,
-                                 VK_ACCESS_TRANSFER_READ_BIT);
+                                 VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+                                 VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                 VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
 
         resolution = mip_resolution;
     }
@@ -56,9 +56,8 @@ static void make_brdf_lut(VkCommandBuffer cmd, const render::vk_pipeline& pso, c
     render::cmd_stage_barrier(cmd,
                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                               VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
-                                  | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
-                              VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                              VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 }
 
 app::environment::environment(const render::vk_renderer& renderer, VkFormat format, const environment_config& cfg)
@@ -263,13 +262,19 @@ void app::environment::load(const fs::path& path, app::pso_data& pso, render::vk
                     render::cmd_stage_barrier(cmd,
                                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                               VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                                              VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                                              VK_ACCESS_2_TRANSFER_READ_BIT);
+                                              VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+                                              VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
                 }
 
                 {
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), cmd, "cubemap mips generation"));
                     generate_mips(cmd, cubemap, env_resolution);
+
+                    render::cmd_stage_barrier(cmd,
+                                              VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+                                              VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                              VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
                 }
 
                 {
@@ -294,9 +299,8 @@ void app::environment::load(const fs::path& path, app::pso_data& pso, render::vk
                         cmd,
                         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
-                            | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
-                        VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
                 }
 
                 {
@@ -335,9 +339,8 @@ void app::environment::load(const fs::path& path, app::pso_data& pso, render::vk
                             cmd,
                             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
-                                | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
-                            VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
                         mip_resolution >>= 1;
                     }
