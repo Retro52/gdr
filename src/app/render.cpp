@@ -47,6 +47,16 @@ void app::begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView de
     }
 
     vkCmdBeginRendering(cmd, &rendering_info);
+
+    const VkViewport viewport {static_cast<f32>(vp.offset.x),
+                               static_cast<f32>(vp.offset.y),
+                               static_cast<f32>(vp.extent.width),
+                               static_cast<f32>(vp.extent.height),
+                               0.0F,
+                               1.0F};
+
+    vkCmdSetScissor(cmd, 0, 1, &vp);
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
 }
 
 void app::zero_buffer(VkCommandBuffer cmd, const render::vk_buffer& buffer, u64 offset, u64 size)

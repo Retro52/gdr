@@ -4,6 +4,7 @@
 
 #include <app/app.hpp>
 #include <app/argv.hpp>
+#include <app/csm.hpp>
 #include <app/envmap.hpp>
 #include <app/gpu_stats.hpp>
 #include <app/pso.hpp>
@@ -13,6 +14,9 @@
 #include <editor/hierarchy.hpp>
 #include <editor/info.hpp>
 #include <events.hpp>
+#include <glm/common.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <imgui/gpu_profile_data.hpp>
@@ -33,8 +37,11 @@
 #include <scene/scene.hpp>
 #include <shaders/bindings/draw.h>
 #include <shaders/bindings/fill.h>
+#include <shaders/bindings/shadow_cull.h>
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
+
+#include "shaders/bindings/shadow_draw.h"
 
 #define NO_EDITOR     0
 #define NO_PERF_QUERY 0
@@ -43,7 +50,7 @@ namespace
 {
     REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_ambient, lit_specular, uv, normal, tangent, world_pos,
                   color, metallic, roughness, albedo_texture, normal_texture, omr_texture, triangle_id, instance_id,
-                  triangle_face);
+                  triangle_face, shadow, shadow_cascades);
 
     REGISTER_ENUM(cubemap_face, XP, XN, YP, YN, ZP, ZN);
 
@@ -221,6 +228,30 @@ static std::array<u32, shader_constants::kMatClassCount> make_offset_table(
     return result;
 }
 
+static const render::vk_pipeline& get_shadow_pipeline(app::pso_data& pipelines, u32 material_class,
+                                                      bool enable_meshlets)
+{
+    app::pso_id id {};
+    switch (material_class)
+    {
+    case shader_constants::kMatClassMasked :
+    case shader_constants::kMatClassTranslucent :
+
+    {
+        id = enable_meshlets ? app::pso_id::shadow_draw_task_ds : app::pso_id::shadow_draw_indexed_ds;
+        break;
+    }
+    default :
+    case shader_constants::kMatClassOpaque :
+    {
+        id = enable_meshlets ? app::pso_id::shadow_draw_task_ss : app::pso_id::shadow_draw_indexed_ss;
+        break;
+    }
+    }
+
+    return pipelines[id];
+}
+
 static const render::vk_pipeline& get_render_pipeline(app::pso_data& pipelines, u32 material_class, bool occlusion_cull,
                                                       bool enable_meshlets)
 {
@@ -247,6 +278,45 @@ static const render::vk_pipeline& get_render_pipeline(app::pso_data& pipelines, 
     }
 
     return pipelines[id];
+}
+
+static std::array<glm::mat4, shader_constants::kMaxShadowCascades> update_csm_buffers(
+    const app::csm& csm, const render::vk_mapped_buffer& csm_buffer, const vec3& light_dir,
+    const camera_component& camera, const glm::mat4& camera_view, const vec3& camera_pos,
+    const render_settings& settings)
+{
+    const auto light_view      = csm.get_light_view_matrix(light_dir);
+    const auto camera_relative = glm::translate(glm::mat4(1.0F), camera_pos);
+
+    shader_types::ShadowCascadesData& shadow_data = *static_cast<shader_types::ShadowCascadesData*>(csm_buffer.mapped);
+    shadow_data.depth_bias                        = settings.shadow_shader_bias;
+    shadow_data.normal_offset                     = settings.shadow_normal_offset;
+    shadow_data.blend_ratio                       = glm::clamp(settings.shadow_cascade_blend, 0.0F, 1.0F);
+    shadow_data.max_range                         = csm.max_range;
+    shadow_data.view                              = light_view;
+    shadow_data.sm_resolution                     = static_cast<f32>(csm.resolution);
+
+    std::array<glm::mat4, shader_constants::kMaxShadowCascades> result {};
+
+    for (u32 i = 0; i < shader_constants::kMaxShadowCascades; ++i)
+    {
+        const auto cascade_ivp =
+            csm.get_cascade_inv_vp(camera.near_plane, camera.aspect_ratio, camera.horizontal_fov, camera_view, i);
+        const auto sphere = csm.get_cascade_sphere(cascade_ivp);
+        const auto bounds = csm.get_cascade_bounds(sphere, light_view);
+
+        result[i] =
+            glm::orthoRH_ZO(bounds.min.x, bounds.max.x, bounds.max.y, bounds.min.y, -bounds.min.z, -bounds.max.z);
+        result[i] *= light_view;
+
+        shader_types::CascadeData& data = shadow_data.cascades[i];
+        data.bounds                     = bounds;
+        data.vp                         = result[i] * camera_relative;
+        data.split                      = csm.get_cascade_range(camera.near_plane, i);
+        data.texel_world_size           = 2.0F * sphere.w / static_cast<f32>(csm.resolution);
+    }
+
+    return result;
 }
 
 render::vk_renderer create_vk_renderer(window& app_window)
@@ -316,6 +386,10 @@ int app::instance::run(const int argc, char* argv[])
 
     app::envmap envmap {
         m_renderer, VK_FORMAT_R16G16B16A16_SFLOAT, {1024, 512, 128, 32}
+    };
+
+    app::csm csm {
+        m_renderer, VK_FORMAT_D32_SFLOAT, {4096, 250.0F, 0.65F}
     };
 
     bool exit = false;
@@ -595,6 +669,7 @@ int app::instance::run(const int argc, char* argv[])
 
     cpp::heap_array<render::vk_mapped_buffer> world_data_buffers(m_renderer.get_frames_in_flight());
     cpp::heap_array<render::vk_mapped_buffer> frame_cull_data_buffers(m_renderer.get_frames_in_flight());
+    cpp::heap_array<render::vk_mapped_buffer> shadow_cascades_data_buffers(m_renderer.get_frames_in_flight());
 
     for (u32 i = 0; i < m_renderer.get_frames_in_flight(); i++)
     {
@@ -602,6 +677,12 @@ int app::instance::run(const int argc, char* argv[])
                                                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                                               m_renderer.get_context().allocator,
                                                               VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+
+        shadow_cascades_data_buffers[i] =
+            *render::create_buffer_mapped(sizeof(shader_types::ShadowCascadesData),
+                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                          m_renderer.get_context().allocator,
+                                          VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
         frame_cull_data_buffers[i] =
             *render::create_buffer_mapped(sizeof(shader_types::FrameCullData),
@@ -651,7 +732,11 @@ int app::instance::run(const int argc, char* argv[])
 #endif
 
     const auto offset_table = make_offset_table(scene_info.mat_offset_table);
-    auto fill_indexed       = [&](VkCommandBuffer cmd, const u32 material_class, const bool enable_occlusion_cull)
+    auto fill_indexed       = [&](VkCommandBuffer cmd,
+                            const u32 material_class,
+                            const bool enable_occlusion_cull,
+                            const bool for_shadow_pass     = false,
+                            const u32 shadow_cascade_index = 0)
     {
         if (enable_meshlets_pipeline)
         {
@@ -671,17 +756,22 @@ int app::instance::run(const int argc, char* argv[])
             .bind_at(geometry_pool.primitives.buffer.buffer, shader_bindings::fill::kPrimitiveBinding)
             .bind_at(geometry_pool.instances.buffer.buffer, shader_bindings::fill::kInstanceBinding)
             .bind_at(meshlets_draw_indirect_buffer.buffer, shader_bindings::fill::kDrawBinding)
-            .bind_at(frame_cull_data_buffers[m_renderer.get_frame_index()].buffer, shader_bindings::fill::kCullBinding)
+            .bind_at(for_shadow_pass ? shadow_cascades_data_buffers[m_renderer.get_frame_index()].buffer
+                                     : frame_cull_data_buffers[m_renderer.get_frame_index()].buffer,
+                     shader_bindings::fill::kCullBinding)
             .bind_at(indexed_indices_buffer.buffer, shader_bindings::fill::kOutIndicesBinding)
             .bind_at(indexed_draw_indirect_buffer.buffer, shader_bindings::fill::kOutCommandsBinding)
-            .bind_at(indexed_count_buffer.buffer, shader_bindings::fill::kOutCountBinding)
-            .bind_at(meshlets_visibility_buffer.buffer, shader_bindings::fill::kVisibilityBinding);
+            .bind_at(indexed_count_buffer.buffer, shader_bindings::fill::kOutCountBinding);
 
-        if (enable_occlusion_cull)
+        if (!for_shadow_pass)
         {
-            bindings.bind_at(
-                render::vk_descriptor_info(depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL),
-                shader_bindings::fill::kHiZBinding);
+            bindings.bind_at(meshlets_visibility_buffer.buffer, shader_bindings::fill::kVisibilityBinding);
+            if (enable_occlusion_cull)
+            {
+                bindings.bind_at(render::vk_descriptor_info(
+                                     depth_pyramid.sampler, depth_pyramid.image.view, VK_IMAGE_LAYOUT_GENERAL),
+                                 shader_bindings::fill::kHiZBinding);
+            }
         }
 
         pso_id id;
@@ -689,11 +779,15 @@ int app::instance::run(const int argc, char* argv[])
         {
         case shader_constants::kMatClassMasked :
         case shader_constants::kMatClassTranslucent :
-            id = enable_occlusion_cull ? pso_id::indexed_fill_ds_late_pipeline : pso_id::indexed_fill_ds_pipeline;
+            id = for_shadow_pass
+                   ? pso_id::shadow_fill_ds
+                   : (enable_occlusion_cull ? pso_id::indexed_fill_ds_late_pipeline : pso_id::indexed_fill_ds_pipeline);
             break;
         default :
         case shader_constants::kMatClassOpaque :
-            id = enable_occlusion_cull ? pso_id::indexed_fill_late_pipeline : pso_id::indexed_fill_pipeline;
+            id = for_shadow_pass
+                   ? pso_id::shadow_fill_ss
+                   : (enable_occlusion_cull ? pso_id::indexed_fill_late_pipeline : pso_id::indexed_fill_pipeline);
             break;
         }
 
@@ -701,6 +795,9 @@ int app::instance::run(const int argc, char* argv[])
 
         fill_pass.bind(cmd);
         fill_pass.push_constant(cmd, offset_table[material_class]);
+        if (for_shadow_pass)
+            fill_pass.push_constant(cmd, sizeof(offset_table[material_class]), shadow_cascade_index);
+
         fill_pass.push_descriptor_set(cmd, bindings.get());
 
         vkCmdDispatchIndirect(cmd, draw_count_buffer.buffer, material_class * 3 * sizeof(u32));
@@ -795,6 +892,82 @@ int app::instance::run(const int argc, char* argv[])
         vkCmdEndRendering(cmd);
     };
 
+    auto draw_shadow = [&](VkCommandBuffer cmd,
+                           const render::vk_pipeline& pipeline,
+                           const u32 material_class,
+                           const u32 cascade_index,
+                           const VkAttachmentLoadOp load_op)
+    {
+        ZoneScopedN("app.instance.run.draw_shadow");
+        TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "draw shadow"));
+
+        constexpr VkPipelineStageFlags2 kAttachmentStages =
+            VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        constexpr VkAccessFlags2 kAttachmentAccess =
+            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+        render::cmd_stage_barrier(cmd, kAttachmentStages, kAttachmentAccess, kAttachmentStages, kAttachmentAccess);
+
+        begin_rendering(cmd,
+                        VK_NULL_HANDLE,
+                        csm.cascade_views[cascade_index],
+                        load_op,
+                        VK_ATTACHMENT_STORE_OP_STORE,
+                        {0, 0, csm.resolution, csm.resolution});
+
+        render::vk_descriptor_bindings bindings;
+        bindings.bind_at(geometry_pool.vertex.buffer.buffer, shader_bindings::shadow_draw::kVertexBinding);
+        bindings.bind_at(geometry_pool.materials.buffer.buffer, shader_bindings::shadow_draw::kMaterialBinding);
+        bindings.bind_at(
+            render::vk_descriptor_info(bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED),
+            shader_bindings::shadow_draw::kTextureBinding);
+        bindings.bind_at(geometry_pool.meshlets.buffer.buffer, shader_bindings::shadow_draw::kMeshletBinding);
+        bindings.bind_at(geometry_pool.meshlets_payload.buffer.buffer,
+                         shader_bindings::shadow_draw::kMeshletDataBinding);
+        bindings.bind_at(geometry_pool.primitives.buffer.buffer, shader_bindings::shadow_draw::kPrimitiveBinding);
+        bindings.bind_at(geometry_pool.instances.buffer.buffer, shader_bindings::shadow_draw::kInstanceBinding);
+
+        if (material_class != shader_constants::kMatClassOpaque)
+        {
+            pipeline.bind_descriptor_set(cmd, bindless_textures_desc_set);
+        }
+
+        if (enable_meshlets_pipeline)
+        {
+            bindings.bind_at(meshlets_draw_indirect_buffer.buffer, shader_bindings::shadow_draw::kDrawBinding);
+            bindings.bind_at(shadow_cascades_data_buffers[m_renderer.get_frame_index()].buffer,
+                             shader_bindings::shadow_draw::kCullBinding);
+
+            pipeline.push_descriptor_set(cmd, bindings.get());
+            vkCmdDrawMeshTasksIndirectEXT(cmd, draw_count_buffer.buffer, material_class * 3 * sizeof(u32), 1, 0);
+        }
+        else
+        {
+            bindings.bind_at(indexed_draw_indirect_buffer.buffer, shader_bindings::shadow_draw::kDrawBinding);
+
+            pipeline.push_descriptor_set(cmd, bindings.get());
+            vkCmdBindIndexBuffer(cmd, indexed_indices_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+#if defined(__APPLE__)
+            vkCmdDrawIndexedIndirect(cmd,
+                                     indexed_draw_indirect_buffer.buffer,
+                                     0,
+                                     scene_info.mat_offset_table[material_class],
+                                     sizeof(shader_types::DrawIndexedIndirect));
+#else
+            vkCmdDrawIndexedIndirectCount(cmd,
+                                          indexed_draw_indirect_buffer.buffer,
+                                          0,
+                                          indexed_count_buffer.buffer,
+                                          sizeof(u32),
+                                          scene_info.mat_offset_table[material_class],
+                                          sizeof(shader_types::DrawIndexedIndirect));
+#endif
+        }
+
+        vkCmdEndRendering(cmd);
+    };
+
     m_renderer.submit(
         [&](VkCommandBuffer cmd)
         {
@@ -813,6 +986,7 @@ int app::instance::run(const int argc, char* argv[])
             vkCmdSetScissor(cmd, 0, 1, &scissor);
             vkCmdSetViewport(cmd, 0, 1, &viewport);
 
+            csm.init(m_renderer);
             envmap.init(pipelines, m_renderer);
             if (!env_map.empty())
             {
@@ -911,13 +1085,92 @@ int app::instance::run(const int argc, char* argv[])
 
                 auto& world_data_buffer = world_data_buffers[m_renderer.get_frame_index()];
                 (*static_cast<shader_types::FrameWorldData*>(world_data_buffer.mapped)) = shader_types::FrameWorldData {
-                    .sun_color       = {sun_data.rgb_color, sun_data.intensity},
-                    .camera_pos      = camera_transform.position,
-                    .debug_mode      = static_cast<u32>(draw_debug_mode),
-                    .sun_direction   = sun_direction,
-                    .camera_exposure = camera_exposure,
-                    .envmap_scale    = envmap_intensity * glm::exp2(envmap_compensation_ev),
+                    .sun_color         = {sun_data.rgb_color, sun_data.intensity},
+                    .camera_pos        = camera_transform.position,
+                    .debug_mode        = static_cast<u32>(draw_debug_mode),
+                    .sun_direction     = sun_direction,
+                    .camera_exposure   = camera_exposure,
+                    .envmap_scale      = envmap_intensity * glm::exp2(envmap_compensation_ev),
+                    .render_resolution = m_window.get_size_in_px(),
                 };
+
+                auto& shadow_cascades_data_buffer = shadow_cascades_data_buffers[m_renderer.get_frame_index()];
+                const auto light_cascades_vps     = update_csm_buffers(csm,
+                                                                   shadow_cascades_data_buffer,
+                                                                   sun_direction,
+                                                                   camera_data,
+                                                                   freeze_cull_data ? debug_camera_view : camera_view,
+                                                                   camera_transform.position,
+                                                                   client_render_settings);
+
+                app::zero_buffer(buffer, indexed_count_buffer, 0);
+                app::zero_buffer(buffer, meshlets_draw_indirect_buffer, 0);
+
+                for (u32 c = 0; c < shader_constants::kMaxShadowCascades; ++c)
+                {
+                    TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "cull cascade meshes"));
+                    reset_draw_count_buffer(buffer, draw_count_buffer);
+
+                    render::vk_descriptor_bindings cull_pass_bindings;
+                    cull_pass_bindings
+                        .bind_at(geometry_pool.primitives.buffer.buffer,
+                                 shader_bindings::shadow_cull::kPrimitiveBinding)
+                        .bind_at(geometry_pool.instances.buffer.buffer, shader_bindings::shadow_cull::kInstanceBinding)
+                        .bind_at(geometry_pool.materials.buffer.buffer, shader_bindings::shadow_cull::kMaterialBinding)
+                        .bind_at(draw_count_buffer.buffer, shader_bindings::shadow_cull::kDrawCountBinding)
+                        .bind_at(frame_cull_data_buffer.buffer, shader_bindings::shadow_cull::kFrameCullBinding)
+                        .bind_at(shadow_cascades_data_buffer.buffer, shader_bindings::shadow_cull::kCascadeCullBinding)
+                        .bind_at(meshlets_draw_indirect_buffer.buffer, shader_bindings::shadow_cull::kOutDrawBinding);
+
+                    const render::vk_pipeline& cull_pass = pipelines[pso_id::shadow_cull];
+
+                    struct pc_data
+                    {
+                        u32 cascade;
+                        std::array<u32, shader_constants::kMatClassCount> offset_table;
+                    };
+
+                    cull_pass.bind(buffer);
+                    cull_pass.push_constant(buffer, pc_data {c, offset_table});
+                    cull_pass.push_descriptor_set(buffer, cull_pass_bindings.get());
+
+                    cull_pass.dispatch(buffer, static_cast<u32>(scene_info.primitives), 1, 1);
+
+                    render::cmd_stage_barrier(
+                        buffer,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
+                            | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                        VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+                    for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
+                    {
+                        if (!(draw_materials_mask & (1 << i)))
+                        {
+                            continue;
+                        }
+
+                        fill_indexed(buffer, i, false, true, c);
+                        const auto& render_pipeline = get_shadow_pipeline(pipelines, i, enable_meshlets_pipeline);
+
+                        render_pipeline.bind(buffer);
+                        render_pipeline.push_constant(
+                            buffer, shader_types::ShadowDrawPushConstants(light_cascades_vps[c], offset_table[i], c));
+
+                        vkCmdSetCullMode(
+                            buffer, i == shader_constants::kMatClassOpaque ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE);
+                        vkCmdSetDepthBias(buffer,
+                                          client_render_settings.shadow_depth_bias_constant,
+                                          0.0F,
+                                          client_render_settings.shadow_depth_bias_slope);
+                        draw_shadow(buffer,
+                                    render_pipeline,
+                                    i,
+                                    c,
+                                    i == 0 ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD);
+                    }
+                }
 
                 {
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "cull last frame occluders"));
@@ -1131,6 +1384,7 @@ int app::instance::run(const int argc, char* argv[])
                         geometry_pool.instances.buffer.buffer,
                         geometry_pool.materials.buffer.buffer,
                         world_data_buffer.buffer,
+                        shadow_cascades_data_buffer.buffer,
                         render::vk_descriptor_info(
                             bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED),
                         render::vk_descriptor_info(depth_texture_sampler, depth_image.view, VK_IMAGE_LAYOUT_GENERAL),
@@ -1138,6 +1392,7 @@ int app::instance::run(const int argc, char* argv[])
                         envmap.get_cube_descriptor_info(),
                         envmap.get_conv_descriptor_info(),
                         envmap.get_pref_descriptor_info(),
+                        csm.get_descriptor_info(),
                     };
 
                     const render::vk_pipeline& resolve_pass =
@@ -1347,8 +1602,8 @@ int app::instance::run(const int argc, char* argv[])
                         if (ImGui::CollapsingHeader("Directional light controls", ImGuiTreeNodeFlags_DefaultOpen))
                         {
                             glm::vec3 euler = glm::degrees(glm::eulerAngles(sun_transform.rotation));
-                            ImGui::DragFloat3("Direction", glm::value_ptr(euler));
-                            sun_transform.rotation = glm::quat(glm::radians(euler));
+                            if (ImGui::DragFloat3("Direction", glm::value_ptr(euler)))
+                                sun_transform.rotation = glm::quat(glm::radians(euler));
 
                             ImGui::DragFloat("Intensity (lm/m^2)", &sun_data.intensity);
                             ImGui::DragFloat("Camera exposure", &camera_exposure);
@@ -1410,6 +1665,26 @@ int app::instance::run(const int argc, char* argv[])
                                          {size_x, size_y},
                                          env_params.mip,
                                          camera_data.near_plane);
+                        }
+
+                        if (ImGui::CollapsingHeader("Shadow map"))
+                        {
+                            ImGui::SliderFloat("Lambda", &csm.split_lambda, 0.0F, 1.0F);
+                            ImGui::DragFloat("Max distance", &csm.max_range);
+
+                            auto env_params = ImGuiWidgets::ImageControls(
+                                "Shadow map", 1.0F, static_cast<f32>(shader_constants::kMaxShadowCascades - 1));
+
+                            const auto size_x = ImGui::GetContentRegionAvail().x;
+                            const auto size_y = ImGui::GetContentRegionAvail().x / camera_data.aspect_ratio;
+
+                            editor.depth_image(csm.shadow_map.image,
+                                               csm.cascade_views[static_cast<i32>(env_params.layer)],
+                                               VK_IMAGE_LAYOUT_GENERAL,
+                                               {0, 1, 1, 0},
+                                               {size_x, size_y},
+                                               env_params.mip,
+                                               camera_data.near_plane);
                         }
                     }
 
@@ -1530,6 +1805,10 @@ int app::instance::run(const int argc, char* argv[])
         render::destroy_buffer_mapped(m_renderer.get_context().allocator, buffer);
     }
     for (auto& buffer : world_data_buffers)
+    {
+        render::destroy_buffer_mapped(m_renderer.get_context().allocator, buffer);
+    }
+    for (auto& buffer : shadow_cascades_data_buffers)
     {
         render::destroy_buffer_mapped(m_renderer.get_context().allocator, buffer);
     }

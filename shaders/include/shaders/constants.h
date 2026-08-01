@@ -27,6 +27,7 @@ namespace shader_constants
 
     const uint kEnvPrefilterMips = 5;
 
+    const uint kMaxShadowCascades      = 4;
     const uint kMaxVerticesPerMeshlet  = 64;
     const uint kMaxTrianglesPerMeshlet = 94;
     const uint kMaxIndicesPerMeshlet   = kMaxTrianglesPerMeshlet * 3;

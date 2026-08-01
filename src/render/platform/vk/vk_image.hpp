@@ -17,6 +17,9 @@ namespace render
 
     VkImageSubresourceRange image_subresource_range(VkImageAspectFlags aspect_flag, u32 mip_level, u32 levels_count);
 
+    VkImageSubresourceRange image_subresource_range(VkImageAspectFlags aspect_flag, u32 mip_level, u32 levels_count,
+                                                    u32 array_layer, u32 layer_count);
+
     void transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout, VkImageLayout new_layout);
 
     void transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout, VkImageLayout new_layout,
@@ -35,12 +38,17 @@ namespace render
     result<VkImageView> create_image_view(VkDevice device, VkImage image, VkFormat format,
                                           VkImageAspectFlags aspect_flags);
 
+    result<VkImageView> create_image_array_view(VkDevice device, VkImage image, VkImageViewType type, VkFormat format,
+                                                VkImageAspectFlags aspect_flags, u32 array_layer, u32 layer_count);
+
     result<VkImageView> create_image_view(VkDevice device, VkImage image, VkImageViewType type, VkFormat format,
                                           VkImageAspectFlags aspect_flags, u32 mip_level, u32 levels_count);
 
     result<VkSampler> create_sampler(VkDevice device, VkFilter filter, VkSamplerMipmapMode mipmap_mode,
                                      VkSamplerAddressMode sampler_address_mode,
                                      VkSamplerReductionMode reduction_mode = VK_SAMPLER_REDUCTION_MODE_MAX_ENUM,
-                                     f32 anisotropic_filtering_factor      = 0.0F);
+                                     f32 anisotropic_filtering_factor      = 0.0F,
+                                     VkCompareOp compare_op                = VK_COMPARE_OP_MAX_ENUM,
+                                     VkBorderColor border_color            = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK);
 
 }

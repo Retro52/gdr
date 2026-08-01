@@ -105,7 +105,7 @@ namespace render
 
         void bind(VkCommandBuffer command_buffer) const;
 
-        void push_constant(VkCommandBuffer command_buffer, u32 size, const void* data) const;
+        void push_constant(VkCommandBuffer command_buffer, u32 offset, u32 size, const void* data) const;
 
         void bind_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_set& set) const;
 
@@ -116,7 +116,13 @@ namespace render
         template<typename T>
         void push_constant(VkCommandBuffer command_buffer, T&& data) const
         {
-            push_constant(command_buffer, sizeof(T), &data);
+            push_constant(command_buffer, 0, sizeof(T), &data);
+        }
+
+        template<typename T>
+        void push_constant(VkCommandBuffer command_buffer, u32 offset, T&& data) const
+        {
+            push_constant(command_buffer, offset, sizeof(T), &data);
         }
     };
 

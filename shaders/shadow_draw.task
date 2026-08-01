@@ -1,0 +1,82 @@
+#version 460
+
+#extension GL_EXT_mesh_shader: require
+#extension GL_GOOGLE_include_directive: require
+
+#include "utils/math.glsl"
+#include "include/shaders/types.h"
+#include "include/shaders/bindings/shadow_draw.h"
+
+layout (local_size_x = kTaskWorkGroups, local_size_y = 1, local_size_z = 1) in;
+
+layout (binding = kMeshletBinding,   set = 0) readonly buffer Meshlets      { Meshlet meshlets[]; };
+layout (binding = kPrimitiveBinding, set = 0) readonly buffer MeshesData    { MeshData meshes_data[]; };
+layout (binding = kInstanceBinding,  scalar)  readonly buffer MeshInstances { MeshInstance mesh_instances[]; };
+
+layout (binding = kDrawBinding, set = 0) readonly buffer DrawMeshletsIndirects    { DrawTaskCommandIndirect draw_mesh_cmds[]; };
+layout (binding = kCullBinding, scalar)  readonly buffer ShadowCascadesDataBuffer { ShadowCascadesData shadow_cascades; };
+
+layout (push_constant) uniform constants
+{
+    ShadowDrawPushConstants pc;
+};
+
+shared uint meshlets_count;
+taskPayloadSharedEXT DrawMeshletsTask meshlet_task;
+
+void main()
+{
+    uint instance_id       = draw_mesh_cmds[gl_WorkGroupID.x + pc.cmd_offset].instance_id;
+    uint meshlets_in_task  = draw_mesh_cmds[gl_WorkGroupID.x + pc.cmd_offset].meshlet_count & 0x7FFFFFFFu;
+    uint meshlet_id        = draw_mesh_cmds[gl_WorkGroupID.x + pc.cmd_offset].meshlet_offset + gl_LocalInvocationID.x;
+
+    meshlet_task.instance_id = instance_id;
+    meshlet_task.base_vertex = meshes_data[mesh_instances[instance_id].mesh_data_index].base_vertex;
+
+    meshlets_count = 0;
+    barrier();
+
+    vec3 sphere_center = vec3(
+        meshlets[meshlet_id].sphere_center[0],
+        meshlets[meshlet_id].sphere_center[1],
+        meshlets[meshlet_id].sphere_center[2]
+    );
+    float sphere_radius = float(meshlets[meshlet_id].sphere_radius) * mesh_instances[instance_id].pos_and_scale.w;
+    vec3 view_center = (shadow_cascades.view * vec4(transform_vec3(sphere_center, mesh_instances[instance_id].pos_and_scale, mesh_instances[instance_id].rotation_quat), 1.0F)).xyz;
+
+    bool visible = true;
+
+#ifdef ENABLE_CONE_CULL
+    vec3 cull_cone_axis = vec3(
+        meshlets[meshlet_id].cone_axis[0],
+        meshlets[meshlet_id].cone_axis[1],
+        meshlets[meshlet_id].cone_axis[2]
+    );
+
+    vec3 view_axis = (shadow_cascades.view * vec4(quat_rotate_vec3(cull_cone_axis, mesh_instances[instance_id].rotation_quat), 0.0F)).xyz;
+    visible = -view_axis.z < float(meshlets[meshlet_id].cone_cutoff);
+#endif
+
+    Bounds3D bounds = shadow_cascades.cascades[pc.cascade].bounds;
+    visible = visible &&
+        view_center.x + sphere_radius >= bounds.min.x &&
+        view_center.x - sphere_radius <= bounds.max.x &&
+        view_center.y + sphere_radius >= bounds.min.y &&
+        view_center.y - sphere_radius <= bounds.max.y &&
+        view_center.z + sphere_radius >= bounds.min.z;
+
+    if (visible)
+    {
+        float extent = bounds.max.x - bounds.min.x;
+        visible = 2.0F * sphere_radius / extent * shadow_cascades.sm_resolution > 1.0F;
+    }
+
+    if (visible && gl_LocalInvocationID.x < meshlets_in_task)
+    {
+        uint idx = atomicAdd(meshlets_count, 1);
+        meshlet_task.meshlet_ids[idx] = meshlet_id;
+    }
+
+    barrier();
+    EmitMeshTasksEXT(meshlets_count, 1, 1);
+}

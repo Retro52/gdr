@@ -1,0 +1,124 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive: require
+
+#include "utils/math.glsl"
+#include "utils/gather.glsl"
+#include "include/shaders/types.h"
+#include "include/shaders/bindings/fill.h"
+
+layout (local_size_x = kTaskWorkGroups, local_size_y = 1, local_size_z = 1) in;
+
+layout (binding = kMeshletBinding,     set = 0) readonly buffer Meshlets        { Meshlet meshlets[]; };
+layout (binding = kMeshletDataBinding, set = 0) readonly buffer MeshletVertices { uint meshlets_vertices[]; };
+layout (binding = kMeshletDataBinding, set = 0) readonly buffer MeshletIndices  { uint8_t meshlets_indices[]; };
+layout (binding = kPrimitiveBinding,   set = 0) readonly buffer MeshesData      { MeshData meshes_data[]; };
+layout (binding = kInstanceBinding,    scalar)  readonly buffer MeshInstances   { MeshInstance mesh_instances[]; };
+
+layout (binding = kDrawBinding, set = 0) readonly buffer DrawMeshletsIndirects    { DrawTaskCommandIndirect draw_mesh_cmds[]; };
+layout (binding = kCullBinding, scalar)  readonly buffer ShadowCascadesDataBuffer { ShadowCascadesData shadow_cascades; };
+
+layout (binding = kOutIndicesBinding,  set = 0) writeonly buffer Indices              { uint indices[]; };
+layout (binding = kOutCommandsBinding, set = 0) writeonly buffer DrawindexedIndirects { DrawIndexedIndirect draw_indirects[]; };
+layout (binding = kOutCountBinding,    set = 0) buffer IndexedDrawCounts              { uint indexed_draw_counts[2]; };
+
+shared uint s_indices_count;
+shared uint s_indices_offset_global;
+
+layout (scalar, push_constant) uniform PushConstants
+{
+    uint offset;
+    uint cascade;
+} pc;
+
+void main()
+{
+    uint instance_id      = draw_mesh_cmds[gl_WorkGroupID.x + pc.offset].instance_id;
+    uint meshlets_in_task = draw_mesh_cmds[gl_WorkGroupID.x + pc.offset].meshlet_count & 0x7FFFFFFFu;
+    uint meshlet_id       = draw_mesh_cmds[gl_WorkGroupID.x + pc.offset].meshlet_offset + gl_LocalInvocationID.x;
+    uint cmd_base_vertex  = meshes_data[mesh_instances[instance_id].mesh_data_index].base_vertex;
+
+    if (gl_LocalInvocationID.x == 0)
+    {
+        s_indices_count = 0;
+        s_indices_offset_global = 0;
+    }
+    barrier();
+
+    vec3 sphere_center = vec3(
+        meshlets[meshlet_id].sphere_center[0],
+        meshlets[meshlet_id].sphere_center[1],
+        meshlets[meshlet_id].sphere_center[2]
+    );
+
+    float sphere_radius = float(meshlets[meshlet_id].sphere_radius) * mesh_instances[instance_id].pos_and_scale.w;
+    vec3 view_center = (shadow_cascades.view * vec4(transform_vec3(sphere_center, mesh_instances[instance_id].pos_and_scale, mesh_instances[instance_id].rotation_quat), 1.0F)).xyz;
+
+    bool visible = true;
+
+#ifdef ENABLE_CONE_CULL
+    vec3 cull_cone_axis = vec3(
+        meshlets[meshlet_id].cone_axis[0],
+        meshlets[meshlet_id].cone_axis[1],
+        meshlets[meshlet_id].cone_axis[2]
+    );
+
+    vec3 view_axis = (shadow_cascades.view * vec4(quat_rotate_vec3(cull_cone_axis, mesh_instances[instance_id].rotation_quat), 0.0F)).xyz;
+    visible = -view_axis.z < float(meshlets[meshlet_id].cone_cutoff);
+#endif
+
+    Bounds3D bounds = shadow_cascades.cascades[pc.cascade].bounds;
+    visible = visible &&
+        view_center.x + sphere_radius >= bounds.min.x &&
+        view_center.x - sphere_radius <= bounds.max.x &&
+        view_center.y + sphere_radius >= bounds.min.y &&
+        view_center.y - sphere_radius <= bounds.max.y &&
+        view_center.z + sphere_radius >= bounds.min.z;
+
+    if (visible)
+    {
+        float extent = bounds.max.x - bounds.min.x;
+        visible = 2.0F * sphere_radius / extent * shadow_cascades.sm_resolution > 1.0F;
+    }
+
+    bool emit = visible && gl_LocalInvocationID.x < meshlets_in_task;
+    uint indices_offset_local = emit ? atomicAdd(s_indices_count, uint(meshlets[meshlet_id].triangles_count) * 3) : 0;
+
+    barrier();
+    if (gl_LocalInvocationID.x == 0)
+    {
+        s_indices_offset_global = atomicAdd(indexed_draw_counts[0], s_indices_count);
+        uint dci = atomicAdd(indexed_draw_counts[1], 1);
+
+#ifndef PLATFORM_MVK
+        draw_indirects[dci].first_instance = 0;
+#else
+        draw_indirects[dci].first_instance = dci;
+#endif
+        draw_indirects[dci].instance_count = 1;
+        draw_indirects[dci].instance_id = instance_id;
+        draw_indirects[dci].vertex_offset = int(cmd_base_vertex);
+
+        draw_indirects[dci].index_count = s_indices_count;
+        draw_indirects[dci].first_index = s_indices_offset_global;
+    }
+
+    barrier();
+    if (emit)
+    {
+        indices_offset_local += s_indices_offset_global;
+
+        const uint base_vertex = meshlets[meshlet_id].data_offset / 4;
+        const uint base_index  = meshlets[meshlet_id].data_offset + uint(meshlets[meshlet_id].vertices_count) * 4;
+
+        for (uint i = 0; i < int(meshlets[meshlet_id].triangles_count); ++i)
+        {
+            const uint store_base = indices_offset_local + i * 3;
+            const uint iid = base_index + i * 3;
+
+            indices[store_base + 0] = meshlets_vertices[base_vertex + uint(meshlets_indices[iid + 0])];
+            indices[store_base + 1] = meshlets_vertices[base_vertex + uint(meshlets_indices[iid + 1])];
+            indices[store_base + 2] = meshlets_vertices[base_vertex + uint(meshlets_indices[iid + 2])];
+        }
+    }
+}
