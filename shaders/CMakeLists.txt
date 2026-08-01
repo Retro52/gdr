@@ -44,17 +44,17 @@ function(parse_shader_config SHADER_CONFIG)
 
     string(REGEX MATCH "-o +([^ ]+)" _MATCH "${SHADER_CONFIG}")
     set(SHADER_BIN_LOCAL "${CMAKE_MATCH_1}")
-    if(NOT SHADER_BIN_LOCAL)
+    if (NOT SHADER_BIN_LOCAL)
         set(SHADER_BIN_LOCAL "${SHADER_LOCAL}.spv")
-    endif()
+    endif ()
 
     string(REGEX MATCH "-d +([^-|^\n]+)" _MATCH "${SHADER_CONFIG}")
-    if(CMAKE_MATCH_1)
+    if (CMAKE_MATCH_1)
         string(STRIP "${CMAKE_MATCH_1}" CMAKE_MATCH_1)
         string(REPLACE " " ";-D" SHADER_DEF_LOCAL "-D${CMAKE_MATCH_1}")
-    endif()
+    endif ()
 
-    set(SHADER     ${SHADER_LOCAL}     PARENT_SCOPE)
+    set(SHADER ${SHADER_LOCAL} PARENT_SCOPE)
     set(SHADER_BIN ${SHADER_BIN_LOCAL} PARENT_SCOPE)
     set(SHADER_DEF ${SHADER_DEF_LOCAL} PARENT_SCOPE)
 endfunction()
@@ -68,6 +68,12 @@ string(REPLACE "\n" ";" SHADERS_CONFIG "${SHADERS_CONFIG}")
 
 set(SHADERS_BIN_FOLDER "${PROJECT_SOURCE_DIR}/bin")
 set(SHADERS_BIN_FOLDER "${SHADERS_BIN_FOLDER}" PARENT_SCOPE)
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(SHADER_OPT_FLAGS -g)
+else ()
+    set(SHADER_OPT_FLAGS -Os)
+endif ()
 
 foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
     if (NOT SHADER_CONFIG)
@@ -87,7 +93,7 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
     add_custom_command(
             OUTPUT "${SHADER_BIN_OUTPUT}"
             COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
-            COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER_INPUT_PATH}" -o "${SHADER_BIN_OUTPUT}" --target-env vulkan1.3 --target-env spirv1.5 -g ${SHADER_DEF}
+            COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER_INPUT_PATH}" -o "${SHADER_BIN_OUTPUT}" --target-env vulkan1.3 --target-env spirv1.5 ${SHADER_OPT_FLAGS} ${SHADER_DEF}
             DEPENDS ${SHADER_DEPENDENCIES}
             COMMENT "Compiling shader '${SHADER}' to '${SHADER_BIN_OUTPUT}'"
     )

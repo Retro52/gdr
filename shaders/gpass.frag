@@ -20,7 +20,9 @@ layout (binding = kMaterialBinding, set = 0) readonly buffer Materials { MeshMat
 layout (binding = kTextureBinding,  set = 0) uniform sampler textures_sampler;
 layout (binding = kInstanceBinding, scalar)  readonly buffer MeshInstances   { MeshInstance mesh_instances[]; };
 
+#ifdef ENABLE_ALPHA_TESTING
 layout (binding = 0, set = 1) uniform texture2D textures[];
+#endif
 
 #define TEXTURE2D(id, uv) texture(sampler2D(textures[nonuniformEXT(id)], textures_sampler), uv)
 
