@@ -1,0 +1,84 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive: require
+
+#include "utils/math.glsl"
+#include "utils/gather.glsl"
+#include "include/shaders/types.h"
+#include "include/shaders/bindings/shadow_cull.h"
+
+layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+layout (binding = kPrimitiveBinding, set = 0) readonly buffer MeshesData     { MeshData meshes_data[]; };
+layout (binding = kInstanceBinding,  scalar)  readonly buffer MeshInstances  { MeshInstance mesh_instances[]; };
+layout (binding = kMaterialBinding,  set = 0) readonly buffer MeshMaterials  { MeshMaterial mesh_materials[]; };
+layout (binding = kDrawCountBinding, set = 0) buffer MeshesDrawCommandsCount { uint draw_commands_count[kMatClassCount * 3]; };
+
+layout (binding = kFrameCullBinding,   set = 0) readonly  buffer FrameCullDataBuffer      { FrameCullData frame_cull; };
+layout (binding = kCascadeCullBinding, scalar)  readonly  buffer ShadowCascadesDataBuffer { ShadowCascadesData shadow_cascades; };
+layout (binding = kOutDrawBinding,     set = 0) writeonly buffer DrawMeshletsIndirects    { DrawTaskCommandIndirect draw_indirect_cmds[]; };
+
+layout (scalar, push_constant) uniform PushConstants
+{
+    uint cascade;
+    uint offset_table[kMatClassCount];
+} pc;
+
+void main()
+{
+    uint mi = gl_WorkGroupID.x;
+    uint ti = gl_LocalInvocationID.x;
+
+    uint idx = mi * gl_WorkGroupSize.x + ti;
+
+    if (idx >= frame_cull.draw_count)
+    {
+        return;
+    }
+
+    uint mesh_idx = mesh_instances[idx].mesh_data_index;
+    vec3 world_center = transform_vec3(vec3(meshes_data[mesh_idx].center[0], meshes_data[mesh_idx].center[1], meshes_data[mesh_idx].center[2]), mesh_instances[idx].pos_and_scale, mesh_instances[idx].rotation_quat);
+
+    vec3 center = vec3(shadow_cascades.view * vec4(world_center, 1.0F));
+    vec3 camera_center = vec3(frame_cull.view * vec4(world_center, 1.0F));
+
+    float scale = mesh_instances[idx].pos_and_scale.w;
+    float radius = meshes_data[mesh_idx].radius * scale;
+
+    Bounds3D bounds = shadow_cascades.cascades[pc.cascade].bounds;
+    bool visible = center.x + radius >= bounds.min.x &&
+        center.x - radius <= bounds.max.x &&
+        center.y + radius >= bounds.min.y &&
+        center.y - radius <= bounds.max.y &&
+        center.z + radius >= bounds.min.z;
+
+    if (visible)
+    {
+        uint lod_base = 0;
+        float dist = max(length(camera_center) - radius, 0);
+
+        for (uint i = 1; i < meshes_data[mesh_idx].lod_count; ++i)
+        {
+            if ((meshes_data[mesh_idx].lod_array[i].error * scale / dist) <= frame_cull.lod_threshold)
+                lod_base = i;
+            else
+                break;
+        }
+
+        lod_base = DBG_GET_BIT1(frame_cull.flags, kLodFlagBit) == 0 ? 0 : lod_base;
+        MeshLod selected_lod = meshes_data[mesh_idx].lod_array[lod_base];
+
+        uint task_count = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
+        uint material_class = uint(mesh_materials[mesh_instances[idx].material_index].material_class);
+        uint dci = atomicAdd(draw_commands_count[material_class * 3], task_count) + pc.offset_table[material_class];
+        for (uint i = task_count; i > 0; i--)
+        {
+            uint dcii = dci + task_count - i;
+            uint offset = kTaskWorkGroups * (task_count - i);
+            draw_indirect_cmds[dcii].instance_id = idx;
+            draw_indirect_cmds[dcii].meshlet_offset = selected_lod.base_meshlet + offset;
+            draw_indirect_cmds[dcii].visibility_offset = mesh_instances[idx].visibility_offset + offset;
+            draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups);
+        }
+    }
+}

@@ -159,5 +159,74 @@
     "shaders": [
       "make_brdf_lookup.comp.spv"
     ]
+  },
+  "shadow_draw_task_ss": {
+    "shaders": [
+      "shadow_draw_ss.task.spv",
+      "shadow_draw.mesh.spv"
+    ],
+    "options": {
+      "depth_bias": 1,
+      "depth_clamp": 1,
+      "depth_format": 126,
+      "color_attachments": 0
+    },
+    "capabilities": [
+      "mesh_ext"
+    ]
+  },
+  "shadow_draw_task_ds": {
+    "shaders": [
+      "shadow_draw_ds.task.spv",
+      "shadow_draw.mesh.spv",
+      "shadow_draw.frag.spv"
+    ],
+    "options": {
+      "depth_bias": 1,
+      "depth_clamp": 1,
+      "depth_format": 126,
+      "color_attachments": 0
+    },
+    "capabilities": [
+      "mesh_ext"
+    ]
+  },
+  "shadow_draw_indexed_ss": {
+    "shaders": [
+      "shadow_draw.vert.spv"
+    ],
+    "options": {
+      "depth_bias": 1,
+      "depth_clamp": 1,
+      "depth_format": 126,
+      "color_attachments": 0
+    }
+  },
+  "shadow_draw_indexed_ds": {
+    "shaders": [
+      "shadow_draw.vert.spv",
+      "shadow_draw.frag.spv"
+    ],
+    "options": {
+      "depth_bias": 1,
+      "depth_clamp": 1,
+      "depth_format": 126,
+      "color_attachments": 0
+    }
+  },
+  "shadow_fill_ss": {
+    "shaders": [
+      "shadow_fill_ss.comp.spv"
+    ]
+  },
+  "shadow_fill_ds": {
+    "shaders": [
+      "shadow_fill_ds.comp.spv"
+    ]
+  },
+  "shadow_cull": {
+    "shaders": [
+      "shadow_cull.comp.spv"
+    ]
   }
 }

@@ -87,7 +87,7 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
     add_custom_command(
             OUTPUT "${SHADER_BIN_OUTPUT}"
             COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
-            COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER_INPUT_PATH}" -o "${SHADER_BIN_OUTPUT}" --target-env vulkan1.3 --target-env spirv1.5 ${SHADER_DEF}
+            COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER_INPUT_PATH}" -o "${SHADER_BIN_OUTPUT}" --target-env vulkan1.3 --target-env spirv1.5 -g ${SHADER_DEF}
             DEPENDS ${SHADER_DEPENDENCIES}
             COMMENT "Compiling shader '${SHADER}' to '${SHADER_BIN_OUTPUT}'"
     )

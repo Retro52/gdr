@@ -687,6 +687,7 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
                      .geometryShader = VK_TRUE,
 #endif
                      .multiDrawIndirect                    = rendering_features.wanted(render::feature_flag::eDrawIndirect),
+                     .depthClamp                           = VK_TRUE,
                      .samplerAnisotropy                    = VK_TRUE,
                      .pipelineStatisticsQuery              = rendering_features.wanted(render::feature_flag::ePipelineStats),
                      .shaderStorageImageWriteWithoutFormat = VK_TRUE,

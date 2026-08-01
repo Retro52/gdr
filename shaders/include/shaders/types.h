@@ -7,6 +7,8 @@
 #include <glm/mat4x4.hpp>
 #include <pod_types.hpp>
 #include <shaders/constants.h>
+
+#include <limits>
 #else
 #extension GL_EXT_shader_8bit_storage : require
 #extension GL_EXT_shader_16bit_storage : require
@@ -19,13 +21,16 @@ namespace shader_types
 {
     using glm::mat4;
     using glm::vec2;
+    using glm::vec3;
 
     using uint8_t   = u8;
     using float16_t = cpp::f16;
     using uint      = unsigned int;
 
     using shader_constants::kLODCount;
+    using shader_constants::kMatClassCount;
     using shader_constants::kMaxVerticesPerMeshlet;
+    using shader_constants::kMaxShadowCascades;
 
 #define QUAT glm::quat
 #else
@@ -49,6 +54,20 @@ namespace shader_types
         float16_t sphere_radius;
         uint8_t vertices_count;
         uint8_t triangles_count;
+    };
+
+    struct Bounds3D
+    {
+#ifdef __cplusplus
+        Bounds3D()
+            : min {std::numeric_limits<f32>::max()}
+            , max {std::numeric_limits<f32>::lowest()}
+        {
+        }
+#endif
+
+        vec3 min;
+        vec3 max;
     };
 
     struct DrawMeshletsTask
@@ -116,6 +135,8 @@ namespace shader_types
     struct DrawPushConstants
     {
 #ifdef __cplusplus
+        DrawPushConstants() = default;
+
         DrawPushConstants(const glm::mat4& ivp, const uint ico)
             : vp(ivp)
             , cmd_offset(ico)
@@ -123,6 +144,23 @@ namespace shader_types
         }
 #endif
         mat4 vp;
+        uint cmd_offset;
+    };
+
+    struct ShadowDrawPushConstants
+    {
+#ifdef __cplusplus
+        ShadowDrawPushConstants() = default;
+
+        ShadowDrawPushConstants(const glm::mat4& ivp, const uint ico, const uint ic)
+            : vp(ivp)
+            , cascade(ic)
+            , cmd_offset(ico)
+        {
+        }
+#endif
+        mat4 vp;
+        uint cascade;
         uint cmd_offset;
     };
 
@@ -148,6 +186,7 @@ namespace shader_types
         vec3 sun_direction;
         float camera_exposure;
         float envmap_scale;
+        ivec2 render_resolution;
     };
 
     struct FrameCullData
@@ -163,6 +202,26 @@ namespace shader_types
         uint flags;
     };
 
+    struct CascadeData
+    {
+        mat4 vp;
+        Bounds3D bounds;
+
+        float split;
+        float texel_world_size;
+    };
+
+    struct ShadowCascadesData
+    {
+        mat4 view;
+        CascadeData cascades[kMaxShadowCascades];
+
+        float max_range;
+        float depth_bias;
+        float blend_ratio;
+        float normal_offset;
+        float sm_resolution;
+    };
 #ifdef __cplusplus
 }
 #endif

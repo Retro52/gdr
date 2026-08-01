@@ -13,12 +13,19 @@ VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspec
 VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspect_flag, u32 mip_level, u32 levels_count)
 {
     ZoneScoped;
+    return render::image_subresource_range(aspect_flag, mip_level, levels_count, 0, VK_REMAINING_ARRAY_LAYERS);
+}
+
+VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspect_flag, u32 mip_level, u32 levels_count,
+                                                        u32 array_layer, u32 layer_count)
+{
+    ZoneScoped;
     return VkImageSubresourceRange {
         .aspectMask     = aspect_flag,
         .baseMipLevel   = mip_level,
         .levelCount     = levels_count,
-        .baseArrayLayer = 0,
-        .layerCount     = VK_REMAINING_ARRAY_LAYERS,
+        .baseArrayLayer = array_layer,
+        .layerCount     = layer_count,
     };
 }
 
@@ -112,6 +119,26 @@ result<VkImageView> render::create_image_view(VkDevice device, VkImage image, Vk
         device, image, VK_IMAGE_VIEW_TYPE_2D, format, aspect_flags, 0, VK_REMAINING_MIP_LEVELS);
 }
 
+result<VkImageView> render::create_image_array_view(VkDevice device, VkImage image, VkImageViewType type,
+                                                    VkFormat format, VkImageAspectFlags aspect_flags, u32 array_layer,
+                                                    u32 layer_count)
+{
+    ZoneScoped;
+    const VkImageViewCreateInfo image_view_create_info {
+        .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext    = nullptr,
+        .image    = image,
+        .viewType = type,
+        .format   = format,
+        .subresourceRange =
+            image_subresource_range(aspect_flags, 0, VK_REMAINING_MIP_LEVELS, array_layer, layer_count)};
+
+    VkImageView view;
+    VK_RETURN_ON_FAIL(vkCreateImageView(device, &image_view_create_info, nullptr, &view));
+
+    return view;
+}
+
 result<VkImageView> render::create_image_view(VkDevice device, VkImage image, VkImageViewType type, VkFormat format,
                                               VkImageAspectFlags aspect_flags, u32 mip_level, u32 levels_count)
 {
@@ -133,7 +160,8 @@ result<VkImageView> render::create_image_view(VkDevice device, VkImage image, Vk
 result<VkSampler> render::create_sampler(VkDevice device, const VkFilter filter, const VkSamplerMipmapMode mipmap_mode,
                                          const VkSamplerAddressMode sampler_address_mode,
                                          const VkSamplerReductionMode reduction_mode,
-                                         const f32 anisotropic_filtering_factor)
+                                         const f32 anisotropic_filtering_factor, const VkCompareOp compare_op,
+                                         const VkBorderColor border_color)
 {
     ZoneScoped;
     VkSamplerCreateInfo sampler_info {
@@ -146,8 +174,11 @@ result<VkSampler> render::create_sampler(VkDevice device, const VkFilter filter,
         .addressModeW     = sampler_address_mode,
         .anisotropyEnable = anisotropic_filtering_factor > 0 ? VK_TRUE : VK_FALSE,
         .maxAnisotropy    = anisotropic_filtering_factor > 0 ? anisotropic_filtering_factor : 0.0F,
+        .compareEnable    = compare_op != VK_COMPARE_OP_MAX_ENUM ? VK_TRUE : VK_FALSE,
+        .compareOp        = compare_op != VK_COMPARE_OP_MAX_ENUM ? compare_op : VK_COMPARE_OP_NEVER,
         .minLod           = 0.0F,
         .maxLod           = 16.0F,
+        .borderColor      = border_color,
     };
 
     VkSamplerReductionModeCreateInfo reduction_mode_info {VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO};

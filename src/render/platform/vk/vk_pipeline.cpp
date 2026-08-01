@@ -575,8 +575,10 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
         };
     }
 
-    constexpr VkDynamicState dynamic_state[] = {
-        VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_CULL_MODE};
+    constexpr VkDynamicState dynamic_state[] = {VK_DYNAMIC_STATE_VIEWPORT,
+                                                VK_DYNAMIC_STATE_SCISSOR,
+                                                VK_DYNAMIC_STATE_CULL_MODE,
+                                                VK_DYNAMIC_STATE_DEPTH_BIAS};
     constexpr u32 dynamic_state_count = COUNT_OF(dynamic_state);
 
     const VkPipelineDynamicStateCreateInfo dynamic_state_create_info {
@@ -608,12 +610,12 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
 
     const VkPipelineRasterizationStateCreateInfo rasterizer {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .depthClampEnable        = VK_FALSE,
+        .depthClampEnable        = opt_get(options, "depth_clamp", VK_FALSE),
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode             = VK_POLYGON_MODE_FILL,
         .cullMode                = VK_CULL_MODE_BACK_BIT,
         .frontFace               = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-        .depthBiasEnable         = VK_FALSE,
+        .depthBiasEnable         = opt_get(options, "depth_bias", VK_FALSE),
         .lineWidth               = 1.0f,
     };
 
@@ -645,13 +647,16 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
         .pAttachments    = &color_blend_attachment_state,
     };
 
+    const auto color_counts  = opt_get(options, "color_attachments", 1U);
+    const auto depth_format  = opt_get(options, "depth_format", renderer.get_swapchain().depth_format);
     const auto color_formats = opt_get(options, "color_format", renderer.get_swapchain().surface_format.format);
+
     const VkPipelineRenderingCreateInfo pipeline_rendering_create_info {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
         .pNext                   = nullptr,
-        .colorAttachmentCount    = 1,
+        .colorAttachmentCount    = color_counts,
         .pColorAttachmentFormats = &color_formats,
-        .depthAttachmentFormat   = renderer.get_swapchain().depth_format,
+        .depthAttachmentFormat   = depth_format,
     };
 
     const VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info {
@@ -741,11 +746,11 @@ void vk_pipeline::bind(VkCommandBuffer command_buffer) const
     vkCmdBindPipeline(command_buffer, m_pipeline_bind_point, m_pipeline);
 }
 
-void vk_pipeline::push_constant(VkCommandBuffer command_buffer, u32 size, const void* data) const
+void vk_pipeline::push_constant(VkCommandBuffer command_buffer, u32 offset, u32 size, const void* data) const
 {
     ZoneScoped;
     DEBUG_ONLY(assert2(m_push_constants_max_size >= size));
-    vkCmdPushConstants(command_buffer, m_pipeline_layout, m_push_constant_stages, 0, size, data);
+    vkCmdPushConstants(command_buffer, m_pipeline_layout, m_push_constant_stages, offset, size, data);
 }
 
 void vk_pipeline::bind_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_set& set) const

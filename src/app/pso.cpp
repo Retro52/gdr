@@ -73,8 +73,7 @@ void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_d
                  "some shaders failed to compile?");
         if (compiled_shaders.size() == shaders.size())
         {
-            // stupid...
-            auto pso = (shaders.size() == 1)
+            auto pso = (shaders.size() == 1 && (compiled_shaders.front().meta.stage & VK_SHADER_STAGE_COMPUTE_BIT))
                          ? render::vk_pipeline::create_compute(renderer, compiled_shaders[0], &textures_set, 1)
                          : render::vk_pipeline::create_graphics(
                                renderer,
