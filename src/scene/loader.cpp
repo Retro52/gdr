@@ -650,6 +650,7 @@ loader::scene_info loader::load_scene(const fs::path& path, scene& scene, const 
                 instances[instance_count].rotation_quat     = transform_comp.rotation;
                 instances[instance_count].visibility_offset = visibility_offset;
                 instances[instance_count].mesh_data_index   = desc.offset + j;
+                instances[instance_count].base_vertex       = ctx.primitives[desc.offset + j].base_vertex;
                 instances[instance_count].material_index =
                     node->mesh->primitives[j].material
                         ? (cgltf_material_index(data, node->mesh->primitives[j].material) + 1)

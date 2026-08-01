@@ -29,8 +29,8 @@ namespace shader_types
 
     using shader_constants::kLODCount;
     using shader_constants::kMatClassCount;
-    using shader_constants::kMaxVerticesPerMeshlet;
     using shader_constants::kMaxShadowCascades;
+    using shader_constants::kMaxVerticesPerMeshlet;
 
 #define QUAT glm::quat
 #else
@@ -100,6 +100,7 @@ namespace shader_types
         uint material_index;
         uint mesh_data_index;
         uint visibility_offset;
+        uint base_vertex;  // mirrors MeshData.base_vertex for locality in resolve pass
     };
 
     struct MeshMaterial

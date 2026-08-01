@@ -8,7 +8,6 @@
 #include "utils/pbr.glsl"
 #include "utils/post.glsl"
 #include "utils/math.glsl"
-#include "utils/shadow.glsl"
 
 layout (local_size_x = 16, local_size_y = 16) in;
 
@@ -52,18 +51,19 @@ const uint draw_debug_lit_specular     = 4;
 const uint draw_debug_uv               = 5;
 const uint draw_debug_normal           = 6;
 const uint draw_debug_tangent          = 7;
-const uint draw_debug_world_pos        = 8;
-const uint draw_debug_color            = 9;
-const uint draw_debug_metallic         = 10;
-const uint draw_debug_roughness        = 11;
-const uint draw_debug_albedo_texture   = 12;
-const uint draw_debug_normal_texture   = 13;
-const uint draw_debug_omr_texture      = 14;
-const uint draw_debug_triangle_id      = 15;
-const uint draw_debug_instance_id      = 16;
-const uint draw_debug_triangle_face    = 17;
-const uint draw_debug_shadow           = 18;
-const uint draw_debug_shadow_cascades  = 19;
+const uint draw_debug_depth            = 8;
+const uint draw_debug_world_pos        = 9;
+const uint draw_debug_color            = 10;
+const uint draw_debug_metallic         = 11;
+const uint draw_debug_roughness        = 12;
+const uint draw_debug_albedo_texture   = 13;
+const uint draw_debug_normal_texture   = 14;
+const uint draw_debug_omr_texture      = 15;
+const uint draw_debug_triangle_id      = 16;
+const uint draw_debug_instance_id      = 17;
+const uint draw_debug_triangle_face    = 18;
+const uint draw_debug_shadow           = 19;
+const uint draw_debug_shadow_cascades  = 20;
 
 #define TEXTURE2DG(id, uv, dfdx, dfdy) textureGrad(sampler2D(textures[nonuniformEXT(id)], textures_sampler), uv, dfdx, dfdy)
 #define DTEXTURE2D(id, uv, dfdx, dfdy) (id > 0 ? textureGrad(sampler2D(textures[nonuniformEXT(id)], textures_sampler), uv, dfdx, dfdy) : vec4(1.0F, 0.25F, 0.95F, 1.0F))
@@ -95,21 +95,20 @@ vec3 hash_color(uint id)
 
 vec4 metallic_roughness_from_specular_gloss(vec4 spec_gloss_texture)
 {
-    vec3 spec = from_srgb(spec_gloss_texture.rgb);
-
+    // pow() is monotonic, so the channel max commutes with the sRGB decode
     float gloss = spec_gloss_texture.a;
-    float metal = max(spec.r, max(spec.g, spec.b));
+    float metal = pow(max(spec_gloss_texture.r, max(spec_gloss_texture.g, spec_gloss_texture.b)), 2.2F);
 
     return vec4(0.0F, gloss, metal, 1.0F);
 }
 
-void get_vertex_normal_tangent(uint index, uint instance, out vec3 normal, out vec4 tangent)
+void get_vertex_normal_tangent(uint index, out vec3 normal, out vec4 tangent)
 {
     vec4 up_norm = unpack_r10g10b10a2(vertices[index].packed_normal);
     vec3 up_tang = decode_oct(unpack_r8g8(uint(vertices[index].packed_tangent)));
 
-    normal = quat_rotate_vec3(up_norm.xyz, instances[instance].rotation_quat);
-    tangent = vec4(quat_rotate_vec3(up_tang, instances[instance].rotation_quat), up_norm.w);
+    normal = up_norm.xyz;
+    tangent = vec4(up_tang, up_norm.w);
 }
 
 vec2 to_ndc(vec2 px, vec2 size)
@@ -117,24 +116,17 @@ vec2 to_ndc(vec2 px, vec2 size)
     return ((px + vec2(0.5F)) / size) * 2.0F - 1.0F;
 }
 
-vec3 to_camera(vec3 local, uint instance)
+void weight_normal_tangent(uint i0, uint i1, uint i2, vec4 quat, vec3 weights, out vec3 normal, out vec4 tangent)
 {
-    vec4 pos_scale = instances[instance].pos_and_scale;
-    pos_scale.xyz -= world.camera_pos;
-    return transform_vec3(local, pos_scale, instances[instance].rotation_quat);
-}
+    vec3 n0, n1, n2;
+    vec4 t0, t1, t2;
 
-void weight_normal_tangent(uint i0, uint i1, uint i2, uint instance, vec3 weights, out vec3 normal, out vec4 tangent)
-{
-    vec3 normals[3];
-    vec4 tangents[3];
+    get_vertex_normal_tangent(i0, n0, t0);
+    get_vertex_normal_tangent(i1, n1, t1);
+    get_vertex_normal_tangent(i2, n2, t2);
 
-    get_vertex_normal_tangent(i0, instance, normals[0], tangents[0]);
-    get_vertex_normal_tangent(i1, instance, normals[1], tangents[1]);
-    get_vertex_normal_tangent(i2, instance, normals[2], tangents[2]);
-
-    normal = normalize(wsum(normals[0], normals[1], normals[2], weights));
-    tangent = vec4(normalize(wsum(tangents[0], tangents[1], tangents[2], weights).xyz), tangents[0].w);
+    normal = normalize(quat_rotate_vec3(wsum(n0, n1, n2, weights), quat));
+    tangent = vec4(normalize(quat_rotate_vec3(wsum(t0.xyz, t1.xyz, t2.xyz, weights), quat)), t0.w);
 }
 
 vec3 get_sky_direction(vec2 pixel, ivec2 image_size)
@@ -154,13 +146,105 @@ float get_sun_disc_coverage(vec3 view_dir, vec3 sun_dir, float half_angle, float
     return smoothstep(cos(outer), cos(inner), cos_theta);
 }
 
+float shadow_pcf(sampler2DArrayShadow map, vec2 uv, float layer, float ref, float sm_res)
+{
+    vec2 tc   = uv * sm_res;
+    vec2 base = floor(tc - 0.5F) + 0.5F;
+    vec2 f    = tc - base;
+
+    vec4 wx = vec4(1.0F - f.x, 1.0F, 1.0F, f.x);
+    vec4 wy = vec4(1.0F - f.y, 1.0F, 1.0F, f.y);
+
+    vec3 g = vec3(base / sm_res, layer);
+
+    vec4 s00 = textureGatherOffset(map, g, ref, ivec2(-1, -1));
+    vec4 s10 = textureGatherOffset(map, g, ref, ivec2(1, -1));
+    vec4 s01 = textureGatherOffset(map, g, ref, ivec2(-1, 1));
+    vec4 s11 = textureGatherOffset(map, g, ref, ivec2(1, 1));
+
+    float sum =
+        dot(s00, vec4(wx.x * wy.y, wx.y * wy.y, wx.y * wy.x, wx.x * wy.x))
+        + dot(s10, vec4(wx.z * wy.y, wx.w * wy.y, wx.w * wy.x, wx.z * wy.x))
+        + dot(s01, vec4(wx.x * wy.w, wx.y * wy.w, wx.y * wy.z, wx.x * wy.z))
+        + dot(s11, vec4(wx.z * wy.w, wx.w * wy.w, wx.w * wy.z, wx.z * wy.z));
+
+    return sum / 9.0F;
+}
+
+float shadow_cascade_lookup(sampler2DArrayShadow map, uint layer, vec3 pos, vec3 nrm, float n_dot_l)
+{
+    float texel_world_size = shadow_cascades.cascades[layer].texel_world_size;
+
+    vec3 offset_pos = pos + nrm * shadow_cascades.normal_offset * texel_world_size * (1.0F - n_dot_l);
+    vec4 clip       = shadow_cascades.cascades[layer].vp * vec4(offset_pos, 1.0F);
+
+    if (clip.z <= 0.0F)
+    {
+        return 1.0F;
+    }
+
+    vec2 uv = clip.xy * 0.5F + 0.5F;
+    return shadow_pcf(map,
+                      uv,
+                      float(layer),
+                      min(clip.z + shadow_cascades.depth_bias, 1.0F),
+                      shadow_cascades.sm_resolution);
+}
+
+uint get_shadow_cascade_index(float view_depth)
+{
+    for (uint i = 0; i < kMaxShadowCascades; ++i)
+    {
+        if (view_depth < shadow_cascades.cascades[i].split)
+        {
+            return i;
+        }
+    }
+
+    return kMaxShadowCascades - 1;
+}
+
+float get_shadow(sampler2DArrayShadow map, vec3 pos, vec3 nrm, float view_depth, float n_dot_l)
+{
+    if (view_depth >= shadow_cascades.max_range)
+    {
+        return 1.0F;
+    }
+
+    uint layer = get_shadow_cascade_index(view_depth);
+
+    float far_split  = shadow_cascades.cascades[layer].split;
+    float near_split = layer == 0 ? 0.0F : shadow_cascades.cascades[layer - 1].split;
+
+    float band  = max((far_split - near_split) * shadow_cascades.blend_ratio, 1e-4F);
+    float blend = clamp((view_depth - (far_split - band)) / band, 0.0F, 1.0F);
+
+    float shadow = shadow_cascade_lookup(map, layer, pos, nrm, n_dot_l);
+    if (blend <= 0.0F)
+    {
+        return shadow;
+    }
+
+    float next = layer + 1 < kMaxShadowCascades ? shadow_cascade_lookup(map, layer + 1, pos, nrm, n_dot_l) : 1.0F;
+    return mix(shadow, next, blend);
+}
+
 void main()
 {
-    vec2 px = vec2(gl_GlobalInvocationID.xy);
     ivec2 image_size = world.render_resolution;
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+
+    // the dispatch rounds the group count up, so without this the padding threads read
+    // zeroes out of the visbuffer and run the whole geometry path on garbage
+    if (any(greaterThanEqual(pixel, image_size)))
+    {
+        return;
+    }
+
+    vec2 px = vec2(pixel);
 
     vec2 vtp = to_ndc(px, image_size);
-    uvec2 data = imageLoad(i_visbuf, ivec2(gl_GlobalInvocationID.xy)).xy;
+    uvec2 data = imageLoad(i_visbuf, pixel).xy;
 
     uint instance_id = data.r & kInstanceIdMask;
     const float exposure = 1.0 / (1.2 * exp2(world.camera_exposure));
@@ -187,18 +271,24 @@ void main()
         float disc_coverage = get_sun_disc_coverage(dir, world.sun_direction, kSunHalfAngle, pixel_angle);
 
         vec3 color = sky + sun_tint * disc_luminance * disc_coverage;
-        imageStore(o_color, ivec2(gl_GlobalInvocationID.xy), from_linear(vec4(tonemap(color * exposure), 1.0F)));
+        imageStore(o_color, pixel, from_linear(vec4(tonemap(color * exposure), 1.0F)));
         return;
     }
 
-    uint base_vertex = primitives[instances[instance_id].mesh_data_index].base_vertex;
+    vec4 inst_pos_scale = instances[instance_id].pos_and_scale;
+    vec4 inst_quat      = instances[instance_id].rotation_quat;
+    uint material_id    = instances[instance_id].material_index;
+    uint base_vertex    = instances[instance_id].base_vertex;
+
+    inst_pos_scale.xyz -= world.camera_pos;
 
 #ifdef FOR_MESH_PIPELINE
     uint m_idx = data.g >> 7;
     uint ml = (data.g & 127) * 3;
 
-    const uint meshlet_base_vertex = meshlets[m_idx].data_offset / 4;
-    const uint meshlet_base_index  = meshlets[m_idx].data_offset + uint(meshlets[m_idx].vertices_count) * 4;
+    const uint meshlet_data_offset = meshlets[m_idx].data_offset;
+    const uint meshlet_base_vertex = meshlet_data_offset / 4;
+    const uint meshlet_base_index  = meshlet_data_offset + uint(meshlets[m_idx].vertices_count) * 4;
 
     uint i0 = meshlets_vertices[meshlet_base_vertex + uint(meshlets_indices[meshlet_base_index + ml + 0])] + base_vertex;
     uint i1 = meshlets_vertices[meshlet_base_vertex + uint(meshlets_indices[meshlet_base_index + ml + 1])] + base_vertex;
@@ -210,48 +300,48 @@ void main()
     uint i2 = indices[data.g + 2] + base_vertex;
 #endif
 
-    vec3 v0 = to_camera(vec3(vertices[i0].px, vertices[i0].py, vertices[i0].pz), instance_id);
-    vec3 v1 = to_camera(vec3(vertices[i1].px, vertices[i1].py, vertices[i1].pz), instance_id);
-    vec3 v2 = to_camera(vec3(vertices[i2].px, vertices[i2].py, vertices[i2].pz), instance_id);
+    vec3 v0 = transform_vec3(vec3(vertices[i0].px, vertices[i0].py, vertices[i0].pz), inst_pos_scale, inst_quat);
+    vec3 v1 = transform_vec3(vec3(vertices[i1].px, vertices[i1].py, vertices[i1].pz), inst_pos_scale, inst_quat);
+    vec3 v2 = transform_vec3(vec3(vertices[i2].px, vertices[i2].py, vertices[i2].pz), inst_pos_scale, inst_quat);
 
     vec4 vt0 = pc.vp * vec4(v0, 1.0F);
     vec4 vt1 = pc.vp * vec4(v1, 1.0F);
     vec4 vt2 = pc.vp * vec4(v2, 1.0F);
 
+    vec2 vtp_r = to_ndc(px + ivec2(1, 0), image_size);
+    vec2 vtp_d = to_ndc(px + ivec2(0, 1), image_size);
+
     vec3 bary_linear;
     vec3 bary_perspective;
     compute_barycentric(vt0, vt1, vt2, vtp, bary_linear, bary_perspective);
 
-    vec3 normal;
-    vec4 tangent;
-    weight_normal_tangent(i0, i1, i2, instance_id, bary_perspective, normal, tangent);
-
-    vec2 uv;
-
-    vec2 vtp_r = to_ndc(px + ivec2(1, 0), image_size);
-    vec2 vtp_d = to_ndc(px + ivec2(0, 1), image_size);
-
     vec3 bary_r = get_barycentric(vt0, vt1, vt2, vtp_r);
     vec3 bary_d = get_barycentric(vt0, vt1, vt2, vtp_d);
+
+    vec3 normal;
+    vec4 tangent;
+    weight_normal_tangent(i0, i1, i2, inst_quat, bary_perspective, normal, tangent);
 
     vec2 uv0 = vec2(vertices[i0].ux, vertices[i0].uy);
     vec2 uv1 = vec2(vertices[i1].ux, vertices[i1].uy);
     vec2 uv2 = vec2(vertices[i2].ux, vertices[i2].uy);
 
-    uv = wsum(uv0, uv1, uv2, bary_perspective);
-    vec2 uv_r  = uv0 * bary_r.x + uv1 * bary_r.y + uv2 * bary_r.z;
-    vec2 uv_d  = uv0 * bary_d.x + uv1 * bary_d.y + uv2 * bary_d.z;
+    vec2 uv    = wsum(uv0, uv1, uv2, bary_perspective);
+    vec2 uv_r  = wsum(uv0, uv1, uv2, bary_r);
+    vec2 uv_d  = wsum(uv0, uv1, uv2, bary_d);
 
     vec2 dfdx = uv_r - uv;
     vec2 dfdy = uv_d - uv;
 
-    uint material_id = instances[instance_id].material_index;
-
     uint albedo_idx = materials[material_id].albedo_idx;
     uint normal_idx = materials[material_id].normal_idx;
     uint met_roughness_idx = materials[material_id].met_roughness_idx;
+    uint material_bits = uint(materials[material_id].material_bits);
 
-    vec4 frag_col = albedo_idx > 0 ? TEXTURE2DG(albedo_idx, uv, dfdx, dfdy) * materials[material_id].diffuse_factor : materials[material_id].diffuse_factor;
+    vec4 diffuse_factor = materials[material_id].diffuse_factor;
+    vec4 mr_factor = materials[material_id].met_roughness_factor;
+
+    vec4 frag_col = albedo_idx > 0 ? TEXTURE2DG(albedo_idx, uv, dfdx, dfdy) * diffuse_factor : diffuse_factor;
 
 #if SHADERS_DEBUG
     vec3 albedo;
@@ -282,21 +372,20 @@ void main()
 
 #if 1
     vec4 met_roughness_factor = vec4(1.0F);
-    if (GET_BIT(uint(materials[material_id].material_bits), kMatGlossBit) == 1)
+    if (GET_BIT(material_bits, kMatGlossBit) == 1)
     {
-        vec4 factor = materials[material_id].met_roughness_factor;
         met_roughness_factor = met_roughness_idx > 0
-                                ? metallic_roughness_from_specular_gloss(TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy)) * factor
-                                : factor;
+                                ? metallic_roughness_from_specular_gloss(TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy)) * mr_factor
+                                : mr_factor;
 
         met_roughness_factor.g = 1.0F - met_roughness_factor.g;
     }
     else
     {
-        met_roughness_factor = met_roughness_idx > 0 ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * materials[material_id].met_roughness_factor : materials[material_id].met_roughness_factor;
+        met_roughness_factor = met_roughness_idx > 0 ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * mr_factor : mr_factor;
     }
 #else
-    vec4 met_roughness_factor = met_roughness_idx > 0 ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * materials[material_id].met_roughness_factor : materials[material_id].met_roughness_factor;
+    vec4 met_roughness_factor = met_roughness_idx > 0 ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * mr_factor : mr_factor;
 #endif
 
     vec3 view_pos = wsum(v0, v1, v2, bary_perspective);
@@ -323,8 +412,8 @@ void main()
     vec3 f0 = mix(vec3(0.04F), albedo, metallic);
     vec3 frensel_d = fresnel_schlick(h_dot_v, f0);
 
-    float view_depth = (pc.vp * vec4(view_pos, 1.0F)).w;
-    float shadow_factor = get_shadow(shadow_map_sampler, shadow_cascades, view_pos, nrm, view_depth, n_dot_l);
+    float view_depth = dot(vec4(pc.vp[0][3], pc.vp[1][3], pc.vp[2][3], pc.vp[3][3]), vec4(view_pos, 1.0F));
+    float shadow_factor = get_shadow(shadow_map_sampler, view_pos, nrm, view_depth, n_dot_l);
 
     vec3 spec_direct = pbr_specular(frensel_d, ndf, geom, n_dot_v, n_dot_l);
     vec3 sun_radiance = world.sun_color.rgb * world.sun_color.w;
@@ -357,8 +446,9 @@ void main()
         if (world.debug_mode == draw_debug_uv)              { color = vec3(uv, 0.0F); }
         if (world.debug_mode == draw_debug_normal)          { color = nrm; }
         if (world.debug_mode == draw_debug_tangent)         { color = tangent.xyz; }
+        if (world.debug_mode == draw_debug_depth)           { color = texture(depth_texture_sampler, px / vec2(image_size)).rgb; }
         if (world.debug_mode == draw_debug_world_pos)       { color = normalize(view_pos); }
-        if (world.debug_mode == draw_debug_color)           { color = materials[material_id].diffuse_factor.rgb; }
+        if (world.debug_mode == draw_debug_color)           { color = diffuse_factor.rgb; }
         if (world.debug_mode == draw_debug_metallic)        { color = vec3(metallic); }
         if (world.debug_mode == draw_debug_roughness)       { color = vec3(roughness); }
         if (world.debug_mode == draw_debug_albedo_texture)  { color = DTEXTURE2D(albedo_idx, uv, dfdx, dfdy).rgb; }
@@ -368,10 +458,10 @@ void main()
         if (world.debug_mode == draw_debug_instance_id)     { color = hash_color(instance_id); }
         if (world.debug_mode == draw_debug_triangle_face)   { color = hash_color(uint(is_front_face)); }
         if (world.debug_mode == draw_debug_shadow)          { color = vec3(shadow_factor); }
-        if (world.debug_mode == draw_debug_shadow_cascades) { color = hash_color(get_shadow_cascade_index(shadow_cascades, view_depth) + 1); }
+        if (world.debug_mode == draw_debug_shadow_cascades) { color = hash_color(get_shadow_cascade_index(view_depth) + 1); }
         result = from_linear(vec4(color, 1.0F));
     }
 #endif
 
-    imageStore(o_color, ivec2(gl_GlobalInvocationID.xy), result);
+    imageStore(o_color, pixel, result);
 }

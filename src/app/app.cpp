@@ -48,9 +48,9 @@
 
 namespace
 {
-    REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_ambient, lit_specular, uv, normal, tangent, world_pos,
-                  color, metallic, roughness, albedo_texture, normal_texture, omr_texture, triangle_id, instance_id,
-                  triangle_face, shadow, shadow_cascades);
+    REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_ambient, lit_specular, uv, normal, tangent, depth,
+                  world_pos, color, metallic, roughness, albedo_texture, normal_texture, omr_texture, triangle_id,
+                  instance_id, triangle_face, shadow, shadow_cascades);
 
     REGISTER_ENUM(cubemap_face, XP, XN, YP, YN, ZP, ZN);
 
@@ -177,6 +177,7 @@ namespace
             instance.material_index    = i;
             instance.visibility_offset = visibility_offset;
             instance.mesh_data_index   = layouts[id_random].prim_index;
+            instance.base_vertex       = ctx.primitives[id_random].base_vertex;
 
             auto& material          = ctx.materials[i];
             material.material_class = shader_constants::kMatClassOpaque;
@@ -846,6 +847,10 @@ int app::instance::run(const int argc, char* argv[])
         bindings.bind_at(geometry_pool.meshlets_payload.buffer.buffer, shader_bindings::draw::kMeshletDataBinding);
         bindings.bind_at(geometry_pool.primitives.buffer.buffer, shader_bindings::draw::kPrimitiveBinding);
         bindings.bind_at(geometry_pool.instances.buffer.buffer, shader_bindings::draw::kInstanceBinding);
+        if (material_class != shader_constants::kMatClassOpaque)
+        {
+            pipeline.bind_descriptor_set(cmd, bindless_textures_desc_set);
+        }
 
         if (enable_meshlets_pipeline)
         {
@@ -858,8 +863,6 @@ int app::instance::run(const int argc, char* argv[])
                 shader_bindings::draw::kHiZBinding);
 
             pipeline.push_descriptor_set(cmd, bindings.get());
-            pipeline.bind_descriptor_set(cmd, bindless_textures_desc_set);
-
             vkCmdDrawMeshTasksIndirectEXT(cmd, draw_count_buffer.buffer, material_class * 3 * sizeof(u32), 1, 0);
         }
         else
@@ -867,8 +870,6 @@ int app::instance::run(const int argc, char* argv[])
             bindings.bind_at(indexed_draw_indirect_buffer.buffer, shader_bindings::draw::kDrawBinding);
 
             pipeline.push_descriptor_set(cmd, bindings.get());
-            pipeline.bind_descriptor_set(cmd, bindless_textures_desc_set);
-
             vkCmdBindIndexBuffer(cmd, indexed_indices_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
 #if defined(__APPLE__)
