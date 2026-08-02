@@ -15,6 +15,7 @@ layout (binding = 2) uniform sampler2D depth_texture_sampler;
 layout (scalar, push_constant) uniform PushConstants
 {
     float camera_near;
+    ivec2 render_size;
 } pc;
 
 const float kFxaaSpanMax        = 8.0F;
@@ -41,7 +42,7 @@ float fetch_view_z(ivec2 px, ivec2 image_size)
 
 void main()
 {
-    ivec2 image_size = imageSize(o_color);
+    ivec2 image_size = pc.render_size;
     ivec2 px = ivec2(gl_GlobalInvocationID.xy);
 
     if (any(greaterThanEqual(px, image_size)))

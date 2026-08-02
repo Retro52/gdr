@@ -23,9 +23,6 @@ void app::begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView de
             .storeOp     = store_op,
         };
 
-        cpp::cx_fill(
-            &color_attachment_info.clearValue.color.uint32[0], &color_attachment_info.clearValue.color.uint32[4], ~0U);
-
         rendering_info.colorAttachmentCount = 1;
         rendering_info.pColorAttachments    = &color_attachment_info;
     }
@@ -38,9 +35,6 @@ void app::begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView de
             .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
             .loadOp      = load_op,
             .storeOp     = store_op,
-            .clearValue  = {
-                            .depthStencil = {0.0F, 0},
-                            }
         };
 
         rendering_info.pDepthAttachment = &depth_attachment_info;
@@ -151,15 +145,16 @@ render::vk_image app::create_depth_image(const ivec2& size, const VkFormat forma
 {
     ZoneScoped;
     const VkImageCreateInfo image_create_info {
-        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType     = VK_IMAGE_TYPE_2D,
-        .format        = format,
-        .extent        = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
-        .mipLevels     = 1,
-        .arrayLayers   = 1,
-        .samples       = VK_SAMPLE_COUNT_1_BIT,
-        .tiling        = VK_IMAGE_TILING_OPTIMAL,
-        .usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType   = VK_IMAGE_TYPE_2D,
+        .format      = format,
+        .extent      = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
+        .mipLevels   = 1,
+        .arrayLayers = 1,
+        .samples     = VK_SAMPLE_COUNT_1_BIT,
+        .tiling      = VK_IMAGE_TILING_OPTIMAL,
+        .usage =
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
         .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
@@ -193,8 +188,8 @@ app::vis_buffer_data app::create_vis_buffer_data(const ivec2& size, VkDevice dev
         .arrayLayers = 1,
         .samples     = VK_SAMPLE_COUNT_1_BIT,
         .tiling      = VK_IMAGE_TILING_OPTIMAL,
-        .usage       = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT
-               | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .usage       = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+               | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
         .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };

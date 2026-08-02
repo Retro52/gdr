@@ -62,6 +62,7 @@ endfunction()
 find_package(Vulkan REQUIRED COMPONENTS glslc glslangValidator)
 
 file(READ "${PROJECT_SOURCE_DIR}/shaders.cfg" SHADERS_CONFIG)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/shaders.cfg")
 
 string(STRIP "${SHADERS_CONFIG}" SHADERS_CONFIG)
 string(REPLACE "\n" ";" SHADERS_CONFIG "${SHADERS_CONFIG}")

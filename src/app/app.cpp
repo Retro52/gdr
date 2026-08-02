@@ -812,10 +812,7 @@ int app::instance::run(const int argc, char* argv[])
                                       | VK_ACCESS_2_INDEX_READ_BIT);
     };
 
-    auto draw_scene = [&](VkCommandBuffer cmd,
-                          const render::vk_pipeline& pipeline,
-                          const u32 material_class,
-                          const VkAttachmentLoadOp load_op = VK_ATTACHMENT_LOAD_OP_LOAD)
+    auto draw_scene = [&](VkCommandBuffer cmd, const render::vk_pipeline& pipeline, const u32 material_class)
     {
         ZoneScopedN("app.instance.run.draw_scene");
         TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "draw scene"));
@@ -832,7 +829,7 @@ int app::instance::run(const int argc, char* argv[])
         begin_rendering(cmd,
                         vis_buffer.vis_buffer_img.view,
                         depth_image.view,
-                        load_op,
+                        VK_ATTACHMENT_LOAD_OP_LOAD,
                         VK_ATTACHMENT_STORE_OP_STORE,
                         m_renderer.get_scissor());
         pipeline_statistics_query.begin(cmd, pipeline_statistics_query_index, 0);
@@ -893,11 +890,8 @@ int app::instance::run(const int argc, char* argv[])
         vkCmdEndRendering(cmd);
     };
 
-    auto draw_shadow = [&](VkCommandBuffer cmd,
-                           const render::vk_pipeline& pipeline,
-                           const u32 material_class,
-                           const u32 cascade_index,
-                           const VkAttachmentLoadOp load_op)
+    auto draw_shadow =
+        [&](VkCommandBuffer cmd, const render::vk_pipeline& pipeline, const u32 material_class, const u32 cascade_index)
     {
         ZoneScopedN("app.instance.run.draw_shadow");
         TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "draw shadow"));
@@ -912,7 +906,7 @@ int app::instance::run(const int argc, char* argv[])
         begin_rendering(cmd,
                         VK_NULL_HANDLE,
                         csm.cascade_views[cascade_index],
-                        load_op,
+                        VK_ATTACHMENT_LOAD_OP_LOAD,
                         VK_ATTACHMENT_STORE_OP_STORE,
                         {0, 0, csm.resolution, csm.resolution});
 
@@ -1007,6 +1001,13 @@ int app::instance::run(const int argc, char* argv[])
             vkEndCommandBuffer(cmd);
             m_renderer.present_frame(cmd);
         });
+
+    VkClearDepthStencilValue ds_clear      = {0.0F, 0};
+    VkImageSubresourceRange ds_clear_range = render::image_subresource_range(VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    VkClearColorValue vb_clear;
+    cpp::cx_fill(&vb_clear.uint32[0], &vb_clear.uint32[4], ~0U);
+    VkImageSubresourceRange vp_clear_range = render::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
 
     auto render_loop = [&]()
     {
@@ -1105,8 +1106,9 @@ int app::instance::run(const int argc, char* argv[])
                                                                    client_render_settings);
 
                 app::zero_buffer(buffer, indexed_count_buffer, 0);
-                app::zero_buffer(buffer, meshlets_draw_indirect_buffer, 0);
 
+                vkCmdClearDepthStencilImage(
+                    buffer, csm.shadow_map.image, VK_IMAGE_LAYOUT_GENERAL, &ds_clear, 1, &ds_clear_range);
                 for (u32 c = 0; c < shader_constants::kMaxShadowCascades; ++c)
                 {
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "cull cascade meshes"));
@@ -1125,14 +1127,9 @@ int app::instance::run(const int argc, char* argv[])
 
                     const render::vk_pipeline& cull_pass = pipelines[pso_id::shadow_cull];
 
-                    struct pc_data
-                    {
-                        u32 cascade;
-                        std::array<u32, shader_constants::kMatClassCount> offset_table;
-                    };
-
                     cull_pass.bind(buffer);
-                    cull_pass.push_constant(buffer, pc_data {c, offset_table});
+                    cull_pass.push_constant(buffer, c);
+                    cull_pass.push_constant(buffer, sizeof(c), offset_table);
                     cull_pass.push_descriptor_set(buffer, cull_pass_bindings.get());
 
                     cull_pass.dispatch(buffer, static_cast<u32>(scene_info.primitives), 1, 1);
@@ -1165,11 +1162,7 @@ int app::instance::run(const int argc, char* argv[])
                                           client_render_settings.shadow_depth_bias_constant,
                                           0.0F,
                                           client_render_settings.shadow_depth_bias_slope);
-                        draw_shadow(buffer,
-                                    render_pipeline,
-                                    i,
-                                    c,
-                                    i == 0 ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD);
+                        draw_shadow(buffer, render_pipeline, i, c);
                     }
                 }
 
@@ -1222,6 +1215,12 @@ int app::instance::run(const int argc, char* argv[])
                 vkCmdSetScissor(buffer, 0, 1, &scissor);
                 vkCmdSetViewport(buffer, 0, 1, &viewport);
 
+                vkCmdClearDepthStencilImage(
+                    buffer, depth_image.image, VK_IMAGE_LAYOUT_GENERAL, &ds_clear, 1, &ds_clear_range);
+
+                vkCmdClearColorImage(
+                    buffer, vis_buffer.vis_buffer_img.image, VK_IMAGE_LAYOUT_GENERAL, &vb_clear, 1, &vp_clear_range);
+
                 app::zero_buffer(buffer, indexed_count_buffer, 0);
                 for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
                 {
@@ -1241,8 +1240,7 @@ int app::instance::run(const int argc, char* argv[])
 
                     vkCmdSetCullMode(
                         buffer, i == shader_constants::kMatClassOpaque ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE);
-                    draw_scene(
-                        buffer, render_pipeline, i, i == 0 ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD);
+                    draw_scene(buffer, render_pipeline, i);
                 }
 
                 // Reduce the depth buffer pyramid
@@ -1288,24 +1286,37 @@ int app::instance::run(const int argc, char* argv[])
                 }
 
                 // NOTE: only executed if freeze_cull_data == true
-                for (u32 i = 0; i < shader_constants::kMatClassCount && freeze_cull_data; ++i)
+                if (freeze_cull_data)
                 {
-                    if (!(draw_materials_mask & (1 << i)))
+                    vkCmdClearDepthStencilImage(
+                        buffer, depth_image.image, VK_IMAGE_LAYOUT_GENERAL, &ds_clear, 1, &ds_clear_range);
+
+                    vkCmdClearColorImage(buffer,
+                                         vis_buffer.vis_buffer_img.image,
+                                         VK_IMAGE_LAYOUT_GENERAL,
+                                         &vb_clear,
+                                         1,
+                                         &vp_clear_range);
+
+                    for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
                     {
-                        continue;
+                        if (!(draw_materials_mask & (1 << i)))
+                        {
+                            continue;
+                        }
+
+                        fill_indexed(buffer, i, false);
+                        const auto& render_pipeline =
+                            get_render_pipeline(pipelines, i, false, enable_meshlets_pipeline);
+
+                        render_pipeline.bind(buffer);
+                        render_pipeline.push_constant(
+                            buffer, shader_types::DrawPushConstants(camera_proj_view, offset_table[i]));
+
+                        vkCmdSetCullMode(
+                            buffer, i == shader_constants::kMatClassOpaque ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE);
+                        draw_scene(buffer, render_pipeline, i);
                     }
-
-                    fill_indexed(buffer, i, false);
-                    const auto& render_pipeline = get_render_pipeline(pipelines, i, false, enable_meshlets_pipeline);
-
-                    render_pipeline.bind(buffer);
-                    render_pipeline.push_constant(buffer,
-                                                  shader_types::DrawPushConstants(camera_proj_view, offset_table[i]));
-
-                    vkCmdSetCullMode(
-                        buffer, i == shader_constants::kMatClassOpaque ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE);
-                    draw_scene(
-                        buffer, render_pipeline, i, i == 0 ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD);
                 }
 
                 {
@@ -1433,6 +1444,7 @@ int app::instance::run(const int argc, char* argv[])
                     fxaa_pass.push_descriptor_set(buffer, fxaa_pass_bindings);
 
                     fxaa_pass.push_constant(buffer, camera_data.near_plane);
+                    fxaa_pass.push_constant(buffer, sizeof(camera_data.near_plane), m_window.get_size_in_px());
 
                     fxaa_pass.dispatch(buffer, m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1);
 
@@ -1767,6 +1779,7 @@ int app::instance::run(const int argc, char* argv[])
 
     vkDeviceWaitIdle(m_renderer.get_context().device);
 
+    csm.shutdown(m_renderer);
     envmap.shutdown(m_renderer);
     pipelines.shutdown(m_renderer);
 
