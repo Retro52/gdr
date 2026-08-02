@@ -1,3 +1,10 @@
+struct BaryDeriv
+{
+    vec3 lambda;
+    vec3 ddx;
+    vec3 ddy;
+};
+
 // https://x.com/Stubbesaurus/status/937994790553227264
 vec3 decode_oct(vec2 e)
 {
@@ -39,46 +46,42 @@ vec3 transform_vec3(vec3 point, vec4 pos_and_scale, vec4 quat)
     return (point + 2.0 * cross(quat.xyz, cross(quat.xyz, point) + quat.w * point)) * pos_and_scale.w + pos_and_scale.xyz;
 }
 
-vec3 get_barycentric(vec4 v1, vec4 v2, vec4 v3, vec2 ndc)
+// https://filmicworlds.com/blog/visibility-buffer-rendering-with-material-graphs/
+BaryDeriv calc_full_bary(vec4 pt0, vec4 pt1, vec4 pt2, vec2 pixel_ndc, vec2 win_size)
 {
-    vec2 p1 = v1.xy / v1.w;
-    vec2 p2 = v2.xy / v2.w;
-    vec2 p3 = v3.xy / v3.w;
+    BaryDeriv ret;
+    vec3 inv_w = 1.0 / vec3(pt0.w, pt1.w, pt2.w);
 
-    vec2 e1 = p2 - p1;
-    vec2 e2 = p3 - p1;
-    vec2 ep = ndc - p1;
+    vec2 ndc0 = pt0.xy * inv_w.x;
+    vec2 ndc1 = pt1.xy * inv_w.y;
+    vec2 ndc2 = pt2.xy * inv_w.z;
 
-    float det = e1.x * e2.y - e2.x * e1.y;
+    float inv_det = 1.0 / determinant(mat2(ndc2 - ndc1, ndc0 - ndc1));
+    ret.ddx = vec3(ndc1.y - ndc2.y, ndc2.y - ndc0.y, ndc0.y - ndc1.y) * inv_det * inv_w;
+    ret.ddy = vec3(ndc2.x - ndc1.x, ndc0.x - ndc2.x, ndc1.x - ndc0.x) * inv_det * inv_w;
 
-    float u = (ep.x * e2.y - e2.x * ep.y) / det;
-    float v = (e1.x * ep.y - ep.x * e1.y) / det;
+    float ddx_sum = dot(ret.ddx, vec3(1.0));
+    float ddy_sum = dot(ret.ddy, vec3(1.0));
 
-    vec3 linear = vec3(1.0F - u - v, u, v);
+    vec2 delta = pixel_ndc - ndc0;
+    float interp_inv_w = inv_w.x + delta.x * ddx_sum + delta.y * ddy_sum;
+    float interp_w = 1.0 / interp_inv_w;
 
-    vec3 bary = linear / vec3(v1.w, v2.w, v3.w);
-    return bary / (bary.x + bary.y + bary.z);
-}
+    ret.lambda = interp_w * (vec3(inv_w.x, 0.0, 0.0) + delta.x * ret.ddx + delta.y * ret.ddy);
 
-void compute_barycentric(vec4 v1, vec4 v2, vec4 v3, vec2 ndc, out vec3 linear, out vec3 perspective)
-{
-    vec2 p1 = v1.xy / v1.w;
-    vec2 p2 = v2.xy / v2.w;
-    vec2 p3 = v3.xy / v3.w;
+    ret.ddx *= 2.0 / win_size.x;
+    ret.ddy *= 2.0 / win_size.y;
 
-    vec2 e1 = p2 - p1;
-    vec2 e2 = p3 - p1;
-    vec2 ep = ndc - p1;
+    ddx_sum *= 2.0 / win_size.x;
+    ddy_sum *= 2.0 / win_size.y;
 
-    float det = e1.x * e2.y - e2.x * e1.y;
+    float w_ddx = 1.0 / (interp_inv_w + ddx_sum);
+    float w_ddy = 1.0 / (interp_inv_w + ddy_sum);
 
-    float u = (ep.x * e2.y - e2.x * ep.y) / det;
-    float v = (e1.x * ep.y - ep.x * e1.y) / det;
-
-    linear = vec3(1.0F - u - v, u, v);
-
-    vec3 bary = linear / vec3(v1.w, v2.w, v3.w);
-    perspective = bary / (bary.x + bary.y + bary.z);
+    vec3 num = ret.lambda * interp_inv_w;
+    ret.ddx = w_ddx * (num + ret.ddx) - ret.lambda;
+    ret.ddy = w_ddy * (num + ret.ddy) - ret.lambda;
+    return ret;
 }
 
 float wsum(float v1, float v2, float v3, vec3 factors)

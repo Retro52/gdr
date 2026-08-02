@@ -488,6 +488,7 @@ int app::instance::run(const int argc, char* argv[])
 
     pso_data pipelines;
     pipelines.load(m_renderer, bindless_textures_desc_set);
+    pso_watcher watcher(pipelines, m_renderer, bindless_textures_desc_set);
 
 #if !NO_EDITOR
     imgui_layer editor(m_window, m_renderer, pipelines);
@@ -579,6 +580,12 @@ int app::instance::run(const int argc, char* argv[])
 
     sun.get_component<transform_component>().rotation = glm::quat(glm::radians(argv_handler.read_vec3(
         "--sun_direction", glm::eulerAngles(sun.get_component<transform_component>().rotation))));
+
+    camera.get_component<transform_component>().rotation = glm::quat(glm::radians(argv_handler.read_vec3(
+        "--camera_direction", glm::eulerAngles(camera.get_component<transform_component>().rotation))));
+
+    camera.get_component<transform_component>().position =
+        argv_handler.read_vec3("--camera_position", camera.get_component<transform_component>().position);
 
     for (u32 i = 0; i < textures.size(); ++i)
     {
@@ -1781,6 +1788,8 @@ int app::instance::run(const int argc, char* argv[])
 
     csm.shutdown(m_renderer);
     envmap.shutdown(m_renderer);
+
+    watcher.shutdown();
     pipelines.shutdown(m_renderer);
 
     render::destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, depth_image);

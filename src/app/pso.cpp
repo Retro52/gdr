@@ -4,6 +4,24 @@
 #include <nlohmann/json.hpp>
 #include <tracy/Tracy.hpp>
 
+namespace
+{
+    constexpr fs::path kShadersBinDir = "../shaders/bin";
+
+    u64 get_last_write_time()
+    {
+        u64 result = 0;
+        for (auto it = std::filesystem::directory_iterator(kShadersBinDir.c_str());
+             it != std::filesystem::directory_iterator();
+             ++it)
+        {
+            result = cpp::max(result, static_cast<u64>(it->last_write_time().time_since_epoch().count()));
+        }
+
+        return result;
+    }
+}
+
 void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_descriptor_set& textures_set)
 {
     ZoneScoped;
@@ -16,7 +34,6 @@ void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_d
 
     nlohmann::json info = nlohmann::json::parse(data->get<char>(), data->get<char>() + data->size());
 
-    constexpr fs::path kShadersBinDir = "../shaders/bin";
     std::unordered_map<u32, render::vk_shader> cache;
     cpp::heap_array<render::vk_shader> compiled_shaders;
 
@@ -125,4 +142,41 @@ void app::pso_data::shutdown(const render::vk_renderer& renderer)
     {
         render::destroy_pipeline(renderer.get_context().device, pso);
     }
+}
+
+app::pso_watcher::pso_watcher(pso_data& pipelines, render::vk_renderer& renderer,
+                              const render::vk_descriptor_set& textures_set)
+    : m_pdata(pipelines)
+    , m_renderer(renderer)
+    , m_textures_set(textures_set)
+{
+    m_terminate = false;
+    m_worker    = std::thread(
+        [this]
+        {
+            this->m_last_write_time = get_last_write_time();
+            while (!m_terminate)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                if (m_terminate || this->m_last_write_time == get_last_write_time())
+                {
+                    continue;
+                }
+
+                this->m_renderer.schedule_delete(
+                    [&](VkDevice /* device */, VmaAllocator /* allocator */)
+                    {
+                        this->m_pdata.shutdown(this->m_renderer);
+                        this->m_pdata.load(this->m_renderer, this->m_textures_set);
+
+                        this->m_last_write_time = get_last_write_time();
+                    });
+            }
+        });
+}
+
+void app::pso_watcher::shutdown()
+{
+    m_terminate = true;
+    m_worker.join();
 }
