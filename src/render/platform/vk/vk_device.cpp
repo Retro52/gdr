@@ -1,6 +1,4 @@
-#if defined(__APPLE__)
 #define VK_ENABLE_BETA_EXTENSIONS
-#endif
 
 #include <assert2.hpp>
 #include <cpp/alg_constexpr.hpp>
