@@ -1,11 +1,23 @@
 # GPU Driven Renderer
 
+[Bistro scene](https://github.com/NVIDIA-RTX/RTXGI-Assets) as seen from the default camera and lit by
+[Day Sky HDRI](https://ambientcg.com/view?id=DaySkyHDRI066B) environment map, with a directional light rotation 
+modified to match the cubemap (`--sun_direction -111.432;89.726;-56.784`). 
 ![preview](.github/assets/preview.png "Bistro scene (by Amazon Lumberyard")
 
 C++20/Vulkan GPU-driven renderer focused on modern real-time rendering architecture.
 Implements visibility buffer rendering, GPU-side visibility culling, Hi-Z occlusion culling, indirect draw generation, 
 bindless-style resource access, textures support, and meshlet (cluster) rendering experiments 
 (meshlets occlusion culling, cone culling, etc.).
+
+Rendering features include:
+* GLTF models and materials loading, with metal-roughness (primary) and spec-gloss (lossy) PBR pipelines support. 
+Texture loader supports both DDS textures, with bundled mipmaps, and PNG/JPEG/WEBP images (via SDL_image library), but 
+with no automatic mipmaps generation. While masked geometry is somewhat supported, transparencies (i.e. blending, 
+KHR_materials_transmission, KHR_materials_ior, KHR_materials_volume) are not properly rendered.
+* Image-based PBR lighting by a single environment map + one directional light. Environment map is hackingly clamped to 
+max brightness of 10 to avoid double-sun lighting issues.
+* Directional light casts Cascaded Shadow Maps (4096x4096x4 cascades) with tight frustum fitting.
 
 ## Building
 
