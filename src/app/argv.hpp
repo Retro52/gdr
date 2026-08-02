@@ -79,7 +79,7 @@ namespace app
 
             return extract(name,
                            default_value,
-                           [](auto&& value)
+                           [&default_value](auto&& value)
                            {
                                glm::vec<N, T> result;
 
@@ -88,9 +88,13 @@ namespace app
                                for (int j = 0; j < N - 1; ++j)
                                {
                                    const u64 next = arg.find_next(';', offset);
-                                   result[j]      = std::atof(arg.substring(offset, next - offset - 1).c_str());
+                                   if (next == cpp::stack_string::npos)
+                                   {
+                                       return default_value;
+                                   }
 
-                                   offset = next + 1;
+                                   result[j] = std::atof(arg.substring(offset, next - offset - 1).c_str());
+                                   offset    = next + 1;
                                }
 
                                result[N - 1] = std::atof(arg.substring(offset, arg.length() - offset - 1).c_str());
