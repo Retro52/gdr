@@ -309,27 +309,19 @@ void main()
     vec2 vtp_r = to_ndc(px + ivec2(1, 0), image_size);
     vec2 vtp_d = to_ndc(px + ivec2(0, 1), image_size);
 
-    vec3 bary_linear;
-    vec3 bary_perspective;
-    compute_barycentric(vt0, vt1, vt2, vtp, bary_linear, bary_perspective);
-
-    vec3 bary_r = get_barycentric(vt0, vt1, vt2, vtp_r);
-    vec3 bary_d = get_barycentric(vt0, vt1, vt2, vtp_d);
+    BaryDeriv bary = calc_full_bary(vt0, vt1, vt2, vtp, vec2(image_size));
 
     vec3 normal;
     vec4 tangent;
-    weight_normal_tangent(i0, i1, i2, inst_quat, bary_perspective, normal, tangent);
+    weight_normal_tangent(i0, i1, i2, inst_quat, bary.lambda, normal, tangent);
 
     vec2 uv0 = vec2(vertices[i0].ux, vertices[i0].uy);
     vec2 uv1 = vec2(vertices[i1].ux, vertices[i1].uy);
     vec2 uv2 = vec2(vertices[i2].ux, vertices[i2].uy);
 
-    vec2 uv    = wsum(uv0, uv1, uv2, bary_perspective);
-    vec2 uv_r  = wsum(uv0, uv1, uv2, bary_r);
-    vec2 uv_d  = wsum(uv0, uv1, uv2, bary_d);
-
-    vec2 dfdx = uv_r - uv;
-    vec2 dfdy = uv_d - uv;
+    vec2 uv   = wsum(uv0, uv1, uv2, bary.lambda);
+    vec2 dfdx = wsum(uv0, uv1, uv2, bary.ddx);
+    vec2 dfdy = wsum(uv0, uv1, uv2, bary.ddy);
 
     uint albedo_idx = materials[material_id].albedo_idx;
     uint normal_idx = materials[material_id].normal_idx;
@@ -386,7 +378,7 @@ void main()
     vec4 met_roughness_factor = met_roughness_idx > 0 ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * mr_factor : mr_factor;
 #endif
 
-    vec3 view_pos = wsum(v0, v1, v2, bary_perspective);
+    vec3 view_pos = wsum(v0, v1, v2, bary.lambda);
 
     vec3 view = normalize(-view_pos);
     vec3 halfw = normalize(world.sun_direction + view);
@@ -456,7 +448,7 @@ void main()
         if (world.debug_mode == draw_debug_instance_id)     { color = hash_color(instance_id); }
         if (world.debug_mode == draw_debug_triangle_face)   { color = hash_color(uint(is_front_face)); }
         if (world.debug_mode == draw_debug_shadow)          { color = vec3(shadow_factor); }
-        if (world.debug_mode == draw_debug_shadow_cascades) { color = hash_color(get_shadow_cascade_index(view_depth) + 1); }
+        if (world.debug_mode == draw_debug_shadow_cascades) { color = mix(color, hash_color(view_depth >= shadow_cascades.max_range ? kMaxShadowCascades : get_shadow_cascade_index(view_depth)), 0.5F); }
         result = from_linear(vec4(color, 1.0F));
     }
 #endif

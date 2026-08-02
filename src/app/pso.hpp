@@ -6,6 +6,7 @@
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
 
+#include <thread>
 #include <unordered_map>
 
 namespace app
@@ -65,5 +66,24 @@ namespace app
         void shutdown(const render::vk_renderer& renderer);
 
         void destroy(const render::vk_renderer& renderer, pso_id id);
+    };
+
+    struct pso_watcher
+    {
+    private:
+        std::thread m_worker;
+        std::atomic_bool m_terminate;
+        u64 m_last_write_time;
+
+        pso_data& m_pdata;
+        render::vk_renderer& m_renderer;
+
+        const render::vk_descriptor_set& m_textures_set;
+
+    public:
+        pso_watcher(pso_data& pipelines, render::vk_renderer& renderer,
+                    const render::vk_descriptor_set& textures_set);
+
+        void shutdown();
     };
 }
