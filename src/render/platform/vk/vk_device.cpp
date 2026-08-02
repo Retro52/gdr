@@ -1,3 +1,7 @@
+#if defined(__APPLE__)
+#define VK_ENABLE_BETA_EXTENSIONS
+#endif
+
 #include <assert2.hpp>
 #include <cpp/alg_constexpr.hpp>
 #include <cpp/containers/hash_set.hpp>
@@ -655,7 +659,6 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
 
     VkPhysicalDeviceVulkan12Features vk12_features {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        .pNext = &vk13_features,
 #if !defined(__APPLE__)
         .drawIndirectCount = rendering_features.wanted(render::feature_flag::eDrawIndirect),
 #endif
@@ -673,7 +676,6 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
 
     VkPhysicalDeviceVulkan11Features vk11_features {
         .sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-        .pNext                              = &vk12_features,
         .storageBuffer16BitAccess           = rendering_features.wanted(render::feature_flag::e16BitTypes),
         .uniformAndStorageBuffer16BitAccess = rendering_features.wanted(render::feature_flag::e16BitTypes),
         .shaderDrawParameters               = rendering_features.wanted(render::feature_flag::eDrawIndirect),
@@ -681,7 +683,6 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
 
     VkPhysicalDeviceFeatures2 device_features {
         .sType    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext    = &vk11_features,
         .features = {
 #if !defined(__APPLE__)
                      .geometryShader = VK_TRUE,
@@ -717,6 +718,17 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
                          .taskShader = true,
                          .meshShader = true};
         prepend(&mesh_features);
+    }
+
+    VkPhysicalDevicePortabilitySubsetFeaturesKHR portability_features {};
+    if (rendering_features.wanted(render::feature_flag::ePortabilitySubset))
+    {
+        portability_features = {
+            .sType                     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR,
+            .mutableComparisonSamplers = true,
+        };
+
+        prepend(&portability_features);
     }
 
     return vkCreateDevice(phys_device, &device_create_info, nullptr, device);

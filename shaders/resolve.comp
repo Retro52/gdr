@@ -306,9 +306,6 @@ void main()
     vec4 vt1 = pc.vp * vec4(v1, 1.0F);
     vec4 vt2 = pc.vp * vec4(v2, 1.0F);
 
-    vec2 vtp_r = to_ndc(px + ivec2(1, 0), image_size);
-    vec2 vtp_d = to_ndc(px + ivec2(0, 1), image_size);
-
     BaryDeriv bary = calc_full_bary(vt0, vt1, vt2, vtp, vec2(image_size));
 
     vec3 normal;
