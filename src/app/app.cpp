@@ -476,6 +476,11 @@ int app::instance::run(const int argc, char* argv[])
                                                                   VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
                                                                   16.0F);
 
+    VkSampler shadow_alpha_sampler = *render::create_sampler(m_renderer.get_context().device,
+                                                             VK_FILTER_LINEAR,
+                                                             VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                                                             VK_SAMPLER_ADDRESS_MODE_REPEAT);
+
     VkSampler color_sampler = *render::create_sampler(m_renderer.get_context().device,
                                                       VK_FILTER_LINEAR,
                                                       VK_SAMPLER_MIPMAP_MODE_NEAREST,
@@ -920,9 +925,8 @@ int app::instance::run(const int argc, char* argv[])
         render::vk_descriptor_bindings bindings;
         bindings.bind_at(geometry_pool.vertex.buffer.buffer, shader_bindings::shadow_draw::kVertexBinding);
         bindings.bind_at(geometry_pool.materials.buffer.buffer, shader_bindings::shadow_draw::kMaterialBinding);
-        bindings.bind_at(
-            render::vk_descriptor_info(bindless_textures_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED),
-            shader_bindings::shadow_draw::kTextureBinding);
+        bindings.bind_at(render::vk_descriptor_info(shadow_alpha_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED),
+                         shader_bindings::shadow_draw::kTextureBinding);
         bindings.bind_at(geometry_pool.meshlets.buffer.buffer, shader_bindings::shadow_draw::kMeshletBinding);
         bindings.bind_at(geometry_pool.meshlets_payload.buffer.buffer,
                          shader_bindings::shadow_draw::kMeshletDataBinding);
@@ -1838,6 +1842,7 @@ int app::instance::run(const int argc, char* argv[])
 
     vkDestroySampler(m_renderer.get_context().device, color_sampler, nullptr);
     vkDestroySampler(m_renderer.get_context().device, depth_texture_sampler, nullptr);
+    vkDestroySampler(m_renderer.get_context().device, shadow_alpha_sampler, nullptr);
     vkDestroySampler(m_renderer.get_context().device, bindless_textures_sampler, nullptr);
     for (auto& texture : textures)
     {
