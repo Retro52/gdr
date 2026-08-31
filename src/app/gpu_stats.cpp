@@ -38,3 +38,14 @@ app::pipeline_statistics_data app::query_pipeline_statistics_data(VkDevice devic
 
     return result;
 }
+
+app::pipeline_statistics_data app::operator+(const pipeline_statistics_data& a, const pipeline_statistics_data& b)
+{
+    return {
+        a.input_assembly_vertices + b.input_assembly_vertices,
+        a.input_assembly_primitives + b.input_assembly_primitives,
+        a.vertex_shader_invocations + b.vertex_shader_invocations,
+        a.triangles_count + b.triangles_count,
+        a.fragment_shader_invocations + b.fragment_shader_invocations,
+    };
+}

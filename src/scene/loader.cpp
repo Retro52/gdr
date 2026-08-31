@@ -20,12 +20,13 @@
 #include <type_traits>
 #include <variant>
 
-#define CHECK(EXPR)                                                                  \
-    if (EXPR != cgltf_result_success)                                                \
-    {                                                                                \
-        LOG_WARNING("failed to read scene {}. failed expr: {}", path.c_str(), #EXPR) \
-        assert2m(false, #EXPR);                                                      \
-        return {};                                                                   \
+#define CHECK(EXPR)                                                                                             \
+    if (const auto result = EXPR; result != cgltf_result_success)                                               \
+    {                                                                                                           \
+        LOG_WARNING(                                                                                            \
+            "failed to read scene {} (ec: {}). failed expr: {}", path.c_str(), static_cast<u32>(result), #EXPR) \
+        assert2m(false, #EXPR);                                                                                 \
+        return {};                                                                                              \
     }
 
 namespace
