@@ -1,4 +1,4 @@
-name: CMake All Platforms Build
+name: Windows + Linux (Debug + Release) builds
 
 on:
   workflow_dispatch:
