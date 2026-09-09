@@ -1,0 +1,49 @@
+name: CMake All Platforms Build
+
+on:
+  workflow_dispatch:
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: latest
+          install_runtime: true
+          cache: true
+          stripdown: true
+
+      - name: Verify Vulkan headers (Windows)
+        shell: bash
+        run: |
+          test -f "$VULKAN_SDK/Include/vulkan/vk_platform.h" \
+            || { echo "Vulkan headers missing under $VULKAN_SDK"; ls -la "$VULKAN_SDK"; exit 1; }
+
+      - name: Set up MSVC environment (Windows)
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure CMake
+        run: cmake -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -G Ninja
+
+      - name: Build
+        run: cmake --build ${{ github.workspace }}/build --config ${{ env.BUILD_TYPE }} -j 4
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gdr-${{ runner.os }}-${{ env.BUILD_TYPE }}
+          path: |
+            build/gdr
+            build/gdr.exe
+            shaders/bin/
+            shaders/*.json
+          if-no-files-found: warn
