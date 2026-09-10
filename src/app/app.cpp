@@ -3,7 +3,6 @@
 #include <types.hpp>
 
 #include <app/app.hpp>
-#include <app/argv.hpp>
 #include <app/csm.hpp>
 #include <app/envmap.hpp>
 #include <app/gpu_stats.hpp>
@@ -23,6 +22,7 @@
 #include <imgui/imex.hpp>
 #include <imgui/imgui_layer.hpp>
 #include <imgui/imwidgets.hpp>
+#include <log.hpp>
 #include <render/debug/frustum_renderer.hpp>
 #include <render/platform/vk/vk_barrier.hpp>
 #include <render/platform/vk/vk_descriptor_set.hpp>
@@ -38,10 +38,9 @@
 #include <shaders/bindings/draw.h>
 #include <shaders/bindings/fill.h>
 #include <shaders/bindings/shadow_cull.h>
+#include <shaders/bindings/shadow_draw.h>
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
-
-#include "shaders/bindings/shadow_draw.h"
 
 #define NO_EDITOR     0
 #define NO_PERF_QUERY 0
@@ -320,9 +319,16 @@ static std::array<glm::mat4, shader_constants::kMaxShadowCascades> update_csm_bu
     return result;
 }
 
-render::vk_renderer create_vk_renderer(window& app_window)
+// dumb order of initialization issue here, but what can u do
+// this function was only supposed to actually create the renderer, but now it will also apply some CLI args
+static render::vk_renderer create_vk_renderer(window& app_window, const app::argv_handler& args)
 {
     ZoneScoped;
+
+    if (const auto ll = args.read_numeric("--log_level", -1); ll != -1)
+    {
+        logging::s_instance->set_log_level(static_cast<quill::LogLevel>(ll));
+    }
 
     constexpr auto features_table = render::rendering_features_table()
 #if !defined(NDEBUG)
@@ -346,6 +352,7 @@ render::vk_renderer create_vk_renderer(window& app_window)
         render::instance_desc {
                                .app_name        = "Vulkan renderer",
                                .app_version     = 1,
+                               .device_id_hint  = static_cast<u32>(args.read_numeric("--device_id", -1)),
                                .device_features = features_table,
                                },
         app_window,
@@ -353,17 +360,19 @@ render::vk_renderer create_vk_renderer(window& app_window)
     };
 }
 
-app::instance::instance()
-    : m_window("VK window", {1920, 960}, false)
+app::instance::instance(const int argc, char* argv[])
+    : m_args(argc, argv)
+    , m_window("VK window", {1920, 960}, false)
     , m_events_queue(m_window)
-    , m_renderer(create_vk_renderer(m_window))
+    , m_renderer(create_vk_renderer(m_window, m_args))
 {
 }
 
-int app::instance::run(const int argc, char* argv[])
+int app::instance::run()
 {
-    if (argc < 2)
+    if (m_args.argc() < 2)
     {
+        LOG_ERROR("No arguments specified, forgot to pass gltf scene?");
         return -1;
     }
 
@@ -516,10 +525,9 @@ int app::instance::run(const int argc, char* argv[])
     loader::scene_info scene_info;
     cpp::heap_array<render::vk_image> textures;
 
-    app::argv_handler argv_handler(argc, argv);
-    const int instance_count = argv_handler.read_numeric("--instances");
-    const int first_instance = argv_handler.get_positional_args_start();
-    auto env_map             = argv_handler.read_string<fs::path_string>("--envmap");
+    const int instance_count = m_args.read_numeric("--instances");
+    const int first_instance = m_args.get_positional_args_start();
+    auto env_map             = m_args.read_string<fs::path_string>("--skymap");
 
     assert2(instance_count == 0 || first_instance > 0);
 
@@ -528,9 +536,9 @@ int app::instance::run(const int argc, char* argv[])
     if (instance_count > 0 && first_instance > 0)
     {
         cpp::heap_array<mesh::raw_mesh> meshes;
-        for (int i = first_instance; i < argc; ++i)
+        for (int i = first_instance; i < m_args.argc(); ++i)
         {
-            auto ctx = loader::load_meshes(argv[i]);
+            auto ctx = loader::load_meshes(m_args.argv()[i]);
             if (!ctx)
             {
                 continue;
@@ -543,7 +551,8 @@ int app::instance::run(const int argc, char* argv[])
     }
     else
     {
-        scene_info = loader::load_scene(argv[first_instance], client_scene, m_renderer, geometry_pool, textures);
+        scene_info =
+            loader::load_scene(m_args.argv()[first_instance], client_scene, m_renderer, geometry_pool, textures);
     }
 
     entity camera = client_scene.empty();
@@ -583,14 +592,14 @@ int app::instance::run(const int argc, char* argv[])
         t.rotation = glm::quat(vec3(0, 1, 0));
     }
 
-    sun.get_component<transform_component>().rotation = glm::quat(glm::radians(argv_handler.read_vec3(
-        "--sun_direction", glm::eulerAngles(sun.get_component<transform_component>().rotation))));
+    sun.get_component<transform_component>().rotation = glm::quat(glm::radians(
+        m_args.read_vec3("--sun_direction", glm::eulerAngles(sun.get_component<transform_component>().rotation))));
 
-    camera.get_component<transform_component>().rotation = glm::quat(glm::radians(argv_handler.read_vec3(
+    camera.get_component<transform_component>().rotation = glm::quat(glm::radians(m_args.read_vec3(
         "--camera_direction", glm::eulerAngles(camera.get_component<transform_component>().rotation))));
 
     camera.get_component<transform_component>().position =
-        argv_handler.read_vec3("--camera_position", camera.get_component<transform_component>().position);
+        m_args.read_vec3("--camera_position", camera.get_component<transform_component>().position);
 
     for (u32 i = 0; i < textures.size(); ++i)
     {
@@ -619,7 +628,6 @@ int app::instance::run(const int argc, char* argv[])
     render::vk_query timestamp_query_pool =
         *render::create_query_pool(m_renderer.get_context().device, kQueryPoolCount, VK_QUERY_TYPE_TIMESTAMP);
 
-    u32 pipeline_statistics_query_index = 0;
     render::vk_query pipeline_statistics_query;
 #if !NO_PERF_QUERY
     if (pipeline_stats_supported)
@@ -844,7 +852,6 @@ int app::instance::run(const int argc, char* argv[])
                         VK_ATTACHMENT_LOAD_OP_LOAD,
                         VK_ATTACHMENT_STORE_OP_STORE,
                         m_renderer.get_scissor());
-        pipeline_statistics_query.begin(cmd, pipeline_statistics_query_index, 0);
 
         render::vk_descriptor_bindings bindings;
         bindings.bind_at(geometry_pool.vertex.buffer.buffer, shader_bindings::draw::kVertexBinding);
@@ -881,6 +888,7 @@ int app::instance::run(const int argc, char* argv[])
             pipeline.push_descriptor_set(cmd, bindings.get());
             vkCmdBindIndexBuffer(cmd, indexed_indices_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
+            pipeline_statistics_query.begin_next(cmd);
 #if defined(__APPLE__)
             vkCmdDrawIndexedIndirect(cmd,
                                      indexed_draw_indirect_buffer.buffer,
@@ -896,9 +904,9 @@ int app::instance::run(const int argc, char* argv[])
                                           scene_info.mat_offset_table[material_class],
                                           sizeof(shader_types::DrawIndexedIndirect));
 #endif
+            pipeline_statistics_query.end_and_advance(cmd);
         }
 
-        pipeline_statistics_query.end(cmd, pipeline_statistics_query_index++);
         vkCmdEndRendering(cmd);
     };
 
@@ -1057,8 +1065,6 @@ int app::instance::run(const int argc, char* argv[])
                 TRACY_ONLY(TracyVkCollect(m_renderer.get_frame_tracy_context(), buffer));
 
                 timestamp_query_pool.reset(buffer, 0, kQueryPoolCount);
-
-                pipeline_statistics_query_index = 0;
                 pipeline_statistics_query.reset(buffer, 0, kQueryPoolCount);
 
                 vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool.handle, 0);
@@ -1739,7 +1745,7 @@ int app::instance::run(const int argc, char* argv[])
 
                 u32 tris_total_reported = 0;
                 pipeline_statistics_data.clear();
-                for (u32 i = 0; i < pipeline_statistics_query_index; ++i)
+                for (u32 i = 0; i < pipeline_statistics_query.index; ++i)
                 {
                     pipeline_statistics_data.emplace_back(
                         query_pipeline_statistics_data(m_renderer.get_context().device, pipeline_statistics_query, i));
