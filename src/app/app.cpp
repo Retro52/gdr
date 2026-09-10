@@ -372,6 +372,7 @@ int app::instance::run()
 {
     if (m_args.argc() < 2)
     {
+        LOG_ERROR("No arguments specified, forgot to pass gltf scene?");
         return -1;
     }
 
@@ -627,7 +628,6 @@ int app::instance::run()
     render::vk_query timestamp_query_pool =
         *render::create_query_pool(m_renderer.get_context().device, kQueryPoolCount, VK_QUERY_TYPE_TIMESTAMP);
 
-    u32 pipeline_statistics_query_index = 0;
     render::vk_query pipeline_statistics_query;
 #if !NO_PERF_QUERY
     if (pipeline_stats_supported)
@@ -852,7 +852,6 @@ int app::instance::run()
                         VK_ATTACHMENT_LOAD_OP_LOAD,
                         VK_ATTACHMENT_STORE_OP_STORE,
                         m_renderer.get_scissor());
-        pipeline_statistics_query.begin(cmd, pipeline_statistics_query_index, 0);
 
         render::vk_descriptor_bindings bindings;
         bindings.bind_at(geometry_pool.vertex.buffer.buffer, shader_bindings::draw::kVertexBinding);
@@ -889,6 +888,7 @@ int app::instance::run()
             pipeline.push_descriptor_set(cmd, bindings.get());
             vkCmdBindIndexBuffer(cmd, indexed_indices_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
+            pipeline_statistics_query.begin_next(cmd);
 #if defined(__APPLE__)
             vkCmdDrawIndexedIndirect(cmd,
                                      indexed_draw_indirect_buffer.buffer,
@@ -904,9 +904,9 @@ int app::instance::run()
                                           scene_info.mat_offset_table[material_class],
                                           sizeof(shader_types::DrawIndexedIndirect));
 #endif
+            pipeline_statistics_query.end_and_advance(cmd);
         }
 
-        pipeline_statistics_query.end(cmd, pipeline_statistics_query_index++);
         vkCmdEndRendering(cmd);
     };
 
@@ -1065,8 +1065,6 @@ int app::instance::run()
                 TRACY_ONLY(TracyVkCollect(m_renderer.get_frame_tracy_context(), buffer));
 
                 timestamp_query_pool.reset(buffer, 0, kQueryPoolCount);
-
-                pipeline_statistics_query_index = 0;
                 pipeline_statistics_query.reset(buffer, 0, kQueryPoolCount);
 
                 vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool.handle, 0);
@@ -1747,7 +1745,7 @@ int app::instance::run()
 
                 u32 tris_total_reported = 0;
                 pipeline_statistics_data.clear();
-                for (u32 i = 0; i < pipeline_statistics_query_index; ++i)
+                for (u32 i = 0; i < pipeline_statistics_query.index; ++i)
                 {
                     pipeline_statistics_data.emplace_back(
                         query_pipeline_statistics_data(m_renderer.get_context().device, pipeline_statistics_query, i));
