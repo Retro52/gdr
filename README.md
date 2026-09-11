@@ -57,4 +57,4 @@ but they are untested due to lack of access to such hardware.
 
 ## License
 
-MIT License. Portions of the fiber platform code (`src/job/fibers/platform/posix/`) are derived from [Google's Marl](https://github.com/google/marl) and are licensed under Apache-2.0. See [third party notice](THIRD_PARTY_NOTICES) for details.
+MIT License. Portions of the fiber platform code (`src/job/fibers/platform/posix/`) are derived from [Google's Marl](https://github.com/google/marl) and are licensed under Apache-2.0. See [third party notice](.THIRD_PARTY_NOTICES/THIRD_PARTY_NOTICES) for details.

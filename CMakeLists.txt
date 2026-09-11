@@ -12,60 +12,10 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 add_subdirectory(vendors)
 add_subdirectory(shaders)
 
-file(GLOB_RECURSE SOURCES
-        "${CMAKE_SOURCE_DIR}/src/*.cpp"
-        "${CMAKE_SOURCE_DIR}/src/*.hpp"
-        "${CMAKE_SOURCE_DIR}/src/*.c"
-        "${CMAKE_SOURCE_DIR}/src/*.cc"
-)
+add_subdirectory(gdrlib)
 
-if (UNIX)
-    enable_language(ASM)
-    file(GLOB_RECURSE ASM_SOURCES "${CMAKE_SOURCE_DIR}/src/*.S")
-    list(APPEND SOURCES ${ASM_SOURCES})
-endif ()
-
-include(cmake/codegen/codegen.cmake)
-set(CODEGEN_ROOT "${CMAKE_BINARY_DIR}/.codegen")
-run_codegen(ROOT "${CODEGEN_ROOT}" SOURCES ${SOURCES})
-
-add_executable(${PROJECT_NAME} ${SOURCES} ${SHADERS} ${CODEGEN_GENERATED_HEADERS})
-add_dependencies(${PROJECT_NAME} shaders)
-add_dependencies(${PROJECT_NAME} run_codegen)
-
-if (APPLE)
-    find_package(Vulkan REQUIRED)
-    target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan)
-endif ()
-
-target_link_libraries(${PROJECT_NAME} PRIVATE
-        shaders
-
-        glm::glm
-        EnTT::EnTT
-        volk::volk
-        quill::quill
-        Tracy::TracyClient
-        SDL3_image::SDL3_image
-        SPIRV-Headers::SPIRV-Headers
-        GPUOpen::VulkanMemoryAllocator
-
-        imgui
-        cgltf
-        ddspp
-        meshoptimizer
-        nlohmann_json
-)
-
-target_compile_definitions(${PROJECT_NAME} PRIVATE
-        TRACY_FIBERS
-        VK_NO_PROTOTYPES
-)
-
-target_include_directories(${PROJECT_NAME} PUBLIC
-        "${PROJECT_SOURCE_DIR}/src"
-        "${CODEGEN_ROOT}"
-)
+add_subdirectory(demo)
+add_subdirectory(rhi_test)
 
 add_custom_target(clean_build
         COMMAND ${CMAKE_COMMAND} -E echo "Removing ${CMAKE_BINARY_DIR}/*.exe..."
