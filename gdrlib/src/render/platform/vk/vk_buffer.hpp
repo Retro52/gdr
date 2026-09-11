@@ -8,17 +8,17 @@ namespace render
 {
     struct vk_buffer
     {
-        u64 size {0};
-        VkBuffer buffer {VK_NULL_HANDLE};
-        VmaAllocation allocation {VK_NULL_HANDLE};
+        u64 size                 = 0;
+        VkBuffer buffer          = VK_NULL_HANDLE;
+        VmaAllocation allocation = VK_NULL_HANDLE;
     };
 
     struct vk_mapped_buffer
     {
-        u64 size {0};
-        void* mapped {nullptr};
-        VkBuffer buffer {VK_NULL_HANDLE};
-        VmaAllocation allocation {VK_NULL_HANDLE};
+        u64 size                 = 0;
+        void* mapped             = nullptr;
+        VkBuffer buffer          = VK_NULL_HANDLE;
+        VmaAllocation allocation = VK_NULL_HANDLE;
     };
 
     void destroy_buffer(VmaAllocator allocator, vk_buffer& buffer);

@@ -1216,7 +1216,7 @@ int app::instance::run()
                     buffer, render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
                 render::transition_image(buffer,
-                                         m_renderer.get_frame_swapchain_image().image,
+                                         m_renderer.get_frame_swapchain_image().image.image,
                                          VK_IMAGE_LAYOUT_UNDEFINED,
                                          VK_IMAGE_LAYOUT_GENERAL);
 

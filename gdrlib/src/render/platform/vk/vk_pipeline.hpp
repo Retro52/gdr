@@ -74,7 +74,7 @@ namespace render
             }
         };
 
-        VkShaderModule module {VK_NULL_HANDLE};
+        VkShaderModule module = VK_NULL_HANDLE;
         shader_meta meta;
 
     public:
@@ -85,13 +85,13 @@ namespace render
 
     struct vk_pipeline
     {
-        VkPipeline m_pipeline {VK_NULL_HANDLE};
-        VkPipelineLayout m_pipeline_layout {VK_NULL_HANDLE};
-        VkDescriptorSetLayout m_desc_set_layout {VK_NULL_HANDLE};
-        VkDescriptorUpdateTemplate m_descriptor_update_template {VK_NULL_HANDLE};
+        VkPipeline m_pipeline                                   = VK_NULL_HANDLE;
+        VkPipelineLayout m_pipeline_layout                      = VK_NULL_HANDLE;
+        VkDescriptorSetLayout m_desc_set_layout                 = VK_NULL_HANDLE;
+        VkDescriptorUpdateTemplate m_descriptor_update_template = VK_NULL_HANDLE;
 
-        VkPipelineBindPoint m_pipeline_bind_point {VK_PIPELINE_BIND_POINT_GRAPHICS};
-        VkShaderStageFlags m_push_constant_stages {VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM};
+        VkPipelineBindPoint m_pipeline_bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        VkShaderStageFlags m_push_constant_stages = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
         u32 m_push_constants_max_size;
         u32 work_group_size[3] {};
 
