@@ -17,6 +17,17 @@ render::rhi::rhi render::rhi::create_for_vk()
         .create_command_buffer  = vk_create_command_buffer,
         .destroy_command_buffer = vk_destroy_command_buffer,
 
+        .create_bindless_set  = vk_create_bindless_set,
+        .destroy_bindless_set = vk_destroy_bindless_set,
+
+        .create_shader  = vk_create_shader,
+        .destroy_shader = vk_destroy_shader,
+
+        .create_compute_pso  = vk_create_compute_pso,
+        .create_graphics_pso = vk_create_graphics_pso,
+        .destroy_pso         = vk_destroy_pso,
+
+        .query_shader_stage           = vk_query_shader_stage,
         .query_swapchain_images_count = vk_query_swapchain_images_count,
         .query_current_frame_index    = vk_query_current_frame_index,
 

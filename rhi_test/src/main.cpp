@@ -4,6 +4,7 @@
 #include <cpp/containers/heap_array.hpp>
 #include <events.hpp>
 #include <log.hpp>
+#include <pso.hpp>
 #include <render/rhi.hpp>
 #include <window.hpp>
 
@@ -145,6 +146,16 @@ int main(const int argc, char* argv[])
         LOG_ERROR("failed to query graphics or present queues, required for proper rendering");
         return 1;
     }
+
+    auto textures_set = rhi.create_bindless_set(*context, 65536);
+    if (!textures_set)
+    {
+        LOG_ERROR("failed to create bindless textures set");
+        return 1;
+    }
+
+    pso_data pipelines;
+    pipelines.load(rhi, *context, *textures_set);
 
     bool exit = false;
     register_exit_callbacks(events, exit);

@@ -80,7 +80,7 @@ namespace render
     public:
         static shader_meta parse_spirv(const bytes& spv);
 
-        static result<vk_shader> load(const vk_renderer& renderer, const fs::path& path);
+        static result<vk_shader> load(VkDevice device, const fs::path& path);
     };
 
     struct vk_pipeline
@@ -95,12 +95,12 @@ namespace render
         u32 m_push_constants_max_size;
         u32 work_group_size[3] {};
 
-        static result<vk_pipeline> create_compute(const vk_renderer& renderer, const vk_shader& shader,
+        static result<vk_pipeline> create_compute(VkDevice device, const vk_shader& shader,
                                                   const vk_descriptor_set* desc_set = nullptr, u32 desc_set_count = 0);
 
-        static result<vk_pipeline> create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
-                                                   u32 shaders_count, const vk_descriptor_set* desc_set = nullptr,
-                                                   u32 desc_set_count            = 0,
+        static result<vk_pipeline> create_graphics(VkDevice device, const vk_shader* shaders, u32 shaders_count,
+                                                   VkFormat default_color_format, VkFormat default_depth_format,
+                                                   const vk_descriptor_set* desc_set = nullptr, u32 desc_set_count = 0,
                                                    const nlohmann::json& options = nlohmann::json());
 
         void bind(VkCommandBuffer command_buffer) const;
@@ -126,7 +126,7 @@ namespace render
         }
     };
 
-    void destroy_shader(VkDevice device, vk_shader& shader);
+    void vk_destroy_shader(VkDevice device, vk_shader& shader);
 
-    void destroy_pipeline(VkDevice device, vk_pipeline& pso);
+    void vk_destroy_pipeline(VkDevice device, vk_pipeline& pso);
 }
