@@ -1,8 +1,10 @@
 #include <volk.h>
 
 #include <render/platform/vk/vk_command_buffer.hpp>
+#include <render/platform/vk/vk_descriptor_set.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
+#include <render/platform/vk/vk_pipeline.hpp>
 #include <render/rhivk.hpp>
 
 template<typename T, typename H>
@@ -20,16 +22,17 @@ static T vkobj_from_handle(H&& handle)
 }
 
 template<typename T>
-static T* create(T& handle)
+static u64 create(T& handle)
 {
     ZoneScoped;
-    return new T(std::move(handle));
+    return reinterpret_cast<u64>(new T(std::move(handle)));
 }
 
-template<typename T>
-static void erase(T&& data)
+template<typename T, typename H>
+static void erase(T* storage, H&& data)
 {
     ZoneScoped;
+    delete storage;
     memset(&data, 0, sizeof(data));
 }
 
@@ -77,7 +80,7 @@ auto render::rhi::vk_create_context(const window& window, const instance_desc& d
         return error(ctx.message);
     }
 
-    return context {.id = reinterpret_cast<u64>(create(*ctx))};
+    return context {.id = create(*ctx)};
 }
 
 void render::rhi::vk_destroy_context(context& context)
@@ -86,13 +89,11 @@ void render::rhi::vk_destroy_context(context& context)
     if (auto* ctx = cast_from_handle<render::vk_context>(context))
     {
         render::vk_destroy_context(*ctx);
-        erase(context);
-
-        delete ctx;
+        erase(ctx, context);
     }
 }
 
-auto render::rhi::vk_create_swapchain(const context& context, const create_swapchain_info& desc) -> result<swapchain>
+auto render::rhi::vk_create_swapchain(context context, const create_swapchain_info& desc) -> result<swapchain>
 {
     ZoneScoped;
     auto* ctx = cast_from_handle<render::vk_context>(context);
@@ -115,10 +116,10 @@ auto render::rhi::vk_create_swapchain(const context& context, const create_swapc
     rhi_sc_data.sync_objects = vk_rhi_create_sc_sync(ctx->device, *sc);
     rhi_sc_data.root         = std::move(*sc);
 
-    return swapchain {.id = reinterpret_cast<u64>(create(rhi_sc_data))};
+    return swapchain {.id = create(rhi_sc_data)};
 }
 
-void render::rhi::vk_destroy_swapchain(const context& context, swapchain& swapchain)
+void render::rhi::vk_destroy_swapchain(context context, swapchain& swapchain)
 {
     ZoneScoped;
     const auto* ctx = cast_from_handle<render::vk_context>(context);
@@ -133,11 +134,11 @@ void render::rhi::vk_destroy_swapchain(const context& context, swapchain& swapch
         }
 
         render::vk_destroy_swapchain(*ctx, sc->root);
-        erase(sc);
+        erase(sc, swapchain);
     }
 }
 
-auto render::rhi::vk_create_command_buffer(const context& context, queue_kind queue_kind) -> result<command_buffer>
+auto render::rhi::vk_create_command_buffer(context context, queue_kind queue_kind) -> result<command_buffer>
 {
     ZoneScoped;
     auto* ctx = cast_from_handle<render::vk_context>(context);
@@ -149,13 +150,13 @@ auto render::rhi::vk_create_command_buffer(const context& context, queue_kind qu
     auto cmd = render::vk_create_command_buffer(ctx->device, ctx->queues[static_cast<u32>(queue_kind)].family);
     if (cmd)
     {
-        return command_buffer {.id = reinterpret_cast<u64>(create(*cmd))};
+        return command_buffer {.id = create(*cmd)};
     }
 
     return error(cmd.message);
 }
 
-void render::rhi::vk_destroy_command_buffer(const context& context, command_buffer& cmd)
+void render::rhi::vk_destroy_command_buffer(context context, command_buffer& cmd)
 {
     ZoneScoped;
     const auto* ctx = cast_from_handle<render::vk_context>(context);
@@ -164,11 +165,178 @@ void render::rhi::vk_destroy_command_buffer(const context& context, command_buff
     if (ctx && vkcmd)
     {
         render::vk_destroy_command_buffer(ctx->device, *vkcmd);
-        erase(cmd);
+        erase(vkcmd, cmd);
     }
 }
 
-auto render::rhi::vk_query_swapchain_images_count(const swapchain& swapchain) -> result<u32>
+auto render::rhi::vk_create_bindless_set(context context, u32 resource_count) -> result<bindless_set>
+{
+    const auto* ctx = cast_from_handle<render::vk_context>(context);
+    if (!ctx)
+    {
+        return error("failed to access the context");
+    }
+
+    auto set = render::vk_create_bindless_textures_set(ctx->device, resource_count);
+    if (set)
+    {
+        return bindless_set {.id = create(*set)};
+    }
+
+    return error(set.message);
+}
+
+void render::rhi::vk_destroy_bindless_set(context context, bindless_set& set)
+{
+    const auto* ctx = cast_from_handle<render::vk_context>(context);
+    auto* vkset     = cast_from_handle<render::vk_descriptor_set>(set);
+
+    if (ctx && vkset)
+    {
+        render::vk_destroy_descriptor_set(ctx->device, *vkset);
+        erase(vkset, set);
+    }
+}
+
+auto render::rhi::vk_create_shader(context context, const fs::path& path) -> result<shader>
+{
+    const auto* ctx = cast_from_handle<render::vk_context>(context);
+    if (!ctx)
+    {
+        return error("failed to access the context");
+    }
+
+    auto vksdr = render::vk_shader::load(ctx->device, path);
+    if (vksdr)
+    {
+        return shader {.id = create(*vksdr)};
+    }
+
+    return error(vksdr.message);
+}
+
+void render::rhi::vk_destroy_shader(context context, shader& shader)
+{
+    const auto* ctx = cast_from_handle<render::vk_context>(context);
+    auto* vksdr     = cast_from_handle<render::vk_shader>(shader);
+
+    if (ctx && vksdr)
+    {
+        render::vk_destroy_shader(ctx->device, *vksdr);
+        erase(vksdr, shader);
+    }
+}
+
+auto render::rhi::vk_create_compute_pso(context context, shader shader, std::span<const bindless_set> sets)
+    -> result<pipeline>
+{
+    const auto* ctx   = cast_from_handle<render::vk_context>(context);
+    const auto* vksdr = cast_from_handle<render::vk_shader>(shader);
+    if (!ctx || !vksdr)
+    {
+        return error("failed to access the context or the shader");
+    }
+
+    vk_descriptor_set vk_desc_sets[16];
+
+    assert2(sets.size() <= COUNT_OF(vk_desc_sets));
+    for (u32 i = 0; i < cpp::min(sets.size(), COUNT_OF(vk_desc_sets)); i++)
+    {
+        auto* vkset = cast_from_handle<vk_descriptor_set>(sets[i]);
+        if (!vkset)
+        {
+            return error("failed to access the descriptor set");
+        }
+
+        vk_desc_sets[i] = *vkset;
+    }
+
+    auto vkpso = render::vk_pipeline::create_compute(ctx->device, *vksdr, vk_desc_sets, sets.size());
+    if (vkpso)
+    {
+        return pipeline {.id = create(*vkpso)};
+    }
+
+    return error(vkpso.message);
+}
+
+auto render::rhi::vk_create_graphics_pso(context context, std::span<const shader> shaders,
+                                         const std::span<const bindless_set> sets, const nlohmann::json& options)
+    -> result<pipeline>
+{
+    const auto* ctx = cast_from_handle<render::vk_context>(context);
+    if (!ctx)
+    {
+        return error("failed to access the context");
+    }
+
+    vk_descriptor_set vk_desc_sets[16];
+    assert2(sets.size() <= COUNT_OF(vk_desc_sets));
+
+    for (u32 i = 0; i < cpp::min(sets.size(), COUNT_OF(vk_desc_sets)); i++)
+    {
+        auto* vkset = cast_from_handle<vk_descriptor_set>(sets[i]);
+        if (!vkset)
+        {
+            return error("failed to access the descriptor set");
+        }
+
+        vk_desc_sets[i] = *vkset;
+    }
+
+    vk_shader vk_shaders[16];
+    assert2(shaders.size() <= COUNT_OF(vk_shaders));
+
+    for (u32 i = 0; i < cpp::min(shaders.size(), COUNT_OF(vk_shaders)); i++)
+    {
+        auto* vkset = cast_from_handle<vk_shader>(shaders[i]);
+        if (!vkset)
+        {
+            return error("failed to access the shader");
+        }
+
+        vk_shaders[i] = *vkset;
+    }
+
+    auto vkpso = render::vk_pipeline::create_graphics(ctx->device,
+                                                      vk_shaders,
+                                                      shaders.size(),
+                                                      VK_FORMAT_UNDEFINED,
+                                                      VK_FORMAT_UNDEFINED,
+                                                      vk_desc_sets,
+                                                      sets.size(),
+                                                      options);
+    if (vkpso)
+    {
+        return pipeline {.id = create(*vkpso)};
+    }
+
+    return error(vkpso.message);
+}
+
+void render::rhi::vk_destroy_pso(context context, pipeline& pso)
+{
+    const auto* ctx = cast_from_handle<render::vk_context>(context);
+    auto* vkpso     = cast_from_handle<render::vk_pipeline>(pso);
+
+    if (ctx && vkpso)
+    {
+        render::vk_destroy_pipeline(ctx->device, *vkpso);
+        erase(vkpso, pso);
+    }
+}
+
+auto render::rhi::vk_query_shader_stage(shader shader) -> result<VkShaderStageFlagBits>
+{
+    if (auto* vksdr = cast_from_handle<vk_shader>(shader))
+    {
+        return vksdr->meta.stage;
+    }
+
+    return error("failed to access the shader");
+}
+
+auto render::rhi::vk_query_swapchain_images_count(swapchain swapchain) -> result<u32>
 {
     if (auto* sc = cast_from_handle<vk_rhi_swaphain_data>(swapchain))
     {
@@ -178,7 +346,7 @@ auto render::rhi::vk_query_swapchain_images_count(const swapchain& swapchain) ->
     return error("failed to access the swapchain");
 }
 
-auto render::rhi::vk_query_current_frame_index(const swapchain& swapchain) -> result<u32>
+auto render::rhi::vk_query_current_frame_index(swapchain swapchain) -> result<u32>
 {
     if (auto* sc = cast_from_handle<vk_rhi_swaphain_data>(swapchain))
     {
@@ -188,7 +356,7 @@ auto render::rhi::vk_query_current_frame_index(const swapchain& swapchain) -> re
     return error("failed to access the swapchain");
 }
 
-auto render::rhi::vk_query_queue(const context& context, queue_kind kind) -> result<queue>
+auto render::rhi::vk_query_queue(context context, queue_kind kind) -> result<queue>
 {
     ZoneScoped;
     if (auto* ctx = cast_from_handle<render::vk_context>(context))
@@ -199,7 +367,7 @@ auto render::rhi::vk_query_queue(const context& context, queue_kind kind) -> res
     return error("failed to access the context");
 }
 
-auto render::rhi::vk_query_device(const context& context) -> result<device>
+auto render::rhi::vk_query_device(context context) -> result<device>
 {
     ZoneScoped;
     if (auto* ctx = cast_from_handle<render::vk_context>(context))
@@ -210,7 +378,7 @@ auto render::rhi::vk_query_device(const context& context) -> result<device>
     return error("failed to access the context");
 }
 
-auto render::rhi::vk_query_physical_device(const context& context) -> result<physical_device>
+auto render::rhi::vk_query_physical_device(context context) -> result<physical_device>
 {
     ZoneScoped;
     if (auto* ctx = cast_from_handle<render::vk_context>(context))
@@ -221,7 +389,7 @@ auto render::rhi::vk_query_physical_device(const context& context) -> result<phy
     return error("failed to access the context");
 }
 
-void render::rhi::vk_device_wait_idle(const context& context)
+void render::rhi::vk_device_wait_idle(context context)
 {
     if (auto* ctx = cast_from_handle<render::vk_context>(context))
     {
@@ -229,7 +397,7 @@ void render::rhi::vk_device_wait_idle(const context& context)
     }
 }
 
-auto render::rhi::vk_acquire_next_swapchain_image(const context& context, swapchain& swapchain) -> result<image>
+auto render::rhi::vk_acquire_next_swapchain_image(context context, swapchain swapchain) -> result<image>
 {
     ZoneScoped;
     const auto* ctx = cast_from_handle<render::vk_context>(context);
@@ -264,7 +432,7 @@ auto render::rhi::vk_acquire_next_swapchain_image(const context& context, swapch
     }
 }
 
-void render::rhi::vk_cmd_begin_recording(command_buffer& cmd)
+void render::rhi::vk_cmd_begin_recording(command_buffer cmd)
 {
     ZoneScoped;
     if (auto* vkcmd = cast_from_handle<render::vk_command_buffer>(cmd))
@@ -275,7 +443,7 @@ void render::rhi::vk_cmd_begin_recording(command_buffer& cmd)
     }
 }
 
-void render::rhi::vk_cmd_end_recording(command_buffer& cmd)
+void render::rhi::vk_cmd_end_recording(command_buffer cmd)
 {
     ZoneScoped;
     if (auto* vkcmd = cast_from_handle<render::vk_command_buffer>(cmd))
@@ -284,7 +452,7 @@ void render::rhi::vk_cmd_end_recording(command_buffer& cmd)
     }
 }
 
-void render::rhi::vk_cmd_transition_image(command_buffer& cmd, image& dst, image_layout dst_layout)
+void render::rhi::vk_cmd_transition_image(command_buffer cmd, image dst, image_layout dst_layout)
 {
     ZoneScoped;
     auto* vkcmd = cast_from_handle<render::vk_command_buffer>(cmd);
@@ -300,7 +468,7 @@ void render::rhi::vk_cmd_transition_image(command_buffer& cmd, image& dst, image
     vkimg->layout = vkdst;
 }
 
-void render::rhi::vk_cmd_present_image(command_buffer& cmd, swapchain& swapchain, queue& submit, queue& present)
+void render::rhi::vk_cmd_present_image(command_buffer cmd, swapchain swapchain, queue submit, queue present)
 {
     ZoneScoped;
     auto* vkcmd = cast_from_handle<render::vk_command_buffer>(cmd);
