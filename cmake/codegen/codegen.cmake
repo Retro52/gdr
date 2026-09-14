@@ -1,5 +1,3 @@
-include(cmake/py_venv.cmake)
-
 function(run_codegen)
     cmake_parse_arguments(RC_ARGS "" "ROOT" "SOURCES" "${ARGN}")
 
@@ -23,7 +21,7 @@ function(run_codegen)
     file(COPY_FILE "${CMAKE_SOURCE_DIR}/cmake/codegen/common.hpp" "${RC_ARGS_ROOT}/codegen/common.hpp")
 
     foreach (SOURCE ${RC_ARGS_SOURCES})
-        string(REPLACE "${CMAKE_SOURCE_DIR}" "" SOURCE_REL "${SOURCE}")
+        string(REPLACE "${PROJECT_SOURCE_DIR}" "" SOURCE_REL "${SOURCE}")
         string(REGEX REPLACE "^[\/|\\]src[\/|\\]" "" SOURCE_REL "${SOURCE_REL}")
 
         cmake_path(GET SOURCE_REL STEM SOURCE_STEM)
