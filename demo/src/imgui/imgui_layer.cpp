@@ -27,19 +27,19 @@ imgui_layer::imgui_layer(const window& window, const render::vk_renderer& render
     auto& context   = renderer.get_context();
     auto& swapchain = renderer.get_swapchain();
 
-    init_info.Instance                                     = context.instance;
-    init_info.PhysicalDevice                               = context.physical_device;
-    init_info.Device                                       = context.device;
-    init_info.QueueFamily                                  = context.queues[render::queue_kind::eGfx].family;
-    init_info.Queue                                        = context.queues[render::queue_kind::eGfx].queue;
-    init_info.PipelineCache                                = VK_NULL_HANDLE;
-    init_info.UseDynamicRendering                          = true;
-    init_info.MinAllocationSize                            = 1024 * 1024;
-    init_info.DescriptorPool                               = VK_NULL_HANDLE;
-    init_info.MinImageCount                                = 2;
-    init_info.ImageCount                                   = renderer.get_frames_in_flight();
-    init_info.DescriptorPoolSize                           = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE;
-    init_info.Allocator                                    = nullptr;
+    init_info.Instance            = context.instance;
+    init_info.PhysicalDevice      = context.physical_device;
+    init_info.Device              = context.device;
+    init_info.QueueFamily         = context.queues[static_cast<u32>(render::rhi::queue_kind::eGfx)].family;
+    init_info.Queue               = context.queues[static_cast<u32>(render::rhi::queue_kind::eGfx)].queue;
+    init_info.PipelineCache       = VK_NULL_HANDLE;
+    init_info.UseDynamicRendering = true;
+    init_info.MinAllocationSize   = 1024 * 1024;
+    init_info.DescriptorPool      = VK_NULL_HANDLE;
+    init_info.MinImageCount       = 2;
+    init_info.ImageCount          = renderer.get_frames_in_flight();
+    init_info.DescriptorPoolSize  = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE;
+    init_info.Allocator           = nullptr;
     init_info.PipelineInfoMain.PipelineRenderingCreateInfo = {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
         .pNext                   = nullptr,
@@ -103,7 +103,7 @@ void imgui_layer::end_frame(const render::vk_renderer& renderer)
 {
     VkRenderingAttachmentInfo color_attachment_info {
         .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView   = renderer.get_frame_swapchain_image().image_view,
+        .imageView   = renderer.get_frame_swapchain_image().image.view,
         .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
         .loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD,
         .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,

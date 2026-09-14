@@ -52,7 +52,7 @@ void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_d
             const auto& capabilities = pipeline_info["capabilities"];
             for (auto it = capabilities.begin(); it != capabilities.end(); ++it)
             {
-                if (it.value() == "mesh_ext" && !renderer.is_feature_supported(render::feature_flag::eMeshShading))
+                if (it.value() == "mesh_ext" && !renderer.is_feature_supported(render::rhi::feature_flag::eMeshShading))
                 {
                     LOG_WARNING("pipeline is skipped because mesh shaders are unsupported on this platform");
                     return;
@@ -67,7 +67,8 @@ void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_d
             const auto it        = cache.find(shader_id);
             if (it == cache.end())
             {
-                const auto compiled_shader = render::vk_shader::load(renderer, kShadersBinDir / shader);
+                const auto compiled_shader =
+                    render::vk_shader::load(renderer.get_context().device, kShadersBinDir / shader);
                 assert2m(compiled_shader, compiled_shader.message);
                 if (compiled_shader)
                 {
@@ -91,11 +92,14 @@ void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_d
         if (compiled_shaders.size() == shaders.size())
         {
             auto pso = (shaders.size() == 1 && (compiled_shaders.front().meta.stage & VK_SHADER_STAGE_COMPUTE_BIT))
-                         ? render::vk_pipeline::create_compute(renderer, compiled_shaders[0], &textures_set, 1)
+                         ? render::vk_pipeline::create_compute(
+                               renderer.get_context().device, compiled_shaders[0], &textures_set, 1)
                          : render::vk_pipeline::create_graphics(
-                               renderer,
+                               renderer.get_context().device,
                                compiled_shaders.data(),
                                compiled_shaders.size(),
+                               renderer.get_swapchain().surface_format.format,
+                               renderer.get_swapchain().depth_format,
                                &textures_set,
                                1,
                                pipeline_info.contains("options") ? pipeline_info["options"] : nlohmann::json());
@@ -122,7 +126,7 @@ void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_d
 
     for (auto& [_, shader] : cache)
     {
-        render::destroy_shader(renderer.get_context().device, shader);
+        render::vk_destroy_shader(renderer.get_context().device, shader);
     }
 }
 
@@ -132,7 +136,7 @@ void app::pso_data::destroy(const render::vk_renderer& renderer, const pso_id id
     auto& pso         = this->operator[](id);
     const auto device = renderer.get_context().device;
 
-    render::destroy_pipeline(device, pso);
+    render::vk_destroy_pipeline(device, pso);
 }
 
 void app::pso_data::shutdown(const render::vk_renderer& renderer)
@@ -140,7 +144,7 @@ void app::pso_data::shutdown(const render::vk_renderer& renderer)
     ZoneScoped;
     for (auto& [_, pso] : m_pipelines)
     {
-        render::destroy_pipeline(renderer.get_context().device, pso);
+        render::vk_destroy_pipeline(renderer.get_context().device, pso);
     }
 }
 

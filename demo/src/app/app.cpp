@@ -330,31 +330,31 @@ static render::vk_renderer create_vk_renderer(window& app_window, const app::arg
         logging::s_instance->set_log_level(static_cast<quill::LogLevel>(ll));
     }
 
-    constexpr auto features_table = render::rendering_features_table()
+    constexpr auto features_table = render::rhi::rendering_features_table()
 #if !defined(NDEBUG)
-                                        .request(render::feature_flag::eValidation)
+                                        .request(render::rhi::feature_flag::eValidation)
 #endif
 #if !NO_PERF_QUERY
-                                        .request(render::feature_flag::ePipelineStats)
+                                        .request(render::rhi::feature_flag::ePipelineStats)
 #endif
 #if !defined(__APPLE__)
-                                        .require(render::feature_flag::eSamplerMinMax)
+                                        .require(render::rhi::feature_flag::eSamplerMinMax)
 #endif
-                                        .request(render::feature_flag::eMeshShading)
-                                        .require(render::feature_flag::e8BitIntegers)
-                                        .require(render::feature_flag::e16BitTypes)
-                                        .require(render::feature_flag::eDrawIndirect)
-                                        .require(render::feature_flag::eDynamicRender)
-                                        .require(render::feature_flag::eBindlessTextures)
-                                        .require(render::feature_flag::eScalarBlockLayout)
-                                        .require(render::feature_flag::eSynchronization2);
+                                        .request(render::rhi::feature_flag::eMeshShading)
+                                        .require(render::rhi::feature_flag::e8BitIntegers)
+                                        .require(render::rhi::feature_flag::e16BitTypes)
+                                        .require(render::rhi::feature_flag::eDrawIndirect)
+                                        .require(render::rhi::feature_flag::eDynamicRender)
+                                        .require(render::rhi::feature_flag::eBindlessTextures)
+                                        .require(render::rhi::feature_flag::eScalarBlockLayout)
+                                        .require(render::rhi::feature_flag::eSynchronization2);
     return {
-        render::instance_desc {
-                               .app_name        = "Vulkan renderer",
-                               .app_version     = 1,
-                               .device_id_hint  = static_cast<u32>(args.read_numeric("--device_id", -1)),
-                               .device_features = features_table,
-                               },
+        render::rhi::instance_desc {
+                                    .app_name        = "Vulkan renderer",
+                                    .app_version     = 1,
+                                    .device_id_hint  = static_cast<u32>(args.read_numeric("--device_id", -1)),
+                                    .device_features = features_table,
+                                    },
         app_window,
         false
     };
@@ -404,9 +404,9 @@ int app::instance::run()
 
     bool exit = false;
     bool mesh_shading_supported =
-        m_renderer.get_context().enabled_device_features.supported(render::feature_flag::eMeshShading);
+        m_renderer.get_context().enabled_device_features.supported(render::rhi::feature_flag::eMeshShading);
     bool pipeline_stats_supported =
-        m_renderer.get_context().enabled_device_features.supported(render::feature_flag::ePipelineStats);
+        m_renderer.get_context().enabled_device_features.supported(render::rhi::feature_flag::ePipelineStats);
 
     m_events_queue.add_watcher(
         event_type::request_close,
@@ -477,7 +477,7 @@ int app::instance::run()
         &resize_ctx);
 
     render::vk_descriptor_set bindless_textures_desc_set =
-        *render::create_bindless_textures_set(m_renderer.get_context().device, 65536);
+        *render::vk_create_bindless_textures_set(m_renderer.get_context().device, 65536);
     VkSampler bindless_textures_sampler = *render::create_sampler(m_renderer.get_context().device,
                                                                   VK_FILTER_LINEAR,
                                                                   VK_SAMPLER_MIPMAP_MODE_LINEAR,
@@ -516,10 +516,11 @@ int app::instance::run()
         .materials        = render::vk_shared_buffer(m_renderer, 48_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .meshlets_payload = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
 
-        .transfer = *render::create_buffer_transfer(m_renderer.get_context().device,
-                                                    m_renderer.get_context().allocator,
-                                                    m_renderer.get_context().queues[render::queue_kind::eTransfer],
-                                                    128_MB),
+        .transfer = *render::create_buffer_transfer(
+            m_renderer.get_context().device,
+            m_renderer.get_context().allocator,
+            m_renderer.get_context().queues[static_cast<u32>(render::rhi::queue_kind::eTransfer)],
+            128_MB),
     };
 
     loader::scene_info scene_info;
@@ -1009,7 +1010,7 @@ int app::instance::run()
             }
 
             render::transition_image(cmd,
-                                     m_renderer.get_frame_swapchain_image().image,
+                                     m_renderer.get_frame_swapchain_image().image.image,
                                      VK_IMAGE_LAYOUT_UNDEFINED,
                                      VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                                      VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -1450,7 +1451,7 @@ int app::instance::run()
 
                     const render::vk_descriptor_info fxaa_pass_bindings[] = {
                         render::vk_descriptor_info(
-                            VK_NULL_HANDLE, m_renderer.get_frame_swapchain_image().image_view, VK_IMAGE_LAYOUT_GENERAL),
+                            VK_NULL_HANDLE, m_renderer.get_frame_swapchain_image().image.view, VK_IMAGE_LAYOUT_GENERAL),
                         render::vk_descriptor_info(color_sampler, render_target.view, VK_IMAGE_LAYOUT_GENERAL),
                         render::vk_descriptor_info(depth_texture_sampler, depth_image.view, VK_IMAGE_LAYOUT_GENERAL),
                     };
@@ -1479,7 +1480,7 @@ int app::instance::run()
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "frustum debug"));
 
                     begin_rendering(buffer,
-                                    m_renderer.get_frame_swapchain_image().image_view,
+                                    m_renderer.get_frame_swapchain_image().image.view,
                                     depth_image.view,
                                     VK_ATTACHMENT_LOAD_OP_LOAD,
                                     VK_ATTACHMENT_STORE_OP_STORE,
@@ -1724,7 +1725,7 @@ int app::instance::run()
 #endif
 
                 render::transition_image(buffer,
-                                         m_renderer.get_frame_swapchain_image().image,
+                                         m_renderer.get_frame_swapchain_image().image.image,
                                          VK_IMAGE_LAYOUT_GENERAL,
                                          VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                                          VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -1811,7 +1812,7 @@ int app::instance::run()
     render::destroy_query_pool(m_renderer.get_context().device, timestamp_query_pool);
     render::destroy_query_pool(m_renderer.get_context().device, pipeline_statistics_query);
 
-    render::destroy_command_buffer(m_renderer.get_context().device, geometry_pool.transfer.staging_command_buffer);
+    render::vk_destroy_command_buffer(m_renderer.get_context().device, geometry_pool.transfer.staging_command_buffer);
 
     render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.vertex.buffer);
     render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.meshlets.buffer);
@@ -1831,7 +1832,7 @@ int app::instance::run()
     render::destroy_buffer(m_renderer.get_context().allocator, indexed_draw_indirect_buffer);
     render::destroy_buffer(m_renderer.get_context().allocator, meshlets_draw_indirect_buffer);
 
-    render::destroy_descriptor_set(m_renderer.get_context().device, bindless_textures_desc_set);
+    render::vk_destroy_descriptor_set(m_renderer.get_context().device, bindless_textures_desc_set);
 
     for (auto& buffer : frame_cull_data_buffers)
     {
