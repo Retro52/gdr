@@ -4,10 +4,10 @@
 #include <cstring>
 
 result<render::vk_buffer_transfer> render::create_buffer_transfer(VkDevice device, VmaAllocator allocator,
-                                                                  const queue_data& queue, u64 staging_memory_size)
+                                                                  const vk_queue_data& queue, u64 staging_memory_size)
 {
     ZoneScoped;
-    const auto cmd_buffer = render::create_command_buffer(device, queue.family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+    const auto cmd_buffer = render::vk_create_command_buffer(device, queue.family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
     if (!cmd_buffer)
     {
         return error(cmd_buffer.message);
@@ -36,7 +36,7 @@ void render::destroy_buffer_transfer(VkDevice device, VmaAllocator allocator, vk
     vmaUnmapMemory(allocator, buffer_transfer.staging_buffer.allocation);
 
     render::destroy_buffer(allocator, buffer_transfer.staging_buffer);
-    render::destroy_command_buffer(device, buffer_transfer.staging_command_buffer);
+    render::vk_destroy_command_buffer(device, buffer_transfer.staging_command_buffer);
 }
 
 void render::submit_transfer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const VkBufferCopy& region)

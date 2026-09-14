@@ -217,14 +217,15 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBi
     return VK_FALSE;
 }
 
-void load_instance_layers_and_extensions(const window& window, const instance_desc& desc,
+void load_instance_layers_and_extensions(const window& window, const rhi::instance_desc& desc,
                                          cpp::heap_array<const char*>& layers, cpp::heap_array<const char*>& extensions)
 {
-    if (desc.device_features.requested(render::feature_flag::eValidation)
+    if (desc.device_features.requested(render::rhi::feature_flag::eValidation)
         && layer_available("VK_LAYER_KHRONOS_validation") && inst_ext_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
     {
         layers.push_back("VK_LAYER_KHRONOS_validation");
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        LOG_DEBUG("Validation was requested and seems to be available (VK_LAYER_KHRONOS_validation)");
     }
 
     insert_video_driver_extensions(window, extensions);
@@ -303,7 +304,7 @@ static cpp::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysical
 {
     ZoneScoped;
     // 1st - gfx, 2nd - compute, 3rd - transfer.
-    u32 families[queue_kind::COUNT];
+    u32 families[rhi::kQueueTypesCount];
     std::fill(families, std::end(families), VK_QUEUE_FAMILY_IGNORED);
 
     if (!choose_queue_families(device, surface, families[0], families[1], families[2], families[3]))
@@ -313,10 +314,10 @@ static cpp::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysical
 
     std::ranges::sort(families);
 
-    u32 unique[queue_kind::COUNT];
+    u32 unique[rhi::kQueueTypesCount];
     u32 unique_count = 0;
 
-    for (u32 i = 0; i < queue_kind::COUNT; i++)
+    for (u32 i = 0; i < rhi::kQueueTypesCount; i++)
     {
         if (i == 0 || families[i] != families[i - 1])
         {
@@ -342,10 +343,10 @@ static cpp::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysical
 
 static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR surface,
                                                 const ext_array& required_extensions,
-                                                rendering_features_table& features_table)
+                                                rhi::rendering_features_table& features_table)
 {
     ZoneScoped;
-    u32 families[queue_kind::COUNT];
+    u32 families[rhi::kQueueTypesCount];
     std::fill(families, std::end(families), VK_QUEUE_FAMILY_IGNORED);
 
     choose_queue_families(device, surface, families[0], families[1], families[2], families[3]);
@@ -392,8 +393,8 @@ static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfa
 
         if (key == "VK_KHR_portability_subset"_crc32)
         {
-            features_table.require(render::feature_flag::ePortabilitySubset);
-            features_table.set_supported(render::feature_flag::ePortabilitySubset, true);
+            features_table.require(render::rhi::feature_flag::ePortabilitySubset);
+            features_table.set_supported(render::rhi::feature_flag::ePortabilitySubset, true);
         }
     }
 
@@ -415,30 +416,30 @@ static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfa
                                                 .pNext = &vk11_features};
     vkGetPhysicalDeviceFeatures2(device, &device_features2);
 
-    features_table.set_supported(render::feature_flag::eDynamicRender, vk13_features.dynamicRendering);
-    features_table.set_supported(render::feature_flag::eScalarBlockLayout, vk12_features.scalarBlockLayout);
-    features_table.set_supported(render::feature_flag::eSynchronization2, vk13_features.synchronization2);
-    features_table.set_supported(render::feature_flag::eSamplerMinMax, vk12_features.samplerFilterMinmax);
+    features_table.set_supported(render::rhi::feature_flag::eDynamicRender, vk13_features.dynamicRendering);
+    features_table.set_supported(render::rhi::feature_flag::eScalarBlockLayout, vk12_features.scalarBlockLayout);
+    features_table.set_supported(render::rhi::feature_flag::eSynchronization2, vk13_features.synchronization2);
+    features_table.set_supported(render::rhi::feature_flag::eSamplerMinMax, vk12_features.samplerFilterMinmax);
 
-    features_table.set_supported(render::feature_flag::e8BitIntegers, vk12_features.storageBuffer8BitAccess);
-    features_table.set_supported(render::feature_flag::eMeshShading,
+    features_table.set_supported(render::rhi::feature_flag::e8BitIntegers, vk12_features.storageBuffer8BitAccess);
+    features_table.set_supported(render::rhi::feature_flag::eMeshShading,
                                  vk13_features.maintenance4 && mesh_features.meshShader && mesh_features.taskShader);
-    features_table.set_supported(render::feature_flag::eDrawIndirect,
+    features_table.set_supported(render::rhi::feature_flag::eDrawIndirect,
 #if !defined(__APPLE__)
                                  vk12_features.drawIndirectCount &&
 #endif
                                      device_features2.features.multiDrawIndirect && vk11_features.shaderDrawParameters);
-    features_table.set_supported(render::feature_flag::ePipelineStats,
+    features_table.set_supported(render::rhi::feature_flag::ePipelineStats,
                                  device_features2.features.pipelineStatisticsQuery);
 
-    features_table.set_supported(render::feature_flag::eBindlessTextures,
+    features_table.set_supported(render::rhi::feature_flag::eBindlessTextures,
                                  vk12_features.descriptorIndexing && vk12_features.runtimeDescriptorArray
                                      && vk12_features.descriptorBindingPartiallyBound
                                      && vk12_features.descriptorBindingVariableDescriptorCount
                                      && vk12_features.shaderSampledImageArrayNonUniformIndexing
                                      && vk12_features.descriptorBindingSampledImageUpdateAfterBind);
 
-    features_table.set_supported(render::feature_flag::e16BitTypes,
+    features_table.set_supported(render::rhi::feature_flag::e16BitTypes,
                                  vk11_features.storageBuffer16BitAccess
                                      && vk11_features.uniformAndStorageBuffer16BitAccess);
 
@@ -447,7 +448,7 @@ static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfa
         && device_features2.features.shaderStorageImageWriteWithoutFormat;
 }
 
-static ext_array build_extensions_from_feature_table(const rendering_features_table& features_table,
+static ext_array build_extensions_from_feature_table(const rhi::rendering_features_table& features_table,
                                                      bool required_only = false)
 {
     ext_array array;
@@ -456,22 +457,22 @@ static ext_array build_extensions_from_feature_table(const rendering_features_ta
 #if !defined(__APPLE__)
     TRACY_ONLY(array.emplace_back(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME));
 #endif
-    for (u32 i = 0; i < cpp::cx_get_enum_bit_count(render::feature_flag::eCOUNT); ++i)
+    for (u32 i = 0; i < cpp::cx_get_enum_bit_count(render::rhi::feature_flag::COUNT); ++i)
     {
-        const auto feature = static_cast<render::feature_flag>(1 << i);
+        const auto feature = static_cast<render::rhi::feature_flag>(1 << i);
         if ((required_only && features_table.required(feature))
             || (features_table.requested(feature) && features_table.supported(feature)))
         {
             switch (feature)
             {
-            case render::feature_flag::eMeshShading :
+            case render::rhi::feature_flag::eMeshShading :
                 array.emplace_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
                 array.emplace_back(VK_KHR_MAINTENANCE_4_EXTENSION_NAME);
                 break;
-            case render::feature_flag::e8BitIntegers :
+            case render::rhi::feature_flag::e8BitIntegers :
                 array.emplace_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
                 break;
-            case render::feature_flag::ePortabilitySubset :
+            case render::rhi::feature_flag::ePortabilitySubset :
                 array.emplace_back("VK_KHR_portability_subset");
                 break;
             default :
@@ -498,12 +499,18 @@ static u32 rate_device(VkPhysicalDevice physical_device)
     return score;
 }
 
-static void log_device_features_table(const char* name, const rendering_features_table& feat_table)
+static void log_device_features_table(const char* name, const rhi::rendering_features_table& feat_table)
 {
     LOG_DEBUG("{} features report:", name);
-    for (u32 i = 0; i < reflection::get_enum_values_count<render::feature_flag>() - 1; ++i)
+    for (u32 i = 0; i < reflection::get_enum_values_count<render::rhi::feature_flag>() - 1; ++i)
     {
-        const auto flag = reflection::get_enum_value_at<render::feature_flag>(i);
+        const auto flag = reflection::get_enum_value_at<render::rhi::feature_flag>(i);
+
+        // validation is an instance-level flag tbh
+        if (flag == render::rhi::feature_flag::eValidation)
+        {
+            continue;
+        }
 
         const bool supported = feat_table.supported(flag);
         const bool wanted    = feat_table.requested(flag) || feat_table.required(flag);
@@ -511,19 +518,20 @@ static void log_device_features_table(const char* name, const rendering_features
         if (supported || !wanted)
         {
             LOG_DEBUG("{}: {}",
-                      reflection::get_enum_name_at<render::feature_flag>(i),
+                      reflection::get_enum_name_at<render::rhi::feature_flag>(i),
                       supported ? "supported" : "unsupported");
         }
-        else if (wanted && flag != render::feature_flag::eValidation)  // validation is an instance-level flag tbh
+        else if (wanted)
         {
-            LOG_WARNING("{}: feature requested but unsupported", reflection::get_enum_name_at<render::feature_flag>(i));
+            LOG_WARNING("{}: feature requested but unsupported",
+                        reflection::get_enum_name_at<render::rhi::feature_flag>(i));
         }
     }
 }
 
 static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
                                              const ext_array& required_extensions,
-                                             rendering_features_table& required_features, u32 wanted_index)
+                                             rhi::rendering_features_table& required_features, u32 wanted_index)
 {
     ZoneScoped;
     u32 device_count = 0;
@@ -532,9 +540,9 @@ static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR s
     cpp::heap_array<VkPhysicalDevice> devices(device_count);
     vkEnumeratePhysicalDevices(instance, &device_count, devices.data());
 
-    u32 best_rating                                  = 0;
-    VkPhysicalDevice current_pick                    = VK_NULL_HANDLE;
-    rendering_features_table device_features_support = required_features;
+    u32 best_rating                                       = 0;
+    VkPhysicalDevice current_pick                         = VK_NULL_HANDLE;
+    rhi::rendering_features_table device_features_support = required_features;
 
     for (u32 i = 0; i < device_count; ++i)
     {
@@ -691,7 +699,7 @@ static VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhy
     return vmaCreateAllocator(&allocator_create_info, allocator);
 }
 
-static VkResult create_vulkan_device(const rendering_features_table& rendering_features,
+static VkResult create_vulkan_device(const rhi::rendering_features_table& rendering_features,
                                      const ext_array& device_extensions, VkPhysicalDevice phys_device,
                                      VkSurfaceKHR surface, VkDevice* device)
 {
@@ -706,32 +714,34 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
 
     VkPhysicalDeviceVulkan13Features vk13_features {
         .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        .synchronization2 = rendering_features.wanted(render::feature_flag::eSynchronization2),
-        .dynamicRendering = rendering_features.wanted(render::feature_flag::eDynamicRender),
-        .maintenance4     = rendering_features.wanted(render::feature_flag::eMeshShading)};
+        .synchronization2 = rendering_features.wanted(render::rhi::feature_flag::eSynchronization2),
+        .dynamicRendering = rendering_features.wanted(render::rhi::feature_flag::eDynamicRender),
+        .maintenance4     = rendering_features.wanted(render::rhi::feature_flag::eMeshShading)};
 
     VkPhysicalDeviceVulkan12Features vk12_features {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
 #if !defined(__APPLE__)
-        .drawIndirectCount = rendering_features.wanted(render::feature_flag::eDrawIndirect),
+        .drawIndirectCount = rendering_features.wanted(render::rhi::feature_flag::eDrawIndirect),
 #endif
-        .storageBuffer8BitAccess                   = rendering_features.wanted(render::feature_flag::e8BitIntegers),
-        .descriptorIndexing                        = rendering_features.wanted(render::feature_flag::eBindlessTextures),
-        .shaderSampledImageArrayNonUniformIndexing = rendering_features.wanted(render::feature_flag::eBindlessTextures),
+        .storageBuffer8BitAccess = rendering_features.wanted(render::rhi::feature_flag::e8BitIntegers),
+        .descriptorIndexing      = rendering_features.wanted(render::rhi::feature_flag::eBindlessTextures),
+        .shaderSampledImageArrayNonUniformIndexing =
+            rendering_features.wanted(render::rhi::feature_flag::eBindlessTextures),
         .descriptorBindingSampledImageUpdateAfterBind =
-            rendering_features.wanted(render::feature_flag::eBindlessTextures),
-        .descriptorBindingPartiallyBound          = rendering_features.wanted(render::feature_flag::eBindlessTextures),
-        .descriptorBindingVariableDescriptorCount = rendering_features.wanted(render::feature_flag::eBindlessTextures),
-        .runtimeDescriptorArray                   = rendering_features.wanted(render::feature_flag::eBindlessTextures),
-        .samplerFilterMinmax                      = rendering_features.wanted(render::feature_flag::eSamplerMinMax),
-        .scalarBlockLayout                        = rendering_features.wanted(render::feature_flag::eScalarBlockLayout),
+            rendering_features.wanted(render::rhi::feature_flag::eBindlessTextures),
+        .descriptorBindingPartiallyBound = rendering_features.wanted(render::rhi::feature_flag::eBindlessTextures),
+        .descriptorBindingVariableDescriptorCount =
+            rendering_features.wanted(render::rhi::feature_flag::eBindlessTextures),
+        .runtimeDescriptorArray = rendering_features.wanted(render::rhi::feature_flag::eBindlessTextures),
+        .samplerFilterMinmax    = rendering_features.wanted(render::rhi::feature_flag::eSamplerMinMax),
+        .scalarBlockLayout      = rendering_features.wanted(render::rhi::feature_flag::eScalarBlockLayout),
     };
 
     VkPhysicalDeviceVulkan11Features vk11_features {
         .sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-        .storageBuffer16BitAccess           = rendering_features.wanted(render::feature_flag::e16BitTypes),
-        .uniformAndStorageBuffer16BitAccess = rendering_features.wanted(render::feature_flag::e16BitTypes),
-        .shaderDrawParameters               = rendering_features.wanted(render::feature_flag::eDrawIndirect),
+        .storageBuffer16BitAccess           = rendering_features.wanted(render::rhi::feature_flag::e16BitTypes),
+        .uniformAndStorageBuffer16BitAccess = rendering_features.wanted(render::rhi::feature_flag::e16BitTypes),
+        .shaderDrawParameters               = rendering_features.wanted(render::rhi::feature_flag::eDrawIndirect),
     };
 
     VkPhysicalDeviceFeatures2 device_features {
@@ -740,10 +750,10 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
 #if !defined(__APPLE__)
                      .geometryShader = VK_TRUE,
 #endif
-                     .multiDrawIndirect                    = rendering_features.wanted(render::feature_flag::eDrawIndirect),
-                     .depthClamp                           = VK_TRUE,
-                     .samplerAnisotropy                    = VK_TRUE,
-                     .pipelineStatisticsQuery              = rendering_features.wanted(render::feature_flag::ePipelineStats),
+                     .multiDrawIndirect       = rendering_features.wanted(render::rhi::feature_flag::eDrawIndirect),
+                     .depthClamp              = VK_TRUE,
+                     .samplerAnisotropy       = VK_TRUE,
+                     .pipelineStatisticsQuery = rendering_features.wanted(render::rhi::feature_flag::ePipelineStats),
                      .shaderStorageImageWriteWithoutFormat = VK_TRUE,
                      }
     };
@@ -765,7 +775,7 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
 
     // Optional structs
     VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features {};
-    if (rendering_features.wanted(render::feature_flag::eMeshShading))
+    if (rendering_features.wanted(render::rhi::feature_flag::eMeshShading))
     {
         mesh_features = {.sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
                          .taskShader = true,
@@ -774,7 +784,7 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
     }
 
     VkPhysicalDevicePortabilitySubsetFeaturesKHR portability_features {};
-    if (rendering_features.wanted(render::feature_flag::ePortabilitySubset))
+    if (rendering_features.wanted(render::rhi::feature_flag::ePortabilitySubset))
     {
         portability_features = {
             .sType                     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR,
@@ -787,11 +797,11 @@ static VkResult create_vulkan_device(const rendering_features_table& rendering_f
     return vkCreateDevice(phys_device, &device_create_info, nullptr, device);
 }
 
-static result<context> create_vk_context(const window& window, const instance_desc& desc)
+static result<vk_context> create_vk_context(const window& window, const rhi::instance_desc& desc)
 {
     ZoneScoped;
     VK_RETURN_ON_FAIL(volkInitialize())
-    context context {};
+    vk_context context {};
 
     // Application info
     VkApplicationInfo application_info {VK_STRUCTURE_TYPE_APPLICATION_INFO};
@@ -837,7 +847,7 @@ static result<context> create_vk_context(const window& window, const instance_de
     volkLoadInstance(context.instance);
 
     // Create debug messenger if available and requested
-    if (desc.device_features.requested(render::feature_flag::eValidation))
+    if (desc.device_features.requested(render::rhi::feature_flag::eValidation))
     {
         constexpr VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -875,17 +885,17 @@ static result<context> create_vk_context(const window& window, const instance_de
 
     choose_queue_families(context.physical_device,
                           context.surface,
-                          context.queues[queue_kind::eGfx].family,
-                          context.queues[queue_kind::eCompute].family,
-                          context.queues[queue_kind::eTransfer].family,
-                          context.queues[queue_kind::ePresent].family);
+                          context.queues[static_cast<u32>(rhi::queue_kind::eGfx)].family,
+                          context.queues[static_cast<u32>(rhi::queue_kind::eCompute)].family,
+                          context.queues[static_cast<u32>(rhi::queue_kind::eTransfer)].family,
+                          context.queues[static_cast<u32>(rhi::queue_kind::ePresent)].family);
 
-    auto populate_queue_data = [&](const queue_kind_t idx)
+    auto populate_queue_data = [&](const u32 idx)
     {
         vkGetDeviceQueue(context.device, context.queues[idx].family, 0, &context.queues[idx].queue);
     };
 
-    for (u32 i = 0; i < queue_kind::COUNT; i++)
+    for (u32 i = 0; i < rhi::kQueueTypesCount; i++)
     {
         populate_queue_data(i);
     }
@@ -1001,38 +1011,38 @@ static VkSurfaceFormatKHR choose_swapchain_format(VkPhysicalDevice device, VkSur
     return available_formats[0];
 }
 
-void render::destroy_swapchain(const context& vk_context, swapchain& swapchain)
+void render::vk_destroy_swapchain(const vk_context& vk_context, vk_swapchain& swapchain)
 {
     ZoneScoped;
     VK_DO_IF_NOT_NULL(vk_context.device, vkDeviceWaitIdle(vk_context.device));
 
-    if (swapchain.vk_swapchain != VK_NULL_HANDLE)
+    if (swapchain.sc != VK_NULL_HANDLE)
     {
         for (auto& img : swapchain.images)
         {
-            VK_DESTROY(img.image_view, vkDestroyImageView, vk_context.device);
+            VK_DESTROY(img.image.view, vkDestroyImageView, vk_context.device);
             VK_DESTROY(img.release_semaphore, vkDestroySemaphore, vk_context.device);
         }
 
-        VK_DESTROY(swapchain.vk_swapchain, vkDestroySwapchainKHR, vk_context.device);
+        VK_DESTROY(swapchain.sc, vkDestroySwapchainKHR, vk_context.device);
     }
 
-    swapchain.vk_swapchain = VK_NULL_HANDLE;
+    swapchain.sc = VK_NULL_HANDLE;
     swapchain.images.clear();
 }
 
-result<swapchain> render::create_swapchain(const context& vk_context, VkFormat format, ivec2 size, u32 frames_in_flight,
-                                           bool vsync, VkSwapchainKHR old_swapchain)
+result<vk_swapchain> render::vk_create_swapchain(const vk_context& vk_context, VkFormat format, ivec2 size,
+                                                 u32 frames_in_flight, bool vsync, VkSwapchainKHR old_swapchain)
 {
     ZoneScoped;
-    swapchain sc_data;
+    vk_swapchain sc_data;
     sc_data.surface_format = choose_swapchain_format(vk_context.physical_device, vk_context.surface, format);
 
-    const u32 unique_queues[2] {vk_context.queues[queue_kind::eGfx].family,
-                                vk_context.queues[queue_kind::ePresent].family};
+    const u32 unique_queues[2] {vk_context.queues[static_cast<u32>(rhi::queue_kind::eGfx)].family,
+                                vk_context.queues[static_cast<u32>(rhi::queue_kind::ePresent)].family};
 
-    const bool image_sharing_supported =
-        vk_context.queues[queue_kind::eGfx].family != vk_context.queues[queue_kind::ePresent].family;
+    const bool image_sharing_supported = vk_context.queues[static_cast<u32>(rhi::queue_kind::eGfx)].family
+                                      != vk_context.queues[static_cast<u32>(rhi::queue_kind::ePresent)].family;
 
     VkSurfaceCapabilitiesKHR capabilities;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_context.physical_device, vk_context.surface, &capabilities);
@@ -1063,13 +1073,13 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
         .oldSwapchain          = old_swapchain,
     };
 
-    VK_RETURN_ON_FAIL(vkCreateSwapchainKHR(vk_context.device, &swapchain_create_info, nullptr, &sc_data.vk_swapchain));
+    VK_RETURN_ON_FAIL(vkCreateSwapchainKHR(vk_context.device, &swapchain_create_info, nullptr, &sc_data.sc));
 
     u32 img_count = 0;
-    vkGetSwapchainImagesKHR(vk_context.device, sc_data.vk_swapchain, &img_count, nullptr);
+    vkGetSwapchainImagesKHR(vk_context.device, sc_data.sc, &img_count, nullptr);
 
     cpp::heap_array<VkImage> imgs(img_count);
-    vkGetSwapchainImagesKHR(vk_context.device, sc_data.vk_swapchain, &img_count, imgs.data());
+    vkGetSwapchainImagesKHR(vk_context.device, sc_data.sc, &img_count, imgs.data());
 
     sc_data.depth_format = choose_depth_format(vk_context.physical_device);
     for (u32 i = 0; i < img_count; i++)
@@ -1093,10 +1103,10 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
                            },
         };
 
-        swapchain_image sc_image {};
-        sc_image.image = imgs[i];
+        vk_swapchain_image sc_image {};
+        sc_image.image.image = imgs[i];
 
-        VK_RETURN_ON_FAIL(vkCreateImageView(vk_context.device, &image_view_create_info, nullptr, &sc_image.image_view));
+        VK_RETURN_ON_FAIL(vkCreateImageView(vk_context.device, &image_view_create_info, nullptr, &sc_image.image.view));
 
         constexpr VkSemaphoreCreateInfo semaphore_create_info {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
         VK_ASSERT_ON_FAIL(
@@ -1108,7 +1118,7 @@ result<swapchain> render::create_swapchain(const context& vk_context, VkFormat f
     return sc_data;
 }
 
-void render::destroy_context(context& ctx)
+void render::vk_destroy_context(vk_context& ctx)
 {
     ZoneScoped;
 
@@ -1122,7 +1132,7 @@ void render::destroy_context(context& ctx)
     VK_DO_IF_NOT_NULL(ctx.instance, vkDestroyInstance(ctx.instance, nullptr));
 }
 
-result<context> render::create_context(const window& window, const instance_desc& instance_desc)
+result<vk_context> render::vk_create_context(const window& window, const rhi::instance_desc& instance_desc)
 {
     ZoneScoped;
     auto r_created_context = create_vk_context(window, instance_desc);
