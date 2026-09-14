@@ -227,7 +227,7 @@ result<vk_shader> vk_shader::load(const vk_renderer& renderer, const fs::path& p
 
     const auto meta = parse_spirv(binary);
     if ((meta.stage == VK_SHADER_STAGE_MESH_BIT_EXT || meta.stage == VK_SHADER_STAGE_TASK_BIT_EXT)
-        && !renderer.is_feature_supported(feature_flag::eMeshShading))
+        && !renderer.is_feature_supported(rhi::feature_flag::eMeshShading))
     {
         return error("mesh shading not supported");
     }

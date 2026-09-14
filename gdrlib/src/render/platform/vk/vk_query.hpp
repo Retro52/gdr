@@ -9,8 +9,8 @@ namespace render
 {
     struct vk_query
     {
-        VkQueryPool handle {VK_NULL_HANDLE};
-        u32 index = 0;
+        VkQueryPool handle = VK_NULL_HANDLE;
+        u32 index          = 0;
 
         void end_and_advance(VkCommandBuffer cmd);
 
