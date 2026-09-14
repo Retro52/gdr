@@ -18,21 +18,22 @@ namespace render
         struct frame_data
         {
             TRACY_ONLY(TracyVkCtx tracy_ctx {});
+            cpp::heap_array<delete_callback_t> delete_callbacks;
+
             vk_command_buffer command_buffer;
 
-            VkFence fence {VK_NULL_HANDLE};
-            VkSemaphore acquire_semaphore {VK_NULL_HANDLE};
-            cpp::heap_array<delete_callback_t> delete_callbacks;
+            VkFence fence                 = VK_NULL_HANDLE;
+            VkSemaphore acquire_semaphore = VK_NULL_HANDLE;
         };
 
     public:
-        vk_renderer(const render::instance_desc& desc, const window& window, bool vsync);
+        vk_renderer(const render::rhi::instance_desc& desc, const window& window, bool vsync);
 
         ~vk_renderer();
 
-        [[nodiscard]] const render::context& get_context() const;
+        [[nodiscard]] const render::vk_context& get_context() const;
 
-        [[nodiscard]] const render::swapchain& get_swapchain() const;
+        [[nodiscard]] const render::vk_swapchain& get_swapchain() const;
 
         void resize_swapchain(ivec2 new_size);
 
@@ -54,7 +55,7 @@ namespace render
 
         [[nodiscard]] VkCommandBuffer get_frame_command_buffer() const;
 
-        [[nodiscard]] render::swapchain_image get_frame_swapchain_image() const;
+        [[nodiscard]] render::vk_swapchain_image get_frame_swapchain_image() const;
 
         [[nodiscard]] cpp::heap_array<delete_callback_t>& get_frame_callbacks_queue();
 
@@ -62,7 +63,7 @@ namespace render
 
         [[nodiscard]] bool get_vsync() const;
 
-        [[nodiscard]] bool is_feature_supported(feature_flag feature) const;
+        [[nodiscard]] bool is_feature_supported(rhi::feature_flag feature) const;
 
         template<typename Func>
         void submit(Func&& func) const
@@ -94,8 +95,8 @@ namespace render
             count
         };
 
-        render::context m_context;
-        render::swapchain m_swapchain;
+        render::vk_context m_context;
+        render::vk_swapchain m_swapchain;
 
         cpp::heap_array<frame_data> m_in_flight_frames;
 

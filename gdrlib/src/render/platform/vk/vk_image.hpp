@@ -8,9 +8,10 @@ namespace render
 {
     struct vk_image
     {
-        VkImage image {VK_NULL_HANDLE};
-        VkImageView view {VK_NULL_HANDLE};
-        VmaAllocation allocation {VK_NULL_HANDLE};
+        VkImage image            = VK_NULL_HANDLE;
+        VkImageView view         = VK_NULL_HANDLE;
+        VmaAllocation allocation = VK_NULL_HANDLE;
+        VkImageLayout layout     = VK_IMAGE_LAYOUT_UNDEFINED;
     };
 
     VkImageSubresourceRange image_subresource_range(VkImageAspectFlags aspect_flag);
