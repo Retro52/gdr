@@ -209,7 +209,7 @@ namespace
     }
 }
 
-result<vk_shader> vk_shader::load(const vk_renderer& renderer, const fs::path& path)
+result<vk_shader> vk_shader::load(VkDevice device, const fs::path& path)
 {
     ZoneScoped;
     const auto r_binary = fs::read_file(path);
@@ -225,17 +225,10 @@ result<vk_shader> vk_shader::load(const vk_renderer& renderer, const fs::path& p
         .pCode    = binary.get<u32>(),
     };
 
-    const auto meta = parse_spirv(binary);
-    if ((meta.stage == VK_SHADER_STAGE_MESH_BIT_EXT || meta.stage == VK_SHADER_STAGE_TASK_BIT_EXT)
-        && !renderer.is_feature_supported(rhi::feature_flag::eMeshShading))
-    {
-        return error("mesh shading not supported");
-    }
-
     VkShaderModule shader_module;
-    VK_RETURN_ON_FAIL(vkCreateShaderModule(renderer.get_context().device, &module_create_info, nullptr, &shader_module))
+    VK_RETURN_ON_FAIL(vkCreateShaderModule(device, &module_create_info, nullptr, &shader_module))
 
-    return vk_shader {.module = shader_module, .meta = meta};
+    return vk_shader {.module = shader_module, .meta = parse_spirv(binary)};
 }
 
 vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
@@ -509,7 +502,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     return result;
 }
 
-result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, const vk_shader& shader,
+result<vk_pipeline> vk_pipeline::create_compute(VkDevice device, const vk_shader& shader,
                                                 const vk_descriptor_set* desc_set, u32 desc_set_count)
 {
     ZoneScoped;
@@ -519,18 +512,12 @@ result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, con
 
     VkPipelineLayout pipeline_layout;
     VkDescriptorSetLayout descriptor_set_layout;
-    VK_RETURN_ON_FAIL(create_pipeline_layout(renderer.get_context().device,
-                                             &shader,
-                                             1,
-                                             desc_set,
-                                             desc_set_count,
-                                             pc_range,
-                                             &pipeline_layout,
-                                             &descriptor_set_layout));
+    VK_RETURN_ON_FAIL(create_pipeline_layout(
+        device, &shader, 1, desc_set, desc_set_count, pc_range, &pipeline_layout, &descriptor_set_layout));
 
     VkDescriptorUpdateTemplate update_template;
-    VK_RETURN_ON_FAIL(create_update_template(
-        renderer.get_context().device, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, &shader, 1, &update_template));
+    VK_RETURN_ON_FAIL(
+        create_update_template(device, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, &shader, 1, &update_template));
 
     const VkPipelineShaderStageCreateInfo shader_stage_info = {
         .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -543,24 +530,25 @@ result<vk_pipeline> vk_pipeline::create_compute(const vk_renderer& renderer, con
         .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO, .stage = shader_stage_info, .layout = pipeline_layout};
 
     VkPipeline pipeline;
-    VK_RETURN_ON_FAIL(
-        vkCreateComputePipelines(renderer.get_context().device, VK_NULL_HANDLE, 1, &create_info, nullptr, &pipeline));
+    VK_RETURN_ON_FAIL(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &create_info, nullptr, &pipeline));
 
     return vk_pipeline {
-        pipeline,
-        pipeline_layout,
-        descriptor_set_layout,
-        update_template,
-        VK_PIPELINE_BIND_POINT_COMPUTE,
-        VK_SHADER_STAGE_COMPUTE_BIT,
-        pc_range.size,
-        {shader.meta.work_group_size[0], shader.meta.work_group_size[1], shader.meta.work_group_size[2]}
+        .m_pipeline                   = pipeline,
+        .m_pipeline_layout            = pipeline_layout,
+        .m_desc_set_layout            = descriptor_set_layout,
+        .m_descriptor_update_template = update_template,
+        .m_pipeline_bind_point        = VK_PIPELINE_BIND_POINT_COMPUTE,
+        .m_push_constant_stages       = VK_SHADER_STAGE_COMPUTE_BIT,
+        .m_push_constants_max_size    = pc_range.size,
+        .work_group_size              = {
+                                         shader.meta.work_group_size[0], shader.meta.work_group_size[1], shader.meta.work_group_size[2]}
     };
 }
 
-result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, const vk_shader* shaders,
-                                                 u32 shaders_count, const vk_descriptor_set* desc_set,
-                                                 u32 desc_set_count, const nlohmann::json& options)
+result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shader* shaders, u32 shaders_count,
+                                                 VkFormat default_color_format, VkFormat default_depth_format,
+                                                 const vk_descriptor_set* desc_set, u32 desc_set_count,
+                                                 const nlohmann::json& options)
 {
     ZoneScoped;
     cpp::heap_array<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
@@ -575,10 +563,8 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
         };
     }
 
-    constexpr VkDynamicState dynamic_state[] = {VK_DYNAMIC_STATE_VIEWPORT,
-                                                VK_DYNAMIC_STATE_SCISSOR,
-                                                VK_DYNAMIC_STATE_CULL_MODE,
-                                                VK_DYNAMIC_STATE_DEPTH_BIAS};
+    constexpr VkDynamicState dynamic_state[] = {
+        VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_CULL_MODE, VK_DYNAMIC_STATE_DEPTH_BIAS};
     constexpr u32 dynamic_state_count = COUNT_OF(dynamic_state);
 
     const VkPipelineDynamicStateCreateInfo dynamic_state_create_info {
@@ -597,15 +583,10 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
         .primitiveRestartEnable = VK_FALSE,
     };
 
-    const auto scissor  = renderer.get_scissor();
-    const auto viewport = renderer.get_viewport();
-
     const VkPipelineViewportStateCreateInfo viewport_state_create_info {
         .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
         .viewportCount = 1,
-        .pViewports    = &viewport,
         .scissorCount  = 1,
-        .pScissors     = &scissor,
     };
 
     const VkPipelineRasterizationStateCreateInfo rasterizer {
@@ -648,8 +629,8 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     };
 
     const auto color_counts  = opt_get(options, "color_attachments", 1U);
-    const auto depth_format  = opt_get(options, "depth_format", renderer.get_swapchain().depth_format);
-    const auto color_formats = opt_get(options, "color_format", renderer.get_swapchain().surface_format.format);
+    const auto depth_format  = opt_get(options, "depth_format", default_depth_format);
+    const auto color_formats = opt_get(options, "color_format", default_color_format);
 
     const VkPipelineRenderingCreateInfo pipeline_rendering_create_info {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
@@ -673,7 +654,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     VkDescriptorSetLayout descriptor_set_layout;
 
     VkPushConstantRange push_constant_range = parse_push_constant_range(shaders, shaders_count);
-    create_pipeline_layout(renderer.get_context().device,
+    create_pipeline_layout(device,
                            shaders,
                            shaders_count,
                            desc_set,
@@ -703,16 +684,11 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     };
 
     VkPipeline vk_handle;
-    VK_RETURN_ON_FAIL(vkCreateGraphicsPipelines(
-        renderer.get_context().device, VK_NULL_HANDLE, 1, &pipeline_create_info, nullptr, &vk_handle));
+    VK_RETURN_ON_FAIL(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_create_info, nullptr, &vk_handle));
 
     VkDescriptorUpdateTemplate update_template;
-    VK_RETURN_ON_FAIL(create_update_template(renderer.get_context().device,
-                                             VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                             pipeline_layout,
-                                             shaders,
-                                             shaders_count,
-                                             &update_template));
+    VK_RETURN_ON_FAIL(create_update_template(
+        device, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, shaders, shaders_count, &update_template));
 
     u32 work_group_size[3] {};
     for (u32 i = 0; i < shaders_count; ++i)
@@ -729,14 +705,14 @@ result<vk_pipeline> vk_pipeline::create_graphics(const vk_renderer& renderer, co
     }
 
     return vk_pipeline {
-        vk_handle,
-        pipeline_layout,
-        descriptor_set_layout,
-        update_template,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        push_constant_range.stageFlags,
-        push_constant_range.size,
-        {work_group_size[0], work_group_size[1], work_group_size[2]}
+        .m_pipeline                   = vk_handle,
+        .m_pipeline_layout            = pipeline_layout,
+        .m_desc_set_layout            = descriptor_set_layout,
+        .m_descriptor_update_template = update_template,
+        .m_pipeline_bind_point        = VK_PIPELINE_BIND_POINT_GRAPHICS,
+        .m_push_constant_stages       = push_constant_range.stageFlags,
+        .m_push_constants_max_size    = push_constant_range.size,
+        .work_group_size              = {work_group_size[0], work_group_size[1], work_group_size[2]}
     };
 }
 
@@ -775,14 +751,14 @@ void vk_pipeline::dispatch(VkCommandBuffer command_buffer, u32 global_x, u32 glo
                   align_wg(global_z, work_group_size[2]));
 }
 
-void render::destroy_shader(VkDevice device, vk_shader& shader)
+void render::vk_destroy_shader(VkDevice device, vk_shader& shader)
 {
     ZoneScoped;
     vkDestroyShaderModule(device, shader.module, nullptr);
     shader.module = VK_NULL_HANDLE;
 }
 
-void render::destroy_pipeline(VkDevice device, vk_pipeline& pso)
+void render::vk_destroy_pipeline(VkDevice device, vk_pipeline& pso)
 {
     ZoneScoped;
     vkDestroyPipelineLayout(device, pso.m_pipeline_layout, nullptr);

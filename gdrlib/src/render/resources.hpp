@@ -22,6 +22,7 @@ namespace render::rhi
     RHI_REGISTER_HANDLE(surface);
     RHI_REGISTER_HANDLE(pipeline);
     RHI_REGISTER_HANDLE(shader);
+    RHI_REGISTER_HANDLE(bindless_set);
     RHI_REGISTER_HANDLE(swapchain);
     RHI_REGISTER_HANDLE(command_buffer);
 }

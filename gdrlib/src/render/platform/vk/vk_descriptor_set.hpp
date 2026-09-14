@@ -1,6 +1,7 @@
 #pragma once
 
 #include <volk.h>
+
 #include <result.hpp>
 
 namespace render
@@ -12,7 +13,7 @@ namespace render
         VkDescriptorSetLayout descriptor_set_layout;
     };
 
-    void destroy_descriptor_set(VkDevice device, vk_descriptor_set& descriptor_pool);
+    void vk_destroy_descriptor_set(VkDevice device, vk_descriptor_set& descriptor_pool);
 
-    result<vk_descriptor_set> create_bindless_textures_set(VkDevice device, u32 max_textures);
+    result<vk_descriptor_set> vk_create_bindless_textures_set(VkDevice device, u32 max_textures);
 }
