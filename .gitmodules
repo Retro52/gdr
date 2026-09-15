@@ -43,3 +43,6 @@
 [submodule "vendors/quill"]
 	path = vendors/quill
 	url = https://github.com/odygrd/quill.git
+[submodule "vendors/d3d12ma"]
+	path = vendors/d3d12ma
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator.git
