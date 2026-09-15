@@ -2,24 +2,21 @@
 #include <render/platform/vk/vk_error.hpp>
 #include <tracy/Tracy.hpp>
 
-void render::destroy_buffer(VmaAllocator allocator, vk_buffer& buffer)
+void render::vk_destroy_buffer(VmaAllocator allocator, vk_buffer& buffer)
 {
     ZoneScoped;
     buffer.size = 0;
+    if (buffer.mapped)
+    {
+        buffer.mapped = nullptr;
+        vmaUnmapMemory(allocator, buffer.allocation);
+    }
+
     vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
 }
 
-
-void render::destroy_buffer_mapped(VmaAllocator allocator, vk_mapped_buffer& buffer)
-{
-    ZoneScoped;
-    buffer.size = 0;
-    vmaUnmapMemory(allocator, buffer.allocation);
-    vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
-}
-
-result<render::vk_buffer> render::create_buffer(u64 size, VkBufferUsageFlags usage, VmaAllocator allocator,
-                                                VmaAllocationCreateFlags allocation_flags)
+result<render::vk_buffer> render::vk_create_buffer(u64 size, VkBufferUsageFlags usage, VmaAllocator allocator,
+                                                   VmaAllocationCreateFlags allocation_flags)
 {
     ZoneScoped;
 
@@ -29,11 +26,11 @@ result<render::vk_buffer> render::create_buffer(u64 size, VkBufferUsageFlags usa
         .usage = usage,
     };
 
-    return render::create_buffer(buffer_info, allocator, allocation_flags);
+    return render::vk_create_buffer(buffer_info, allocator, allocation_flags);
 }
 
-result<render::vk_buffer> render::create_buffer(const VkBufferCreateInfo& buffer_create_info, VmaAllocator allocator,
-                                                VmaAllocationCreateFlags allocation_flags)
+result<render::vk_buffer> render::vk_create_buffer(const VkBufferCreateInfo& buffer_create_info, VmaAllocator allocator,
+                                                   VmaAllocationCreateFlags allocation_flags)
 {
     ZoneScoped;
 
@@ -42,40 +39,17 @@ result<render::vk_buffer> render::create_buffer(const VkBufferCreateInfo& buffer
     VK_RETURN_ON_FAIL(
         vmaCreateBuffer(allocator, &buffer_create_info, &alloc_info, &result.buffer, &result.allocation, nullptr));
 
-    return result;
-}
-
-result<render::vk_mapped_buffer> render::create_buffer_mapped(u64 size, VkBufferUsageFlags usage,
-                                                              VmaAllocator allocator,
-                                                              VmaAllocationCreateFlags allocation_flags)
-{
-    const VkBufferCreateInfo buffer_info {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size  = size,
-        .usage = usage,
-    };
-
-    return render::create_buffer_mapped(buffer_info, allocator, allocation_flags);
-}
-
-result<render::vk_mapped_buffer> render::create_buffer_mapped(const VkBufferCreateInfo& buffer_create_info,
-                                                              VmaAllocator allocator,
-                                                              VmaAllocationCreateFlags allocation_flags)
-{
-    const auto& buffer = render::create_buffer(buffer_create_info, allocator, allocation_flags);
-    if (!buffer)
+    constexpr auto kRequireMemMapFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+    if (allocation_flags & kRequireMemMapFlags)
     {
-        return error(buffer.message);
+        vmaMapMemory(allocator, result.allocation, &result.mapped);
     }
 
-    vk_mapped_buffer result {.size = buffer->size, .buffer = buffer->buffer, .allocation = buffer->allocation};
-    vmaMapMemory(allocator, buffer->allocation, &result.mapped);
-
     return result;
 }
 
-result<VkBufferView> render::create_buffer_view(VkDevice device, VkBuffer buffer, VkFormat format, u64 offset,
-                                                u64 range)
+result<VkBufferView> render::vk_create_buffer_view(VkDevice device, VkBuffer buffer, VkFormat format, u64 offset,
+                                                   u64 range)
 {
     ZoneScoped;
 

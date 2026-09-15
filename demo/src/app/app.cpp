@@ -281,9 +281,8 @@ static const render::vk_pipeline& get_render_pipeline(app::pso_data& pipelines, 
 }
 
 static std::array<glm::mat4, shader_constants::kMaxShadowCascades> update_csm_buffers(
-    const app::csm& csm, const render::vk_mapped_buffer& csm_buffer, const vec3& light_dir,
-    const camera_component& camera, const glm::mat4& camera_view, const vec3& camera_pos,
-    const render_settings& settings)
+    const app::csm& csm, const render::vk_buffer& csm_buffer, const vec3& light_dir, const camera_component& camera,
+    const glm::mat4& camera_view, const vec3& camera_pos, const render_settings& settings)
 {
     const auto light_view      = csm.get_light_view_matrix(light_dir);
     const auto camera_relative = glm::translate(glm::mat4(1.0F), camera_pos);
@@ -644,25 +643,25 @@ int app::instance::run()
     }
 #endif
 
-    render::vk_buffer draw_count_buffer = *render::create_buffer(
+    render::vk_buffer draw_count_buffer = *render::vk_create_buffer(
         sizeof(u32[shader_constants::kMatClassCount * 3]),
         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         m_renderer.get_context().allocator,
         0);
 
-    render::vk_buffer indexed_count_buffer = *render::create_buffer(
+    render::vk_buffer indexed_count_buffer = *render::vk_create_buffer(
         sizeof(u32[2]),
         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         m_renderer.get_context().allocator,
         0);
 
-    render::vk_buffer mesh_visibility_buffer = *render::create_buffer(
+    render::vk_buffer mesh_visibility_buffer = *render::vk_create_buffer(
         (scene_info.primitives + 31) / 8,
         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         m_renderer.get_context().allocator,
         0);
 
-    render::vk_buffer meshlets_visibility_buffer = *render::create_buffer(
+    render::vk_buffer meshlets_visibility_buffer = *render::vk_create_buffer(
         (scene_info.meshlets + 31) / 8,
         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         m_renderer.get_context().allocator,
@@ -671,46 +670,47 @@ int app::instance::run()
     render::fill_buffer(geometry_pool.transfer, mesh_visibility_buffer, 0_u8);
     render::fill_buffer(geometry_pool.transfer, meshlets_visibility_buffer, 0_u8);
 
-    render::vk_buffer indexed_indices_buffer = *render::create_buffer(
+    render::vk_buffer indexed_indices_buffer = *render::vk_create_buffer(
         96_MB,
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         m_renderer.get_context().allocator,
         0);
 
-    render::vk_buffer indexed_draw_indirect_buffer = *render::create_buffer(
+    render::vk_buffer indexed_draw_indirect_buffer = *render::vk_create_buffer(
         16_MB,
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         m_renderer.get_context().allocator,
         0);
 
-    render::vk_buffer meshlets_draw_indirect_buffer = *render::create_buffer(
+    render::vk_buffer meshlets_draw_indirect_buffer = *render::vk_create_buffer(
         16_MB,
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         m_renderer.get_context().allocator,
         0);
 
-    cpp::heap_array<render::vk_mapped_buffer> world_data_buffers(m_renderer.get_frames_in_flight());
-    cpp::heap_array<render::vk_mapped_buffer> frame_cull_data_buffers(m_renderer.get_frames_in_flight());
-    cpp::heap_array<render::vk_mapped_buffer> shadow_cascades_data_buffers(m_renderer.get_frames_in_flight());
+    cpp::heap_array<render::vk_buffer> world_data_buffers(m_renderer.get_frames_in_flight());
+    cpp::heap_array<render::vk_buffer> frame_cull_data_buffers(m_renderer.get_frames_in_flight());
+    cpp::heap_array<render::vk_buffer> shadow_cascades_data_buffers(m_renderer.get_frames_in_flight());
 
     for (u32 i = 0; i < m_renderer.get_frames_in_flight(); i++)
     {
-        world_data_buffers[i] = *render::create_buffer_mapped(sizeof(shader_types::FrameWorldData),
-                                                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                                              m_renderer.get_context().allocator,
-                                                              VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+        world_data_buffers[i] =
+            *render::vk_create_buffer(sizeof(shader_types::FrameWorldData),
+                                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                             m_renderer.get_context().allocator,
+                                             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
         shadow_cascades_data_buffers[i] =
-            *render::create_buffer_mapped(sizeof(shader_types::ShadowCascadesData),
-                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                          m_renderer.get_context().allocator,
-                                          VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            *render::vk_create_buffer(sizeof(shader_types::ShadowCascadesData),
+                                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                             m_renderer.get_context().allocator,
+                                             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
         frame_cull_data_buffers[i] =
-            *render::create_buffer_mapped(sizeof(shader_types::FrameCullData),
-                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                          m_renderer.get_context().allocator,
-                                          VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            *render::vk_create_buffer(sizeof(shader_types::FrameCullData),
+                                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                             m_renderer.get_context().allocator,
+                                             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
     }
 
     gpu_profile_data profile_data;
@@ -1814,37 +1814,37 @@ int app::instance::run()
 
     render::vk_destroy_command_buffer(m_renderer.get_context().device, geometry_pool.transfer.staging_command_buffer);
 
-    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.vertex.buffer);
-    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.meshlets.buffer);
-    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.primitives.buffer);
-    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.instances.buffer);
-    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.materials.buffer);
-    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.meshlets_payload.buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, geometry_pool.vertex.buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, geometry_pool.meshlets.buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, geometry_pool.primitives.buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, geometry_pool.instances.buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, geometry_pool.materials.buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, geometry_pool.meshlets_payload.buffer);
 
     vmaUnmapMemory(m_renderer.get_context().allocator, geometry_pool.transfer.staging_buffer.allocation);
-    render::destroy_buffer(m_renderer.get_context().allocator, geometry_pool.transfer.staging_buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, geometry_pool.transfer.staging_buffer);
 
-    render::destroy_buffer(m_renderer.get_context().allocator, draw_count_buffer);
-    render::destroy_buffer(m_renderer.get_context().allocator, indexed_count_buffer);
-    render::destroy_buffer(m_renderer.get_context().allocator, indexed_indices_buffer);
-    render::destroy_buffer(m_renderer.get_context().allocator, mesh_visibility_buffer);
-    render::destroy_buffer(m_renderer.get_context().allocator, meshlets_visibility_buffer);
-    render::destroy_buffer(m_renderer.get_context().allocator, indexed_draw_indirect_buffer);
-    render::destroy_buffer(m_renderer.get_context().allocator, meshlets_draw_indirect_buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, draw_count_buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, indexed_count_buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, indexed_indices_buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, mesh_visibility_buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, meshlets_visibility_buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, indexed_draw_indirect_buffer);
+    render::vk_destroy_buffer(m_renderer.get_context().allocator, meshlets_draw_indirect_buffer);
 
     render::vk_destroy_descriptor_set(m_renderer.get_context().device, bindless_textures_desc_set);
 
     for (auto& buffer : frame_cull_data_buffers)
     {
-        render::destroy_buffer_mapped(m_renderer.get_context().allocator, buffer);
+        render::vk_destroy_buffer(m_renderer.get_context().allocator, buffer);
     }
     for (auto& buffer : world_data_buffers)
     {
-        render::destroy_buffer_mapped(m_renderer.get_context().allocator, buffer);
+        render::vk_destroy_buffer(m_renderer.get_context().allocator, buffer);
     }
     for (auto& buffer : shadow_cascades_data_buffers)
     {
-        render::destroy_buffer_mapped(m_renderer.get_context().allocator, buffer);
+        render::vk_destroy_buffer(m_renderer.get_context().allocator, buffer);
     }
 
     vkDestroySampler(m_renderer.get_context().device, color_sampler, nullptr);

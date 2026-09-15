@@ -29,7 +29,7 @@ namespace render
             : size(size)
             , offset(0)
         {
-            buffer = *render::create_buffer(
+            buffer = *render::vk_create_buffer(
                 size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, renderer.get_context().allocator, 0);
         }
     };

@@ -1,5 +1,6 @@
 #include <volk.h>
 
+#include <render/platform/vk/vk_buffer.hpp>
 #include <render/platform/vk/vk_command_buffer.hpp>
 #include <render/platform/vk/vk_descriptor_set.hpp>
 #include <render/platform/vk/vk_device.hpp>
@@ -50,6 +51,73 @@ struct vk_rhi_swaphain_data
     render::vk_swapchain root;
     cpp::heap_array<vk_swapchain_sync_objects> sync_objects;
 };
+
+static VkBufferUsageFlags vk_parse_buffer_usage_flags(render::rhi::buffer_usage_flags usage)
+{
+    VkBufferUsageFlags result = 0;
+    for (u32 i = 0; i < reflection::get_enum_values_count<render::rhi::buffer_usage>(); i++)
+    {
+        const auto flag = reflection::get_enum_value_at<render::rhi::buffer_usage>(i);
+        if (!(flag & usage))
+        {
+            continue;
+        }
+
+        switch (flag)
+        {
+        case render::rhi::buffer_usage::eCopySrc :
+            result |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            break;
+        case render::rhi::buffer_usage::eCopyDst :
+            result |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            break;
+        case render::rhi::buffer_usage::eShaderRW :
+            result |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            break;
+        case render::rhi::buffer_usage::eIndirect :
+            result |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+            break;
+        case render::rhi::buffer_usage::eIndex :
+            result |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+            break;
+        default :
+            break;
+        }
+    }
+
+    return result;
+}
+
+static VkAttachmentLoadOp vk_parse_load_op(render::rhi::resource_load_op load_op)
+{
+    switch (load_op)
+    {
+    case render::rhi::resource_load_op::eLoad :
+        return VK_ATTACHMENT_LOAD_OP_LOAD;
+        break;
+    case render::rhi::resource_load_op::eClear :
+        return VK_ATTACHMENT_LOAD_OP_CLEAR;
+        break;
+    default :
+    case render::rhi::resource_load_op::eDiscard :
+        return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        break;
+    }
+}
+
+static VkAttachmentStoreOp vk_parse_store_op(render::rhi::resource_store_op store_op)
+{
+    switch (store_op)
+    {
+    case render::rhi::resource_store_op::eStore :
+        return VK_ATTACHMENT_STORE_OP_STORE;
+        break;
+    default :
+    case render::rhi::resource_store_op::eDiscard :
+        return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        break;
+    }
+}
 
 static cpp::heap_array<vk_swapchain_sync_objects> vk_rhi_create_sc_sync(VkDevice device,
                                                                         const render::vk_swapchain& swapchain)
@@ -227,6 +295,44 @@ void render::rhi::vk_destroy_shader(context context, shader& shader)
     }
 }
 
+auto render::rhi::vk_create_buffer(context context, const create_buffer_info& buffer_info) -> result<buffer>
+{
+    const auto* ctx = cast_from_handle<render::vk_context>(context);
+    if (!ctx)
+    {
+        return error("failed to access the context");
+    }
+
+    auto vkbuf =
+        render::vk_create_buffer(buffer_info.size,
+                                 vk_parse_buffer_usage_flags(buffer_info.usage_flags),
+                                 ctx->allocator,
+                                 buffer_info.mapped ? VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT : 0);
+    if (vkbuf)
+    {
+        if (buffer_info.mapped)
+        {
+            *buffer_info.mapped = vkbuf->mapped;
+        }
+
+        return buffer {.id = create(*vkbuf)};
+    }
+
+    return error(vkbuf.message);
+}
+
+void render::rhi::vk_destroy_buffer(context context, buffer& buffer)
+{
+    const auto* ctx = cast_from_handle<render::vk_context>(context);
+    auto* vkbuf     = cast_from_handle<render::vk_buffer>(buffer);
+
+    if (ctx && vkbuf)
+    {
+        render::vk_destroy_buffer(ctx->allocator, *vkbuf);
+        erase(vkbuf, buffer);
+    }
+}
+
 auto render::rhi::vk_create_compute_pso(context context, shader shader, std::span<const bindless_set> sets)
     -> result<pipeline>
 {
@@ -301,7 +407,7 @@ auto render::rhi::vk_create_graphics_pso(context context, std::span<const shader
     auto vkpso = render::vk_pipeline::create_graphics(ctx->device,
                                                       vk_shaders,
                                                       shaders.size(),
-                                                      VK_FORMAT_UNDEFINED,
+                                                      VK_FORMAT_B8G8R8A8_UNORM,
                                                       VK_FORMAT_UNDEFINED,
                                                       vk_desc_sets,
                                                       sets.size(),
@@ -387,6 +493,14 @@ auto render::rhi::vk_query_physical_device(context context) -> result<physical_d
     }
 
     return error("failed to access the context");
+}
+
+void render::rhi::vk_queue_wait_idle(queue queue)
+{
+    if (auto vk_queue = vkobj_from_handle<VkQueue>(queue); vk_queue != VK_NULL_HANDLE)
+    {
+        vkQueueWaitIdle(vk_queue);
+    }
 }
 
 void render::rhi::vk_device_wait_idle(context context)
@@ -535,4 +649,112 @@ void render::rhi::vk_cmd_present_image(command_buffer cmd, swapchain swapchain, 
     }
 
     sc->frame_index = (sc->frame_index + 1) % sc->sync_objects.size();
+}
+
+void render::rhi::vk_cmd_set_draw_state(command_buffer cmd, std::span<const attachment_state_info> color_attachments,
+                                        attachment_state_info depth_attachment, uvec4 viewport)
+{
+    ZoneScoped;
+    auto* vkcmd = cast_from_handle<render::vk_command_buffer>(cmd);
+    if (!vkcmd)
+    {
+        return;
+    }
+
+    VkRect2D vp = {static_cast<i32>(viewport.x), static_cast<i32>(viewport.y), viewport.z, viewport.w};
+    VkRenderingInfo rendering_info {.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR, .renderArea = vp, .layerCount = 1};
+
+    VkRenderingAttachmentInfo color_attachment_info[16] {};
+    assert2(color_attachments.size() <= COUNT_OF(color_attachment_info));
+    for (u32 i = 0; i < cpp::min(color_attachments.size(), COUNT_OF(color_attachment_info)); i++)
+    {
+        auto* vkimage = cast_from_handle<vk_image>(color_attachments[i].attachment);
+        if (!vkimage)
+        {
+            return;
+        }
+
+        color_attachment_info[i] = {
+            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView   = vkimage->view,
+            .imageLayout = vkimage->layout,
+            .loadOp      = vk_parse_load_op(color_attachments[i].load_op),
+            .storeOp     = vk_parse_store_op(color_attachments[i].store_op),
+        };
+    }
+
+    if (!color_attachments.empty())
+    {
+        rendering_info.pColorAttachments    = color_attachment_info;
+        rendering_info.colorAttachmentCount = color_attachments.size();
+    }
+
+    VkRenderingAttachmentInfo depth_attachment_info {};
+    if (depth_attachment.attachment != null_image)
+    {
+        auto* vkimage = cast_from_handle<vk_image>(depth_attachment.attachment);
+        if (!vkimage)
+        {
+            return;
+        }
+
+        depth_attachment_info = {
+            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView   = vkimage->view,
+            .imageLayout = vkimage->layout,
+            .loadOp      = vk_parse_load_op(depth_attachment.load_op),
+            .storeOp     = vk_parse_store_op(depth_attachment.store_op),
+        };
+
+        rendering_info.pDepthAttachment = &depth_attachment_info;
+    }
+
+    vkCmdBeginRendering(vkcmd->cmd_buffer, &rendering_info);
+
+    const VkViewport vkvp {.x        = static_cast<f32>(vp.offset.x),
+                           .y        = static_cast<f32>(vp.offset.y),
+                           .width    = static_cast<f32>(vp.extent.width),
+                           .height   = static_cast<f32>(vp.extent.height),
+                           .minDepth = 0.0F,
+                           .maxDepth = 1.0F};
+
+    vkCmdSetCullMode(vkcmd->cmd_buffer, VK_CULL_MODE_NONE);
+    vkCmdSetScissor(vkcmd->cmd_buffer, 0, 1, &vp);
+    vkCmdSetViewport(vkcmd->cmd_buffer, 0, 1, &vkvp);
+}
+
+void render::rhi::vk_cmd_clear_draw_state(command_buffer cmd)
+{
+    auto* vkcmd = cast_from_handle<render::vk_command_buffer>(cmd);
+    if (!vkcmd)
+    {
+        return;
+    }
+
+    vkCmdEndRendering(vkcmd->cmd_buffer);
+}
+
+void render::rhi::vk_cmd_bind_pso(command_buffer cmd, pipeline pso)
+{
+    auto* vkcmd = cast_from_handle<render::vk_command_buffer>(cmd);
+    auto* vkpso = cast_from_handle<render::vk_pipeline>(pso);
+
+    if (!vkcmd || !vkpso)
+    {
+        return;
+    }
+
+    vkpso->bind(vkcmd->cmd_buffer);
+}
+
+void render::rhi::vk_cmd_draw_instanced(command_buffer cmd, u32 vtx_count, u32 instance_count, u32 first_vertex,
+                                        u32 first_instance)
+{
+    auto* vkcmd = cast_from_handle<render::vk_command_buffer>(cmd);
+    if (!vkcmd)
+    {
+        return;
+    }
+
+    vkCmdDraw(vkcmd->cmd_buffer, vtx_count, instance_count, first_vertex, first_instance);
 }

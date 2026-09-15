@@ -228,5 +228,11 @@
     "shaders": [
       "shadow_cull.comp.spv"
     ]
+  },
+  "triangle": {
+    "shaders": [
+      "triangle.vert.spv",
+      "triangle.frag.spv"
+    ]
   }
 }
