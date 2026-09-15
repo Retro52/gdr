@@ -4,6 +4,7 @@ add_subdirectory(sdl3)
 add_subdirectory(entt)
 add_subdirectory(json)
 add_subdirectory(quill)
+add_subdirectory(d3d12ma)
 add_subdirectory(spirv-headers)
 add_subdirectory(meshoptimizer)
 
