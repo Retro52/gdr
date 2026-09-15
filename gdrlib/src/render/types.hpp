@@ -27,11 +27,24 @@ namespace render::rhi
     );
 
     REGISTER_ENUM(queue_kind,
-        ePresent  = 0,
-        eTransfer = 1,
-        eGfx      = 2,
-        eCompute  = 3,
-        COUNT     = 4
+        ePresent,
+        eTransfer,
+        eGfx,
+        eCompute,
+        COUNT
+    );
+
+    REGISTER_ENUM(resource_load_op,
+        eLoad,
+        eClear,
+        eDiscard,
+        COUNT
+    );
+
+    REGISTER_ENUM(resource_store_op,
+        eStore,
+        eDiscard,
+        COUNT
     );
 
     REGISTER_ENUM(image_kind,
@@ -56,21 +69,60 @@ namespace render::rhi
         eTransferDst     = 1 << 5,
         COUNT
     );
+
+    REGISTER_FLAGS(buffer_usage,
+        eCopySrc         = 1 << 0,
+        eCopyDst         = 1 << 1,
+        eShaderRW        = 1 << 2,
+        eIndirect        = 1 << 3,
+        eIndex           = 1 << 4,
+        COUNT
+    );
     // clang-format on
 
     constexpr u32 kQueueTypesCount = static_cast<u32>(queue_kind::COUNT);
 
+    union clear_value
+    {
+        vec4 f4;
+        uvec4 u4;
+        ivec4 i4;
+
+        struct
+        {
+            f32 depth;
+            u8 stencil;
+        } ds;
+    };
+
     struct create_image_info
     {
-        image_kind kind   = image_kind::e2D;
-        image_usage usage = image_usage::eSampled;
-        uvec3 dimensions  = uvec3(1, 1, 1);
-        u32 mips_count    = 1;
-        u32 layer_count   = 1;
+        image_kind kind               = image_kind::e2D;
+        uvec3 dimensions              = uvec3(1, 1, 1);
+        image_usage_flags usage_flags = static_cast<u32>(image_usage::eSampled);
+        u32 mips_count                = 1;
+        u32 layer_count               = 1;
         // I hate these custom enums that try to cover a gajillion different formats from the API they abstract, so fuck
         // it, VkFormat is my new universal enum
         VkFormat format = VK_FORMAT_UNDEFINED;
     };
+
+    struct create_buffer_info
+    {
+        u64 size        = 0;
+        u32 usage_flags = 0;
+        void** mapped   = nullptr;  // if not null => will create mapped buffer. smart, huh?)
+    };
+
+    struct attachment_state_info
+    {
+        image attachment;
+        resource_load_op load_op;
+        resource_store_op store_op;
+        clear_value clear_value;
+    };
+
+    constexpr attachment_state_info null_attachment_state_info = attachment_state_info {.attachment = null_image};
 
     struct create_swapchain_info
     {

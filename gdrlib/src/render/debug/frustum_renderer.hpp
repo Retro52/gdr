@@ -21,7 +21,7 @@ namespace render::debug
         {
         }
 
-        void draw(VkCommandBuffer cmd, const glm::mat4& camera_vp, const render::vk_mapped_buffer& cull_data) const
+        void draw(VkCommandBuffer cmd, const glm::mat4& camera_vp, const render::vk_buffer& cull_data) const
         {
             ZoneScoped;
             const frustum_pc_data pc {
