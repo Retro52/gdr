@@ -40,6 +40,8 @@ enum class pso_id : u32
     cubemap_convolute_pipeline = "cubemap_convolute_pipeline"_crc32,
     cubemap_prefilter_pipeline = "cubemap_prefilter_pipeline"_crc32,
 
+    triangle = "triangle"_crc32,
+
     shadow_cull            = "shadow_cull"_crc32,
     shadow_fill_ss         = "shadow_fill_ss"_crc32,
     shadow_fill_ds         = "shadow_fill_ds"_crc32,

@@ -1,6 +1,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#include <app_types.hpp>
 #include <cpp/containers/heap_array.hpp>
 #include <events.hpp>
 #include <log.hpp>
@@ -9,6 +10,10 @@
 #include <window.hpp>
 
 #include <chrono>
+
+#include "render/platform/vk/vk_buffer.hpp"
+#include "render/platform/vk/vk_command_buffer.hpp"
+#include "vk_mem_alloc.h"
 
 static render::rhi::instance_desc get_instance_desc()
 {
@@ -57,6 +62,42 @@ static void register_exit_callbacks(events_queue& events, bool& exit)
             *static_cast<bool*>(user_data) = true;
         },
         &exit);
+}
+
+static result<buffer_transfer> rhi_create_buffer_transfer(const render::rhi::rhi& rhi, render::rhi::context ctx,
+                                                          render::rhi::queue_kind queue_kind, render::rhi::queue queue,
+                                                          u64 staging_memory_size)
+{
+    const auto cmd_buffer = rhi.create_command_buffer(ctx, queue_kind);
+    if (!cmd_buffer)
+    {
+        return error(cmd_buffer.message);
+    }
+
+    void* mapped = nullptr;
+    render::rhi::create_buffer_info cbi {
+        .size        = staging_memory_size,
+        .usage_flags = static_cast<u32>(render::rhi::buffer_usage::eCopySrc),
+        .mapped      = &mapped,
+    };
+
+    const auto staging_buffer = rhi.create_buffer(ctx, cbi);
+    if (!staging_buffer)
+    {
+        return error(staging_buffer.message);
+    }
+
+    return buffer_transfer {
+        .mapped = mapped, .queue = queue, .staging_buffer = *staging_buffer, .staging_command_buffer = *cmd_buffer};
+}
+
+static void rhi_destroy_buffer_transfer(const render::rhi::rhi& rhi, render::rhi::context ctx,
+                                        buffer_transfer& buffer_transfer)
+{
+    buffer_transfer.mapped = nullptr;
+    buffer_transfer.queue  = render::rhi::null_queue;
+    rhi.destroy_buffer(ctx, buffer_transfer.staging_buffer);
+    rhi.destroy_command_buffer(ctx, buffer_transfer.staging_command_buffer);
 }
 
 #define DX12_EXPERIMENTAL 0
@@ -139,11 +180,12 @@ int main(const int argc, char* argv[])
     }
 
     auto gfx_queue     = rhi.query_queue(*context, render::rhi::queue_kind::eGfx);
+    auto copy_queue    = rhi.query_queue(*context, render::rhi::queue_kind::eTransfer);
     auto present_queue = rhi.query_queue(*context, render::rhi::queue_kind::ePresent);
 
-    if (!gfx_queue || !present_queue)
+    if (!gfx_queue || !present_queue || !copy_queue)
     {
-        LOG_ERROR("failed to query graphics or present queues, required for proper rendering");
+        LOG_ERROR("failed to query graphics, copy or present queues, required for proper rendering");
         return 1;
     }
 
@@ -157,16 +199,23 @@ int main(const int argc, char* argv[])
     pso_data pipelines;
     pipelines.load(rhi, *context, *textures_set);
 
-    bool exit = false;
-    register_exit_callbacks(events, exit);
-    while (!exit)
-    {
-        events.poll();
+    scene_geometry_pool geometry_pool {
+        .vertex           = shared_buffer(rhi, *context, 128_MB, render::rhi::buffer_usage::eShaderRW),
+        .meshlets         = shared_buffer(rhi, *context, 16_MB, render::rhi::buffer_usage::eShaderRW),
+        .primitives       = shared_buffer(rhi, *context, 1_MB, render::rhi::buffer_usage::eShaderRW),
+        .instances        = shared_buffer(rhi, *context, 48_MB, render::rhi::buffer_usage::eShaderRW),
+        .materials        = shared_buffer(rhi, *context, 48_MB, render::rhi::buffer_usage::eShaderRW),
+        .meshlets_payload = shared_buffer(rhi, *context, 128_MB, render::rhi::buffer_usage::eShaderRW),
 
+        .transfer = *rhi_create_buffer_transfer(rhi, *context, render::rhi::queue_kind::eTransfer, *copy_queue, 128_MB),
+    };
+
+    auto render_loop = [&]()
+    {
         auto frame_image = rhi.acquire_next_swapchain_image(*context, *swapchain);
         if (!frame_image)
         {
-            continue;
+            return;
         }
 
         const u32 frame_index            = *rhi.query_current_frame_index(*swapchain);
@@ -174,12 +223,59 @@ int main(const int argc, char* argv[])
 
         rhi.cmd_begin_recording(cmd);
         rhi.cmd_transition_image(cmd, *frame_image, render::rhi::image_layout::eCommon);
+
+        render::rhi::attachment_state_info color_attachment {
+            .attachment  = *frame_image,
+            .load_op     = render::rhi::resource_load_op::eClear,
+            .store_op    = render::rhi::resource_store_op::eStore,
+            .clear_value = {},
+        };
+
+        rhi.cmd_set_draw_state(cmd,
+                               {&color_attachment, 1},
+                               render::rhi::null_attachment_state_info,
+                               {0, 0, window.get_size_in_px().x, window.get_size_in_px().y});
+        rhi.cmd_bind_pso(cmd, pipelines[pso_id::triangle]);
+        rhi.cmd_draw_instanced(cmd, 3, 1, 0, 0);
+        rhi.cmd_clear_draw_state(cmd);
+
         rhi.cmd_transition_image(cmd, *frame_image, render::rhi::image_layout::ePresent);
         rhi.cmd_end_recording(cmd);
         rhi.cmd_present_image(cmd, *swapchain, *gfx_queue, *present_queue);
+        FrameMark;
+    };
+
+    bool exit = false;
+    register_exit_callbacks(events, exit);
+
+    std::function wrapper(render_loop);
+    using type = decltype(wrapper);
+
+    events.add_watcher(
+        event_type::request_draw,
+        [](const event_payload& payload, void* user_data)
+        {
+            (*static_cast<type*>(user_data))();
+        },
+        &wrapper);
+
+    while (!exit)
+    {
+        events.poll();
     }
 
     rhi.device_wait_idle(*context);
+    pipelines.shutdown(rhi, *context);
+
+    rhi.destroy_buffer(*context, geometry_pool.vertex.buffer);
+    rhi.destroy_buffer(*context, geometry_pool.meshlets.buffer);
+    rhi.destroy_buffer(*context, geometry_pool.primitives.buffer);
+    rhi.destroy_buffer(*context, geometry_pool.instances.buffer);
+    rhi.destroy_buffer(*context, geometry_pool.materials.buffer);
+    rhi.destroy_buffer(*context, geometry_pool.meshlets_payload.buffer);
+    rhi.destroy_bindless_set(*context, *textures_set);
+    rhi_destroy_buffer_transfer(rhi, *context, geometry_pool.transfer);
+
     for (auto& cmd : command_buffers)
     {
         rhi.destroy_command_buffer(*context, cmd);

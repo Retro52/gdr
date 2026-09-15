@@ -32,6 +32,8 @@
     }
 
 #define REGISTER_FLAGS(Name, ...)                                                       \
+    using Name##_flags = u32;                                                           \
+                                                                                        \
     enum class Name : u32                                                               \
     {                                                                                   \
         __VA_ARGS__                                                                     \
@@ -63,9 +65,9 @@
         return static_cast<Name>(~static_cast<u32>(value));                             \
     }                                                                                   \
                                                                                         \
-    constexpr Name operator|(Name lhs, Name rhs)                                        \
+    constexpr u32 operator|(Name lhs, Name rhs)                                         \
     {                                                                                   \
-        return static_cast<Name>(static_cast<u32>(lhs) | static_cast<u32>(rhs));        \
+        return static_cast<u32>(lhs) | static_cast<u32>(rhs);                           \
     }                                                                                   \
                                                                                         \
     constexpr u32 operator|(u32 lhs, Name rhs)                                          \
@@ -78,9 +80,9 @@
         return static_cast<u32>(lhs) | rhs;                                             \
     }                                                                                   \
                                                                                         \
-    constexpr Name operator&(Name lhs, Name rhs)                                        \
+    constexpr u32 operator&(Name lhs, Name rhs)                                         \
     {                                                                                   \
-        return static_cast<Name>(static_cast<u32>(lhs) & static_cast<u32>(rhs));        \
+        return static_cast<u32>(lhs) & static_cast<u32>(rhs);                           \
     }                                                                                   \
                                                                                         \
     constexpr u32 operator&(u32 lhs, Name rhs)                                          \

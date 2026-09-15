@@ -2,7 +2,9 @@
 
 #include <pod_types.hpp>
 
-#define RHI_REGISTER_HANDLE(NAME) using NAME = handle<struct NAME##_tag>
+#define RHI_REGISTER_HANDLE(NAME)                                     \
+    using NAME                 = handle<struct _hidden_##NAME##_tag>; \
+    constexpr auto null_##NAME = null<struct _hidden_##NAME##_tag>;
 
 namespace render::rhi
 {
@@ -10,7 +12,17 @@ namespace render::rhi
     struct handle
     {
         u64 id;
+        bool operator==(const handle& handle) const = default;
     };
+
+    template<typename T>
+    constexpr handle<T> null = handle<T> {.id = 0};
+
+    template<typename T>
+    constexpr bool is_valid(handle<T> handle)
+    {
+        return handle.id != 0;
+    }
 
     RHI_REGISTER_HANDLE(device);
     RHI_REGISTER_HANDLE(physical_device);
