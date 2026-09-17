@@ -1032,7 +1032,7 @@ void render::vk_destroy_swapchain(const vk_context& vk_context, vk_swapchain& sw
 }
 
 result<vk_swapchain> render::vk_create_swapchain(const vk_context& vk_context, VkFormat format, ivec2 size,
-                                                 u32 frames_in_flight, bool vsync, VkSwapchainKHR old_swapchain)
+                                                 u32 frames_in_flight, bool vsync, const vk_swapchain* old_swapchain)
 {
     ZoneScoped;
     vk_swapchain sc_data;
@@ -1070,7 +1070,7 @@ result<vk_swapchain> render::vk_create_swapchain(const vk_context& vk_context, V
         .compositeAlpha        = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode           = choose_present_mode(vk_context.physical_device, vk_context.surface, vsync),
         .clipped               = VK_TRUE,
-        .oldSwapchain          = old_swapchain,
+        .oldSwapchain          = old_swapchain ? old_swapchain->sc : VK_NULL_HANDLE,
     };
 
     VK_RETURN_ON_FAIL(vkCreateSwapchainKHR(vk_context.device, &swapchain_create_info, nullptr, &sc_data.sc));
@@ -1136,10 +1136,7 @@ result<vk_context> render::vk_create_context(const window& window, const rhi::in
 {
     ZoneScoped;
     auto r_created_context = create_vk_context(window, instance_desc);
-    if (!r_created_context)
-    {
-        return error(r_created_context.message);
-    }
 
+    RESULT_FORWARD_IF_FAILED(r_created_context);
     return *r_created_context;
 }

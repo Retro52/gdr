@@ -60,6 +60,13 @@ function(parse_shader_config SHADER_CONFIG)
 endfunction()
 
 find_package(Vulkan REQUIRED COMPONENTS glslc glslangValidator)
+#FIXME
+#find_program(SPIRV_CROSS_EXECUTABLE
+#        NAMES spirv-cross
+#        HINTS
+#        "$ENV{VULKAN_SDK}/bin"
+#        REQUIRED
+#)
 
 file(READ "${PROJECT_SOURCE_DIR}/shaders.cfg" SHADERS_CONFIG)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/shaders.cfg")
@@ -95,6 +102,8 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
             OUTPUT "${SHADER_BIN_OUTPUT}"
             COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
             COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER_INPUT_PATH}" -o "${SHADER_BIN_OUTPUT}" --target-env vulkan1.3 --target-env spirv1.5 ${SHADER_OPT_FLAGS} ${SHADER_DEF}
+#            FIXME
+#            COMMAND ${SPIRV_CROSS_EXECUTABLE} "${SHADER_BIN_OUTPUT}" --hlsl --shader-model 68 --hlsl-enable-16bit-types --output "${SHADER_BIN_OUTPUT}.hlsl"
             DEPENDS ${SHADER_DEPENDENCIES}
             COMMENT "Compiling shader '${SHADER}' to '${SHADER_BIN_OUTPUT}'"
     )

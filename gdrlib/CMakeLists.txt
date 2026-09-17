@@ -40,6 +40,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
         Tracy::TracyClient
         SDL3_image::SDL3_image
         SPIRV-Headers::SPIRV-Headers
+        D3D12MemoryAllocator
         GPUOpen::VulkanMemoryAllocator
 
         imgui

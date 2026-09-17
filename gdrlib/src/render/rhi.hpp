@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#endif
+
 #include <fs/path.hpp>
 #include <nlohmann/json.hpp>
 #include <render/resources.hpp>
@@ -9,6 +13,23 @@
 
 #include <span>
 
+#if !defined(NDEBUG)
+#include <log.hpp>
+#define RHI_SAFE_CALL(FPN, ...)                         \
+    [&]()                                               \
+    {                                                   \
+        if (FPN)                                        \
+        {                                               \
+            return FPN(__VA_ARGS__);                    \
+        }                                               \
+        LOG_WARNING("FPN '" #FPN "' is null");          \
+        using return_type = decltype(FPN(__VA_ARGS__)); \
+        return return_type {};                          \
+    }()
+#else
+#define RHI_SAFE_CALL(FPN, ...) FPN(__VA_ARGS__)
+#endif
+
 namespace render::rhi
 {
     using destroy_context_fpn = void (*)(context& context);
@@ -16,6 +37,8 @@ namespace render::rhi
 
     using destroy_swapchain_fpn = void (*)(context context, swapchain& swapchain);
     using create_swapchain_fpn  = result<swapchain> (*)(context context, const create_swapchain_info& desc);
+    using resize_swapchain_fpn  = result<swapchain> (*)(context context, swapchain swapchain,
+                                                       const create_swapchain_info& desc);
 
     using create_command_buffer_fpn  = result<command_buffer> (*)(context context, queue_kind queue_kind);
     using destroy_command_buffer_fpn = void (*)(context context, command_buffer& cmd);
@@ -66,6 +89,7 @@ namespace render::rhi
         destroy_context_fpn destroy_context;
 
         create_swapchain_fpn create_swapchain;
+        resize_swapchain_fpn resize_swapchain;
         destroy_swapchain_fpn destroy_swapchain;
 
         create_command_buffer_fpn create_command_buffer;
@@ -108,5 +132,5 @@ namespace render::rhi
 
     rhi create_for_vk();
 
-    rhi create_for_dx12();
+    rhi create_for_d3d12();
 }

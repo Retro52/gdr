@@ -372,11 +372,7 @@ static result<render::vk_image> upload_texture(const parsed_texture& texture, co
     const auto image_r = render::create_image(
         renderer.get_context().device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, renderer.get_context().allocator);
 
-    if (!image_r)
-    {
-        return error(image_r.message);
-    }
-
+    RESULT_FORWARD_IF_FAILED(image_r);
     render::upload_image(scratch,
                          *image_r,
                          static_cast<const u8*>(desc.pdata),

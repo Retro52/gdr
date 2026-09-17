@@ -1,9 +1,24 @@
 #include <render/rhi.hpp>
-#include <render/rhivk.hpp>
+#include <render/rhi_d3d12.hpp>
+#include <render/rhi_vk.hpp>
 
-render::rhi::rhi render::rhi::create_for_dx12()
+render::rhi::rhi render::rhi::create_for_d3d12()
 {
-    render::rhi::rhi result;
+    render::rhi::rhi result {
+        .create_context    = d3d12_create_context,
+        .destroy_context   = d3d12_destroy_context,
+        .create_swapchain  = d3d12_create_swapchain,
+        .resize_swapchain  = d3d12_resize_swapchain,
+        .destroy_swapchain = d3d12_destroy_swapchain,
+
+        .query_shader_stage           = d3d12_query_shader_stage,
+        .query_swapchain_images_count = d3d12_query_swapchain_images_count,
+        .query_current_frame_index    = d3d12_query_current_frame_index,
+
+        .query_queue           = d3d12_query_queue,
+        .query_device          = d3d12_query_device,
+        .query_physical_device = d3d12_query_physical_device,
+    };
     return result;
 }
 
@@ -13,6 +28,7 @@ render::rhi::rhi render::rhi::create_for_vk()
         .create_context         = vk_create_context,
         .destroy_context        = vk_destroy_context,
         .create_swapchain       = vk_create_swapchain,
+        .resize_swapchain       = vk_resize_swapchain,
         .destroy_swapchain      = vk_destroy_swapchain,
         .create_command_buffer  = vk_create_command_buffer,
         .destroy_command_buffer = vk_destroy_command_buffer,

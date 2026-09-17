@@ -1,8 +1,8 @@
 #pragma once
 
-#include <types.hpp>
-
 #include <assert2.hpp>
+
+#include <memory>
 
 struct [[nodiscard]] result_error_t
 {
@@ -13,6 +13,10 @@ inline result_error_t error(const char* msg)
 {
     return {msg};
 }
+
+#define RESULT_FORWARD_IF_FAILED(result) \
+    if (!result)                         \
+        return error(result.message);
 
 template<class T>
 struct [[nodiscard]] result
@@ -39,13 +43,13 @@ struct [[nodiscard]] result
     result(const T& v)
         : status(status::ok)
     {
-        ::new (&value) T(v);
+        ::new (std::addressof(value)) T(v);
     }
 
     result(T&& v)
         : status(status::ok)
     {
-        ::new (&value) T(static_cast<T&&>(v));
+        ::new (std::addressof(value)) T(static_cast<T&&>(v));
     }
 
     result(result_error_t e) noexcept
@@ -61,7 +65,7 @@ struct [[nodiscard]] result
     {
         if (status == status::ok)
         {
-            ::new (&value) T(rhs.value);
+            ::new (std::addressof(value)) T(rhs.value);
         }
         else
         {
@@ -74,7 +78,7 @@ struct [[nodiscard]] result
     {
         if (status == status::ok)
         {
-            ::new (&value) T(static_cast<T&&>(rhs.value));
+            ::new (std::addressof(value)) T(static_cast<T&&>(rhs.value));
         }
         else
         {
@@ -99,7 +103,7 @@ struct [[nodiscard]] result
 
         if (status == status::ok)
         {
-            ::new (&value) T(rhs.value);
+            ::new (std::addressof(value)) T(rhs.value);
         }
         else
         {
@@ -126,7 +130,7 @@ struct [[nodiscard]] result
 
         if (status == status::ok)
         {
-            ::new (&value) T(static_cast<T&&>(rhs.value));
+            ::new (std::addressof(value)) T(static_cast<T&&>(rhs.value));
         }
         else
         {
@@ -158,13 +162,13 @@ struct [[nodiscard]] result
     T* operator->()
     {
         assert2m(status == status::ok, message);
-        return &value;
+        return std::addressof(value);
     }
 
     const T* operator->() const
     {
         assert2m(status == status::ok, message);
-        return &value;
+        return std::addressof(value);
     }
 
 private:
