@@ -23,8 +23,8 @@ namespace render
         void begin_next(VkCommandBuffer cmd, u32 flags = 0) const;
     };
 
-    result<vk_query> create_query_pool(VkDevice device, u32 queries, VkQueryType type);
-    result<vk_query> create_pipeline_stat_query_pool(VkDevice device, u32 queries, VkQueryPipelineStatisticFlags flags);
+    result<vk_query> vk_create_query_pool(VkDevice device, u32 queries, VkQueryType type);
+    result<vk_query> vk_create_pipeline_stat_query_pool(VkDevice device, u32 queries, VkQueryPipelineStatisticFlags flags);
 
-    void destroy_query_pool(VkDevice device, vk_query& query);
+    void vk_destroy_query_pool(VkDevice device, vk_query& query);
 }

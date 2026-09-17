@@ -64,28 +64,28 @@ app::csm::csm(const render::vk_renderer& renderer, VkFormat format, const csm_co
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    sampler = *render::create_sampler(renderer.get_context().device,
-                                      VK_FILTER_LINEAR,
-                                      VK_SAMPLER_MIPMAP_MODE_LINEAR,
-                                      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
-                                      VK_SAMPLER_REDUCTION_MODE_MAX_ENUM,
-                                      0.0F,
-                                      VK_COMPARE_OP_GREATER_OR_EQUAL,
-                                      VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK);
+    sampler = *render::vk_create_sampler(renderer.get_context().device,
+                                         VK_FILTER_LINEAR,
+                                         VK_SAMPLER_MIPMAP_MODE_LINEAR,
+                                         VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+                                         VK_SAMPLER_REDUCTION_MODE_MAX_ENUM,
+                                         0.0F,
+                                         VK_COMPARE_OP_GREATER_OR_EQUAL,
+                                         VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK);
 
-    shadow_map = *render::create_image(
+    shadow_map = *render::vk_create_image(
         renderer.get_context().device, image_create_info, VK_IMAGE_ASPECT_DEPTH_BIT, renderer.get_context().allocator);
 
     cascade_views.resize(shader_constants::kMaxShadowCascades);
     for (u32 i = 0; i < shader_constants::kMaxShadowCascades; ++i)
     {
-        cascade_views[i] = *render::create_image_array_view(renderer.get_context().device,
-                                                            shadow_map.image,
-                                                            VK_IMAGE_VIEW_TYPE_2D,
-                                                            format,
-                                                            VK_IMAGE_ASPECT_DEPTH_BIT,
-                                                            i,
-                                                            1);
+        cascade_views[i] = *render::vk_create_image_array_view(renderer.get_context().device,
+                                                               shadow_map.image,
+                                                               VK_IMAGE_VIEW_TYPE_2D,
+                                                               format,
+                                                               VK_IMAGE_ASPECT_DEPTH_BIT,
+                                                               i,
+                                                               1);
     }
 }
 
@@ -94,7 +94,7 @@ void app::csm::init(const render::vk_renderer& renderer)
     renderer.submit(
         [&](VkCommandBuffer cmd)
         {
-            render::transition_image(
+            render::vk_transition_image(
                 cmd, shadow_map.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_DEPTH_BIT);
         });
 }
@@ -107,7 +107,7 @@ void app::csm::shutdown(const render::vk_renderer& renderer)
     }
 
     vkDestroySampler(renderer.get_context().device, sampler, nullptr);
-    render::destroy_image(renderer.get_context().device, renderer.get_context().allocator, shadow_map);
+    render::vk_destroy_image(renderer.get_context().device, renderer.get_context().allocator, shadow_map);
 }
 
 render::vk_descriptor_info app::csm::get_descriptor_info() const

@@ -14,42 +14,44 @@ namespace render
         VkImageLayout layout     = VK_IMAGE_LAYOUT_UNDEFINED;
     };
 
-    VkImageSubresourceRange image_subresource_range(VkImageAspectFlags aspect_flag);
+    VkImageSubresourceRange vk_image_subresource_range(VkImageAspectFlags aspect_flag);
 
-    VkImageSubresourceRange image_subresource_range(VkImageAspectFlags aspect_flag, u32 mip_level, u32 levels_count);
+    VkImageSubresourceRange vk_image_subresource_range(VkImageAspectFlags aspect_flag, u32 mip_level, u32 levels_count);
 
-    VkImageSubresourceRange image_subresource_range(VkImageAspectFlags aspect_flag, u32 mip_level, u32 levels_count,
-                                                    u32 array_layer, u32 layer_count);
+    VkImageSubresourceRange vk_image_subresource_range(VkImageAspectFlags aspect_flag, u32 mip_level, u32 levels_count,
+                                                       u32 array_layer, u32 layer_count);
 
-    void transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout, VkImageLayout new_layout);
+    void vk_transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout,
+                             VkImageLayout new_layout);
 
-    void transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout, VkImageLayout new_layout,
-                          VkImageAspectFlags aspect_flags);
+    void vk_transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout, VkImageLayout new_layout,
+                             VkImageAspectFlags aspect_flags);
 
-    void transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout, VkImageLayout new_layout,
-                          VkPipelineStageFlags2 src_stage_flags, VkPipelineStageFlags2 dst_stage_flags,
-                          VkAccessFlags2 src_access_mask, VkAccessFlags2 dst_access_mask,
-                          VkImageAspectFlags aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT);
+    void vk_transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout, VkImageLayout new_layout,
+                             VkPipelineStageFlags2 src_stage_flags, VkPipelineStageFlags2 dst_stage_flags,
+                             VkAccessFlags2 src_access_mask, VkAccessFlags2 dst_access_mask,
+                             VkImageAspectFlags aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT);
 
-    void destroy_image(VkDevice device, VmaAllocator allocator, const vk_image& image);
+    void vk_destroy_image(VkDevice device, VmaAllocator allocator, const vk_image& image);
 
-    result<vk_image> create_image(VkDevice device, const VkImageCreateInfo& image_create_info,
-                                  VkImageAspectFlags aspect_flags, VmaAllocator allocator);
+    result<vk_image> vk_create_image(VkDevice device, const VkImageCreateInfo& image_create_info,
+                                     VkImageAspectFlags aspect_flags, VmaAllocator allocator);
 
-    result<VkImageView> create_image_view(VkDevice device, VkImage image, VkFormat format,
-                                          VkImageAspectFlags aspect_flags);
+    result<VkImageView> vk_create_image_view(VkDevice device, VkImage image, VkFormat format,
+                                             VkImageAspectFlags aspect_flags);
 
-    result<VkImageView> create_image_array_view(VkDevice device, VkImage image, VkImageViewType type, VkFormat format,
-                                                VkImageAspectFlags aspect_flags, u32 array_layer, u32 layer_count);
+    result<VkImageView> vk_create_image_array_view(VkDevice device, VkImage image, VkImageViewType type,
+                                                   VkFormat format, VkImageAspectFlags aspect_flags, u32 array_layer,
+                                                   u32 layer_count);
 
-    result<VkImageView> create_image_view(VkDevice device, VkImage image, VkImageViewType type, VkFormat format,
-                                          VkImageAspectFlags aspect_flags, u32 mip_level, u32 levels_count);
+    result<VkImageView> vk_create_image_view(VkDevice device, VkImage image, VkImageViewType type, VkFormat format,
+                                             VkImageAspectFlags aspect_flags, u32 mip_level, u32 levels_count);
 
-    result<VkSampler> create_sampler(VkDevice device, VkFilter filter, VkSamplerMipmapMode mipmap_mode,
-                                     VkSamplerAddressMode sampler_address_mode,
-                                     VkSamplerReductionMode reduction_mode = VK_SAMPLER_REDUCTION_MODE_MAX_ENUM,
-                                     f32 anisotropic_filtering_factor      = 0.0F,
-                                     VkCompareOp compare_op                = VK_COMPARE_OP_MAX_ENUM,
-                                     VkBorderColor border_color            = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK);
+    result<VkSampler> vk_create_sampler(VkDevice device, VkFilter filter, VkSamplerMipmapMode mipmap_mode,
+                                        VkSamplerAddressMode sampler_address_mode,
+                                        VkSamplerReductionMode reduction_mode = VK_SAMPLER_REDUCTION_MODE_MAX_ENUM,
+                                        f32 anisotropic_filtering_factor      = 0.0F,
+                                        VkCompareOp compare_op                = VK_COMPARE_OP_MAX_ENUM,
+                                        VkBorderColor border_color            = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK);
 
 }

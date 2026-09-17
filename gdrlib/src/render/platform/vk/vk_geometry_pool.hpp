@@ -1,8 +1,6 @@
 #pragma once
 
-#include <render/platform/vk/vk_buffer.hpp>
 #include <render/platform/vk/vk_buffer_transfer.hpp>
-#include <render/platform/vk/vk_renderer.hpp>
 
 namespace render
 {
