@@ -63,13 +63,13 @@ imgui_layer::imgui_layer(const window& window, const render::vk_renderer& render
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    m_atlas_data.atlas_image = *render::create_image(
+    m_atlas_data.atlas_image = *render::vk_create_image(
         renderer.get_context().device, image_info, VK_IMAGE_ASPECT_COLOR_BIT, renderer.get_context().allocator);
 
-    m_atlas_data.sampler = *render::create_sampler(renderer.get_context().device,
-                                                   VK_FILTER_NEAREST,
-                                                   VK_SAMPLER_MIPMAP_MODE_NEAREST,
-                                                   VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    m_atlas_data.sampler = *render::vk_create_sampler(renderer.get_context().device,
+                                                      VK_FILTER_NEAREST,
+                                                      VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                                                      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
     m_atlas_data.imgui_descriptor = ImGui_ImplVulkan_AddTexture(
         m_atlas_data.sampler, m_atlas_data.atlas_image.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -82,7 +82,7 @@ imgui_layer::~imgui_layer()
     ImGui_ImplVulkan_RemoveTexture(m_atlas_data.imgui_descriptor);
     vkDestroySampler(context.device, m_atlas_data.sampler, nullptr);
 
-    render::destroy_image(context.device, context.allocator, m_atlas_data.atlas_image);
+    render::vk_destroy_image(context.device, context.allocator, m_atlas_data.atlas_image);
 
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplSDL3_Shutdown();
@@ -271,7 +271,7 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
     };
     vkCmdPipelineBarrier2(cmd, &dep);
 
-    render::transition_image(
+    render::vk_transition_image(
         cmd, m_atlas_data.atlas_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     VkRenderingAttachmentInfo color_attachment {.sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -345,8 +345,8 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
     vkCmdPipelineBarrier2(cmd, &dep);
 
     m_pending_uploads.clear();
-    render::transition_image(cmd,
-                             m_atlas_data.atlas_image.image,
-                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    render::vk_transition_image(cmd,
+                                m_atlas_data.atlas_image.image,
+                                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }

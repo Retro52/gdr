@@ -53,7 +53,7 @@ void app::begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView de
     vkCmdSetViewport(cmd, 0, 1, &viewport);
 }
 
-void app::zero_buffer(VkCommandBuffer cmd, const render::vk_buffer& buffer, u64 offset, u64 size)
+void app::zero_buffer(VkCommandBuffer cmd, const render::vk_buffer& buffer, const u64 offset, const u64 size)
 {
     ZoneScoped;
 
@@ -64,23 +64,23 @@ void app::zero_buffer(VkCommandBuffer cmd, const render::vk_buffer& buffer, u64 
                               | VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
 #endif
 
-    render::cmd_buffer_barrier(cmd,
-                               buffer.buffer,
-                               stage_bits,
-                               VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
-                                   | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                               VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                               VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    render::vk_buffer_barrier(cmd,
+                              buffer.buffer,
+                              stage_bits,
+                              VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+                                  | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                              VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                              VK_ACCESS_2_TRANSFER_WRITE_BIT);
 
     vkCmdFillBuffer(cmd, buffer.buffer, offset, size ? size : (buffer.size - offset), 0);
 
-    render::cmd_buffer_barrier(cmd,
-                               buffer.buffer,
-                               VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                               VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
-                                   | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+    render::vk_buffer_barrier(cmd,
+                              buffer.buffer,
+                              VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                              VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+                              VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
+                                  | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
 }
 
 void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& draw_count_buffer)
@@ -94,13 +94,13 @@ void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& 
                               | VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
 #endif
 
-    render::cmd_buffer_barrier(cmd,
-                               draw_count_buffer.buffer,
-                               stage_bits,
-                               VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
-                                   | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                               VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                               VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    render::vk_buffer_barrier(cmd,
+                              draw_count_buffer.buffer,
+                              stage_bits,
+                              VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+                                  | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                              VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+                              VK_ACCESS_2_TRANSFER_WRITE_BIT);
 
     u32 counts[shader_constants::kMatClassCount * 3];
     for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
@@ -111,13 +111,13 @@ void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& 
     }
 
     vkCmdUpdateBuffer(cmd, draw_count_buffer.buffer, 0, sizeof(u32) * COUNT_OF(counts), counts);
-    render::cmd_buffer_barrier(cmd,
-                               draw_count_buffer.buffer,
-                               VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                               VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
-                                   | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+    render::vk_buffer_barrier(cmd,
+                              draw_count_buffer.buffer,
+                              VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+                              VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+                              VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
+                                  | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
 }
 
 render::vk_image app::create_color_image(const ivec2& size, VkFormat format, VkDevice device, VmaAllocator allocator)
@@ -137,7 +137,7 @@ render::vk_image app::create_color_image(const ivec2& size, VkFormat format, VkD
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    return *render::create_image(device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, allocator);
+    return *render::vk_create_image(device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, allocator);
 }
 
 render::vk_image app::create_depth_image(const ivec2& size, const VkFormat format, VkDevice device,
@@ -159,7 +159,7 @@ render::vk_image app::create_depth_image(const ivec2& size, const VkFormat forma
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    return *render::create_image(device, image_create_info, VK_IMAGE_ASPECT_DEPTH_BIT, allocator);
+    return *render::vk_create_image(device, image_create_info, VK_IMAGE_ASPECT_DEPTH_BIT, allocator);
 }
 
 void app::destroy_depth_pyramid(depth_pyramid_data& pyramid, VkDevice device, VmaAllocator allocator)
@@ -171,7 +171,7 @@ void app::destroy_depth_pyramid(depth_pyramid_data& pyramid, VkDevice device, Vm
     }
 
     pyramid.pyramid_count = 0;
-    render::destroy_image(device, allocator, pyramid.image);
+    render::vk_destroy_image(device, allocator, pyramid.image);
     vkDestroySampler(device, pyramid.sampler, nullptr);
 }
 
@@ -194,7 +194,7 @@ app::vis_buffer_data app::create_vis_buffer_data(const ivec2& size, VkDevice dev
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    return {*render::create_image(device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, allocator)};
+    return {*render::vk_create_image(device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, allocator)};
 }
 
 app::depth_pyramid_data app::create_depth_pyramid(const ivec2& size, const VkFormat format, VkDevice device,
@@ -230,20 +230,20 @@ app::depth_pyramid_data app::create_depth_pyramid(const ivec2& size, const VkFor
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    depth_pyramid.image   = *render::create_image(device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, allocator);
-    depth_pyramid.sampler = *render::create_sampler(device,
-                                                    VK_FILTER_LINEAR,
-                                                    VK_SAMPLER_MIPMAP_MODE_NEAREST,
-                                                    VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+    depth_pyramid.image   = *render::vk_create_image(device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, allocator);
+    depth_pyramid.sampler = *render::vk_create_sampler(device,
+                                                       VK_FILTER_LINEAR,
+                                                       VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                                                       VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 #ifdef __APPLE__
-                                                    VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE);
+                                                       VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE);
 #else
-                                                    VK_SAMPLER_REDUCTION_MODE_MIN);
+                                                       VK_SAMPLER_REDUCTION_MODE_MIN);
 #endif
 
     for (u32 i = 0; i < depth_pyramid.pyramid_count; ++i)
     {
-        depth_pyramid.views[i] = *render::create_image_view(
+        depth_pyramid.views[i] = *render::vk_create_image_view(
             device, depth_pyramid.image.image, VK_IMAGE_VIEW_TYPE_2D, format, VK_IMAGE_ASPECT_COLOR_BIT, i, 1);
     }
 

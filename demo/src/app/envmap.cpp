@@ -28,14 +28,14 @@ static void generate_mips(VkCommandBuffer cmd, render::vk_image& cube, i32 resol
         vkCmdBlitImage(
             cmd, cube.image, VK_IMAGE_LAYOUT_GENERAL, cube.image, VK_IMAGE_LAYOUT_GENERAL, 1, &blit, VK_FILTER_LINEAR);
 
-        render::transition_image(cmd,
-                                 cube.image,
-                                 VK_IMAGE_LAYOUT_GENERAL,
-                                 VK_IMAGE_LAYOUT_GENERAL,
-                                 VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                                 VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                                 VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                                 VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
+        render::vk_transition_image(cmd,
+                                    cube.image,
+                                    VK_IMAGE_LAYOUT_GENERAL,
+                                    VK_IMAGE_LAYOUT_GENERAL,
+                                    VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+                                    VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+                                    VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                    VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
 
         resolution = mip_resolution;
     }
@@ -53,11 +53,11 @@ static void make_brdf_lut(VkCommandBuffer cmd, const render::vk_pipeline& pso, c
     pso.push_descriptor_set(cmd, bindings);
     pso.dispatch(cmd, resolution, resolution, 1);
 
-    render::cmd_stage_barrier(cmd,
-                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                              VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                              VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+    render::vk_stage_barrier(cmd,
+                             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                             VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 }
 
 app::envmap::envmap(const render::vk_renderer& renderer, VkFormat format, const envmap_config& cfg)
@@ -83,10 +83,10 @@ app::envmap::envmap(const render::vk_renderer& renderer, VkFormat format, const 
     {
         image_create_info.mipLevels = get_mips_count(env_resolution);
         image_create_info.extent    = {static_cast<u32>(env_resolution), static_cast<u32>(env_resolution), 1},
-        cubemap                     = *render::create_image(renderer.get_context().device,
-                                        image_create_info,
-                                        VK_IMAGE_ASPECT_COLOR_BIT,
-                                        renderer.get_context().allocator);
+        cubemap                     = *render::vk_create_image(renderer.get_context().device,
+                                           image_create_info,
+                                           VK_IMAGE_ASPECT_COLOR_BIT,
+                                           renderer.get_context().allocator);
     }
 
     {
@@ -94,29 +94,29 @@ app::envmap::envmap(const render::vk_renderer& renderer, VkFormat format, const 
         image_create_info.extent    = {static_cast<u32>(irradiance_resolution),
                                        static_cast<u32>(irradiance_resolution),
                                        1},
-        convolution                 = *render::create_image(renderer.get_context().device,
-                                            image_create_info,
-                                            VK_IMAGE_ASPECT_COLOR_BIT,
-                                            renderer.get_context().allocator);
+        convolution                 = *render::vk_create_image(renderer.get_context().device,
+                                               image_create_info,
+                                               VK_IMAGE_ASPECT_COLOR_BIT,
+                                               renderer.get_context().allocator);
     }
 
     {
         image_create_info.mipLevels = shader_constants::kEnvPrefilterMips;
         image_create_info.extent = {static_cast<u32>(prefilter_resolution), static_cast<u32>(prefilter_resolution), 1},
-        prefiltered              = *render::create_image(renderer.get_context().device,
-                                            image_create_info,
-                                            VK_IMAGE_ASPECT_COLOR_BIT,
-                                            renderer.get_context().allocator);
+        prefiltered              = *render::vk_create_image(renderer.get_context().device,
+                                               image_create_info,
+                                               VK_IMAGE_ASPECT_COLOR_BIT,
+                                               renderer.get_context().allocator);
 
         for (u32 i = 0; i < shader_constants::kEnvPrefilterMips; ++i)
         {
-            pref_mips[i] = *render::create_image_view(renderer.get_context().device,
-                                                      prefiltered.image,
-                                                      VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-                                                      format,
-                                                      VK_IMAGE_ASPECT_COLOR_BIT,
-                                                      i,
-                                                      1);
+            pref_mips[i] = *render::vk_create_image_view(renderer.get_context().device,
+                                                         prefiltered.image,
+                                                         VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+                                                         format,
+                                                         VK_IMAGE_ASPECT_COLOR_BIT,
+                                                         i,
+                                                         1);
         }
     }
 
@@ -128,49 +128,49 @@ app::envmap::envmap(const render::vk_renderer& renderer, VkFormat format, const 
         image_create_info.usage       = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
 
         image_create_info.extent = {static_cast<u32>(brdf_lut_resolution), static_cast<u32>(brdf_lut_resolution), 1},
-        brdf_lut                 = *render::create_image(renderer.get_context().device,
-                                         image_create_info,
-                                         VK_IMAGE_ASPECT_COLOR_BIT,
-                                         renderer.get_context().allocator);
+        brdf_lut                 = *render::vk_create_image(renderer.get_context().device,
+                                            image_create_info,
+                                            VK_IMAGE_ASPECT_COLOR_BIT,
+                                            renderer.get_context().allocator);
     }
 
-    sampler = *render::create_sampler(renderer.get_context().device,
-                                      VK_FILTER_LINEAR,
-                                      VK_SAMPLER_MIPMAP_MODE_LINEAR,
-                                      VK_SAMPLER_ADDRESS_MODE_REPEAT,
-                                      VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
-                                      16.0F);
+    sampler = *render::vk_create_sampler(renderer.get_context().device,
+                                         VK_FILTER_LINEAR,
+                                         VK_SAMPLER_MIPMAP_MODE_LINEAR,
+                                         VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                                         VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
+                                         16.0F);
 
-    brdf_sampler = *render::create_sampler(renderer.get_context().device,
-                                           VK_FILTER_LINEAR,
-                                           VK_SAMPLER_MIPMAP_MODE_LINEAR,
-                                           VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-                                           VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
-                                           16.0F);
+    brdf_sampler = *render::vk_create_sampler(renderer.get_context().device,
+                                              VK_FILTER_LINEAR,
+                                              VK_SAMPLER_MIPMAP_MODE_LINEAR,
+                                              VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                                              VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
+                                              16.0F);
 
-    cube_view = *render::create_image_view(renderer.get_context().device,
-                                           cubemap.image,
-                                           VK_IMAGE_VIEW_TYPE_CUBE,
-                                           format,
-                                           VK_IMAGE_ASPECT_COLOR_BIT,
-                                           0,
-                                           VK_REMAINING_MIP_LEVELS);
+    cube_view = *render::vk_create_image_view(renderer.get_context().device,
+                                              cubemap.image,
+                                              VK_IMAGE_VIEW_TYPE_CUBE,
+                                              format,
+                                              VK_IMAGE_ASPECT_COLOR_BIT,
+                                              0,
+                                              VK_REMAINING_MIP_LEVELS);
 
-    conv_view = *render::create_image_view(renderer.get_context().device,
-                                           convolution.image,
-                                           VK_IMAGE_VIEW_TYPE_CUBE,
-                                           format,
-                                           VK_IMAGE_ASPECT_COLOR_BIT,
-                                           0,
-                                           VK_REMAINING_MIP_LEVELS);
+    conv_view = *render::vk_create_image_view(renderer.get_context().device,
+                                              convolution.image,
+                                              VK_IMAGE_VIEW_TYPE_CUBE,
+                                              format,
+                                              VK_IMAGE_ASPECT_COLOR_BIT,
+                                              0,
+                                              VK_REMAINING_MIP_LEVELS);
 
-    pref_view = *render::create_image_view(renderer.get_context().device,
-                                           prefiltered.image,
-                                           VK_IMAGE_VIEW_TYPE_CUBE,
-                                           format,
-                                           VK_IMAGE_ASPECT_COLOR_BIT,
-                                           0,
-                                           VK_REMAINING_MIP_LEVELS);
+    pref_view = *render::vk_create_image_view(renderer.get_context().device,
+                                              prefiltered.image,
+                                              VK_IMAGE_VIEW_TYPE_CUBE,
+                                              format,
+                                              VK_IMAGE_ASPECT_COLOR_BIT,
+                                              0,
+                                              VK_REMAINING_MIP_LEVELS);
 }
 
 void app::envmap::shutdown(const render::vk_renderer& renderer)
@@ -181,15 +181,15 @@ void app::envmap::shutdown(const render::vk_renderer& renderer)
     vkDestroyImageView(renderer.get_context().device, cube_view, nullptr);
     vkDestroyImageView(renderer.get_context().device, conv_view, nullptr);
     vkDestroyImageView(renderer.get_context().device, pref_view, nullptr);
-    for (auto view : pref_mips)
+    for (const auto view : pref_mips)
     {
         vkDestroyImageView(renderer.get_context().device, view, nullptr);
     }
 
-    render::destroy_image(renderer.get_context().device, renderer.get_context().allocator, cubemap);
-    render::destroy_image(renderer.get_context().device, renderer.get_context().allocator, brdf_lut);
-    render::destroy_image(renderer.get_context().device, renderer.get_context().allocator, convolution);
-    render::destroy_image(renderer.get_context().device, renderer.get_context().allocator, prefiltered);
+    render::vk_destroy_image(renderer.get_context().device, renderer.get_context().allocator, cubemap);
+    render::vk_destroy_image(renderer.get_context().device, renderer.get_context().allocator, brdf_lut);
+    render::vk_destroy_image(renderer.get_context().device, renderer.get_context().allocator, convolution);
+    render::vk_destroy_image(renderer.get_context().device, renderer.get_context().allocator, prefiltered);
 }
 
 render::vk_descriptor_info app::envmap::get_lut_descriptor_info() const
@@ -212,15 +212,15 @@ render::vk_descriptor_info app::envmap::get_pref_descriptor_info() const
     return {sampler, pref_view, VK_IMAGE_LAYOUT_GENERAL};
 }
 
-void app::envmap::init(app::pso_data& pso, render::vk_renderer& renderer)
+void app::envmap::init(app::pso_data& pso, const render::vk_renderer& renderer)
 {
     renderer.submit(
         [&](VkCommandBuffer cmd)
         {
-            render::transition_image(cmd, cubemap.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-            render::transition_image(cmd, brdf_lut.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-            render::transition_image(cmd, convolution.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-            render::transition_image(cmd, prefiltered.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+            render::vk_transition_image(cmd, cubemap.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+            render::vk_transition_image(cmd, brdf_lut.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+            render::vk_transition_image(cmd, convolution.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+            render::vk_transition_image(cmd, prefiltered.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
             {
                 TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), cmd, "brdf lut generation"));
@@ -237,7 +237,7 @@ void app::envmap::load(const fs::path& path, app::pso_data& pso, render::vk_rend
         renderer.schedule_delete(
             [equirect](VkDevice device, VmaAllocator allocator)
             {
-                render::destroy_image(device, allocator, *equirect);
+                render::vk_destroy_image(device, allocator, *equirect);
             });
 
         renderer.submit(
@@ -259,22 +259,22 @@ void app::envmap::load(const fs::path& path, app::pso_data& pso, render::vk_rend
 
                     pass.dispatch(cmd, env_resolution, env_resolution, 6);
 
-                    render::cmd_stage_barrier(cmd,
-                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                              VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                                              VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                                              VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
+                    render::vk_stage_barrier(cmd,
+                                             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                             VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+                                             VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
                 }
 
                 {
                     TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), cmd, "cubemap mips generation"));
                     generate_mips(cmd, cubemap, env_resolution);
 
-                    render::cmd_stage_barrier(cmd,
-                                              VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                                              VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                              VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                    render::vk_stage_barrier(cmd,
+                                             VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+                                             VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                                             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                             VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
                 }
 
                 {
@@ -295,12 +295,12 @@ void app::envmap::load(const fs::path& path, app::pso_data& pso, render::vk_rend
 
                     pass.dispatch(cmd, irradiance_resolution, irradiance_resolution, 6);
 
-                    render::cmd_stage_barrier(cmd,
-                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                              VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
-                                                  | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                                              VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                    render::vk_stage_barrier(cmd,
+                                             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+                                                 | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                             VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
                 }
 
                 {
@@ -335,12 +335,12 @@ void app::envmap::load(const fs::path& path, app::pso_data& pso, render::vk_rend
                                                 / static_cast<f32>(shader_constants::kEnvPrefilterMips - 1)});
 
                         pass.dispatch(cmd, mip_resolution, mip_resolution, 6);
-                        render::cmd_stage_barrier(cmd,
-                                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
-                                                      | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                                                  VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                        render::vk_stage_barrier(cmd,
+                                                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                                 VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+                                                     | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                                 VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
                         mip_resolution >>= 1;
                     }

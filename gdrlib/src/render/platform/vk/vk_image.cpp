@@ -4,20 +4,22 @@
 #include <render/platform/vk/vk_image.hpp>
 #include <tracy/Tracy.hpp>
 
-VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspect_flag)
+VkImageSubresourceRange render::vk_image_subresource_range(VkImageAspectFlags aspect_flag)
 {
     ZoneScoped;
-    return render::image_subresource_range(aspect_flag, 0, VK_REMAINING_MIP_LEVELS);
+    return render::vk_image_subresource_range(aspect_flag, 0, VK_REMAINING_MIP_LEVELS);
 }
 
-VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspect_flag, u32 mip_level, u32 levels_count)
+VkImageSubresourceRange render::vk_image_subresource_range(const VkImageAspectFlags aspect_flag, const u32 mip_level,
+                                                           const u32 levels_count)
 {
     ZoneScoped;
-    return render::image_subresource_range(aspect_flag, mip_level, levels_count, 0, VK_REMAINING_ARRAY_LAYERS);
+    return render::vk_image_subresource_range(aspect_flag, mip_level, levels_count, 0, VK_REMAINING_ARRAY_LAYERS);
 }
 
-VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspect_flag, u32 mip_level, u32 levels_count,
-                                                        u32 array_layer, u32 layer_count)
+VkImageSubresourceRange render::vk_image_subresource_range(const VkImageAspectFlags aspect_flag, const u32 mip_level,
+                                                           const u32 levels_count, const u32 array_layer,
+                                                           const u32 layer_count)
 {
     ZoneScoped;
     return VkImageSubresourceRange {
@@ -29,36 +31,36 @@ VkImageSubresourceRange render::image_subresource_range(VkImageAspectFlags aspec
     };
 }
 
-void render::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout,
-                              VkImageLayout new_layout)
+void render::vk_transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout,
+                                 VkImageLayout new_layout)
 {
     ZoneScoped;
     const VkImageAspectFlags aspect_flag = (new_layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
                                              ? VK_IMAGE_ASPECT_DEPTH_BIT
                                              : VK_IMAGE_ASPECT_COLOR_BIT;
 
-    return transition_image(cmd, image, current_layout, new_layout, aspect_flag);
+    return vk_transition_image(cmd, image, current_layout, new_layout, aspect_flag);
 }
 
-void render::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout,
-                              VkImageLayout new_layout, VkImageAspectFlags aspect_flags)
+void render::vk_transition_image(VkCommandBuffer cmd, VkImage image, const VkImageLayout current_layout,
+                                 VkImageLayout new_layout, const VkImageAspectFlags aspect_flags)
 {
     ZoneScoped;
-    transition_image(cmd,
-                     image,
-                     current_layout,
-                     new_layout,
-                     VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                     VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                     VK_ACCESS_2_MEMORY_WRITE_BIT,
-                     VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
-                     aspect_flags);
+    vk_transition_image(cmd,
+                        image,
+                        current_layout,
+                        new_layout,
+                        VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                        VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                        VK_ACCESS_2_MEMORY_WRITE_BIT,
+                        VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
+                        aspect_flags);
 }
 
-void render::transition_image(VkCommandBuffer cmd, VkImage image, const VkImageLayout current_layout,
-                              const VkImageLayout new_layout, const VkPipelineStageFlags2 src_stage_flags,
-                              const VkPipelineStageFlags2 dst_stage_flags, const VkAccessFlags2 src_access_mask,
-                              const VkAccessFlags2 dst_access_mask, const VkImageAspectFlags aspect_flags)
+void render::vk_transition_image(VkCommandBuffer cmd, VkImage image, const VkImageLayout current_layout,
+                                 const VkImageLayout new_layout, const VkPipelineStageFlags2 src_stage_flags,
+                                 const VkPipelineStageFlags2 dst_stage_flags, const VkAccessFlags2 src_access_mask,
+                                 const VkAccessFlags2 dst_access_mask, const VkImageAspectFlags aspect_flags)
 {
     ZoneScoped;
     const VkImageMemoryBarrier2 image_barrier {
@@ -71,7 +73,7 @@ void render::transition_image(VkCommandBuffer cmd, VkImage image, const VkImageL
         .oldLayout        = current_layout,
         .newLayout        = new_layout,
         .image            = image,
-        .subresourceRange = image_subresource_range(aspect_flags),
+        .subresourceRange = vk_image_subresource_range(aspect_flags),
     };
 
     const VkDependencyInfo dependency_info {
@@ -84,44 +86,44 @@ void render::transition_image(VkCommandBuffer cmd, VkImage image, const VkImageL
     vkCmdPipelineBarrier2(cmd, &dependency_info);
 }
 
-void render::destroy_image(VkDevice device, VmaAllocator allocator, const vk_image& image)
+void render::vk_destroy_image(VkDevice device, VmaAllocator allocator, const vk_image& image)
 {
     ZoneScoped;
     vkDestroyImageView(device, image.view, nullptr);
     vmaDestroyImage(allocator, image.image, image.allocation);
 }
 
-result<render::vk_image> render::create_image(VkDevice device, const VkImageCreateInfo& image_create_info,
-                                              VkImageAspectFlags aspect_flags, VmaAllocator allocator)
+result<render::vk_image> render::vk_create_image(VkDevice device, const VkImageCreateInfo& image_create_info,
+                                                 const VkImageAspectFlags aspect_flags, VmaAllocator allocator)
 {
     ZoneScoped;
     vk_image image;
     constexpr VmaAllocationCreateInfo alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO};
     VK_RETURN_ON_FAIL(
         vmaCreateImage(allocator, &image_create_info, &alloc_info, &image.image, &image.allocation, nullptr));
-    image.view = *render::create_image_view(device,
-                                            image.image,
-                                            image_create_info.arrayLayers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY
-                                                                              : VK_IMAGE_VIEW_TYPE_2D,
-                                            image_create_info.format,
-                                            aspect_flags,
-                                            0,
-                                            VK_REMAINING_MIP_LEVELS);
+    image.view = *render::vk_create_image_view(device,
+                                               image.image,
+                                               image_create_info.arrayLayers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY
+                                                                                 : VK_IMAGE_VIEW_TYPE_2D,
+                                               image_create_info.format,
+                                               aspect_flags,
+                                               0,
+                                               VK_REMAINING_MIP_LEVELS);
 
     return image;
 }
 
-result<VkImageView> render::create_image_view(VkDevice device, VkImage image, VkFormat format,
-                                              VkImageAspectFlags aspect_flags)
+result<VkImageView> render::vk_create_image_view(VkDevice device, VkImage image, const VkFormat format,
+                                                 const VkImageAspectFlags aspect_flags)
 {
     ZoneScoped;
-    return render::create_image_view(
+    return render::vk_create_image_view(
         device, image, VK_IMAGE_VIEW_TYPE_2D, format, aspect_flags, 0, VK_REMAINING_MIP_LEVELS);
 }
 
-result<VkImageView> render::create_image_array_view(VkDevice device, VkImage image, VkImageViewType type,
-                                                    VkFormat format, VkImageAspectFlags aspect_flags, u32 array_layer,
-                                                    u32 layer_count)
+result<VkImageView> render::vk_create_image_array_view(VkDevice device, VkImage image, const VkImageViewType type,
+                                                       const VkFormat format, const VkImageAspectFlags aspect_flags,
+                                                       const u32 array_layer, const u32 layer_count)
 {
     ZoneScoped;
     const VkImageViewCreateInfo image_view_create_info {
@@ -131,7 +133,7 @@ result<VkImageView> render::create_image_array_view(VkDevice device, VkImage ima
         .viewType = type,
         .format   = format,
         .subresourceRange =
-            image_subresource_range(aspect_flags, 0, VK_REMAINING_MIP_LEVELS, array_layer, layer_count)};
+            vk_image_subresource_range(aspect_flags, 0, VK_REMAINING_MIP_LEVELS, array_layer, layer_count)};
 
     VkImageView view;
     VK_RETURN_ON_FAIL(vkCreateImageView(device, &image_view_create_info, nullptr, &view));
@@ -139,8 +141,9 @@ result<VkImageView> render::create_image_array_view(VkDevice device, VkImage ima
     return view;
 }
 
-result<VkImageView> render::create_image_view(VkDevice device, VkImage image, VkImageViewType type, VkFormat format,
-                                              VkImageAspectFlags aspect_flags, u32 mip_level, u32 levels_count)
+result<VkImageView> render::vk_create_image_view(VkDevice device, VkImage image, const VkImageViewType type,
+                                                 const VkFormat format, const VkImageAspectFlags aspect_flags,
+                                                 const u32 mip_level, const u32 levels_count)
 {
     ZoneScoped;
     const VkImageViewCreateInfo image_view_create_info {
@@ -149,7 +152,7 @@ result<VkImageView> render::create_image_view(VkDevice device, VkImage image, Vk
         .image            = image,
         .viewType         = type,
         .format           = format,
-        .subresourceRange = image_subresource_range(aspect_flags, mip_level, levels_count)};
+        .subresourceRange = vk_image_subresource_range(aspect_flags, mip_level, levels_count)};
 
     VkImageView view;
     VK_RETURN_ON_FAIL(vkCreateImageView(device, &image_view_create_info, nullptr, &view));
@@ -157,11 +160,12 @@ result<VkImageView> render::create_image_view(VkDevice device, VkImage image, Vk
     return view;
 }
 
-result<VkSampler> render::create_sampler(VkDevice device, const VkFilter filter, const VkSamplerMipmapMode mipmap_mode,
-                                         const VkSamplerAddressMode sampler_address_mode,
-                                         const VkSamplerReductionMode reduction_mode,
-                                         const f32 anisotropic_filtering_factor, const VkCompareOp compare_op,
-                                         const VkBorderColor border_color)
+result<VkSampler> render::vk_create_sampler(VkDevice device, const VkFilter filter,
+                                            const VkSamplerMipmapMode mipmap_mode,
+                                            const VkSamplerAddressMode sampler_address_mode,
+                                            const VkSamplerReductionMode reduction_mode,
+                                            const f32 anisotropic_filtering_factor, const VkCompareOp compare_op,
+                                            const VkBorderColor border_color)
 {
     ZoneScoped;
     VkSamplerCreateInfo sampler_info {

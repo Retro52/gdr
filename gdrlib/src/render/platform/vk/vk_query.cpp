@@ -40,7 +40,7 @@ void render::vk_query::begin_next(VkCommandBuffer cmd, const u32 flags) const
     begin(cmd, index + 1, flags);
 }
 
-result<render::vk_query> render::create_query_pool(VkDevice device, u32 queries, VkQueryType type)
+result<render::vk_query> render::vk_create_query_pool(VkDevice device, u32 queries, VkQueryType type)
 {
     ZoneScoped;
     assert2(type != VK_QUERY_TYPE_PIPELINE_STATISTICS);
@@ -57,8 +57,8 @@ result<render::vk_query> render::create_query_pool(VkDevice device, u32 queries,
     return vk_query {.handle = pool};
 }
 
-result<render::vk_query> render::create_pipeline_stat_query_pool(VkDevice device, u32 queries,
-                                                                 VkQueryPipelineStatisticFlags flags)
+result<render::vk_query> render::vk_create_pipeline_stat_query_pool(VkDevice device, u32 queries,
+                                                                    VkQueryPipelineStatisticFlags flags)
 {
     ZoneScoped;
     VkQueryPoolCreateInfo create_info = {
@@ -74,7 +74,7 @@ result<render::vk_query> render::create_pipeline_stat_query_pool(VkDevice device
     return vk_query {.handle = pool};
 }
 
-void render::destroy_query_pool(VkDevice device, vk_query& query)
+void render::vk_destroy_query_pool(VkDevice device, vk_query& query)
 {
     ZoneScoped;
     VK_DESTROY(query.handle, vkDestroyQueryPool, device);
