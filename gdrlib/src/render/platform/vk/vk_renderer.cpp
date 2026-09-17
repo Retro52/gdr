@@ -263,7 +263,7 @@ void vk_renderer::recreate_swapchain(ivec2 new_size, bool vsync)
 void vk_renderer::force_recreate_swapchain(ivec2 new_size, bool vsync)
 {
     if (const auto created_sc = render::vk_create_swapchain(
-            m_context, VK_FORMAT_B8G8R8A8_UNORM, new_size, kFramesInFlight, vsync, m_swapchain.sc))
+            m_context, VK_FORMAT_B8G8R8A8_UNORM, new_size, kFramesInFlight, vsync, &m_swapchain))
     {
         render::vk_destroy_swapchain(m_context, m_swapchain);
 

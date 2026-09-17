@@ -3,6 +3,7 @@
 #include <volk.h>
 
 #include <result.hpp>
+#include <pod_types.hpp>
 
 namespace render
 {

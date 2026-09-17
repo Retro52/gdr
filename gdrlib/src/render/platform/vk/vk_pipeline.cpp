@@ -213,10 +213,7 @@ result<vk_shader> vk_shader::load(VkDevice device, const fs::path& path)
 {
     ZoneScoped;
     const auto r_binary = fs::read_file(path);
-    if (!r_binary)
-    {
-        return error(r_binary.message);
-    }
+    RESULT_FORWARD_IF_FAILED(r_binary);
 
     auto& binary = r_binary.value;
     const VkShaderModuleCreateInfo module_create_info {

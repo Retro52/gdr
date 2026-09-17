@@ -11,10 +11,6 @@
 
 #include <chrono>
 
-#include "render/platform/vk/vk_buffer.hpp"
-#include "render/platform/vk/vk_command_buffer.hpp"
-#include "vk_mem_alloc.h"
-
 static render::rhi::instance_desc get_instance_desc()
 {
     constexpr auto features_table = render::rhi::rendering_features_table()
@@ -68,7 +64,7 @@ static result<buffer_transfer> rhi_create_buffer_transfer(const render::rhi::rhi
                                                           render::rhi::queue_kind queue_kind, render::rhi::queue queue,
                                                           u64 staging_memory_size)
 {
-    const auto cmd_buffer = rhi.create_command_buffer(ctx, queue_kind);
+    const auto cmd_buffer = RHI_SAFE_CALL(rhi.create_command_buffer, ctx, queue_kind);
     if (!cmd_buffer)
     {
         return error(cmd_buffer.message);
@@ -81,7 +77,7 @@ static result<buffer_transfer> rhi_create_buffer_transfer(const render::rhi::rhi
         .mapped      = &mapped,
     };
 
-    const auto staging_buffer = rhi.create_buffer(ctx, cbi);
+    const auto staging_buffer = RHI_SAFE_CALL(rhi.create_buffer, ctx, cbi);
     if (!staging_buffer)
     {
         return error(staging_buffer.message);
@@ -96,28 +92,34 @@ static void rhi_destroy_buffer_transfer(const render::rhi::rhi& rhi, render::rhi
 {
     buffer_transfer.mapped = nullptr;
     buffer_transfer.queue  = render::rhi::null_queue;
-    rhi.destroy_buffer(ctx, buffer_transfer.staging_buffer);
-    rhi.destroy_command_buffer(ctx, buffer_transfer.staging_command_buffer);
+    RHI_SAFE_CALL(rhi.destroy_buffer, ctx, buffer_transfer.staging_buffer);
+    RHI_SAFE_CALL(rhi.destroy_command_buffer, ctx, buffer_transfer.staging_command_buffer);
 }
 
-#define DX12_EXPERIMENTAL 0
+#define DX12_EXPERIMENTAL        0
+#define RHI_BUFFERS_EXPERIMENTAL 0
 
 int main(const int argc, char* argv[])
 {
+#if TRACY_ENABLE
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+#endif
+
+    ZoneScoped;
     logging::s_instance->set_log_level(quill::LogLevel::Debug);
     window window("RHI window", {1920, 960}, false);
     events_queue events(window);
 
 #if DX12_EXPERIMENTAL
-    auto rhi = render::rhi::create_for_dx12();
+    auto rhi = render::rhi::create_for_d3d12();
 #else
     auto rhi = render::rhi::create_for_vk();
 #endif
 
-    auto context = rhi.create_context(window, get_instance_desc());
+    auto context = RHI_SAFE_CALL(rhi.create_context, window, get_instance_desc());
     if (!context)
     {
-        LOG_ERROR("failed to create instance");
+        LOG_ERROR("failed to create instance. reason: {}", context.message);
         return 1;
     }
 
@@ -127,10 +129,11 @@ int main(const int argc, char* argv[])
         .format           = VK_FORMAT_R8G8B8A8_UNORM,
         .vsync            = false,
     };
-    auto swapchain = rhi.create_swapchain(*context, create_swapchain_info);
+
+    auto swapchain = RHI_SAFE_CALL(rhi.create_swapchain, *context, create_swapchain_info);
     if (!swapchain)
     {
-        LOG_ERROR("failed to create swapchain");
+        LOG_ERROR("failed to create swapchain. reason: {}", swapchain.message);
         return 1;
     }
 
@@ -152,24 +155,23 @@ int main(const int argc, char* argv[])
                 .frames_in_flight = 2,
                 .format           = VK_FORMAT_B8G8R8A8_UNORM,
                 .vsync            = false,
-                .old_swapchain    = &ctx.sc,
             };
 
-            if (const auto created_sc = ctx.rhi.create_swapchain(ctx.context, create_swapchain_info))
+            RHI_SAFE_CALL(ctx.rhi.device_wait_idle, ctx.context);
+            if (const auto resized_sc =
+                    RHI_SAFE_CALL(ctx.rhi.resize_swapchain, ctx.context, ctx.sc, create_swapchain_info))
             {
-                ctx.rhi.device_wait_idle(ctx.context);
-                ctx.rhi.destroy_swapchain(ctx.context, ctx.sc);
-                ctx.sc = *created_sc;
+                ctx.sc = *resized_sc;
             }
         },
         &resize_ctx);
 
-    const u32 cmd_count = *rhi.query_swapchain_images_count(*swapchain);
+    const u32 cmd_count = *RHI_SAFE_CALL(rhi.query_swapchain_images_count, *swapchain);
     cpp::heap_array<render::rhi::command_buffer> command_buffers(cmd_count);
 
     for (auto& slot : command_buffers)
     {
-        const auto command_buffer = rhi.create_command_buffer(*context, render::rhi::queue_kind::eGfx);
+        const auto command_buffer = RHI_SAFE_CALL(rhi.create_command_buffer, *context, render::rhi::queue_kind::eGfx);
         if (!command_buffer)
         {
             LOG_ERROR("failed to create graphics command_buffer");
@@ -179,9 +181,9 @@ int main(const int argc, char* argv[])
         slot = *command_buffer;
     }
 
-    auto gfx_queue     = rhi.query_queue(*context, render::rhi::queue_kind::eGfx);
-    auto copy_queue    = rhi.query_queue(*context, render::rhi::queue_kind::eTransfer);
-    auto present_queue = rhi.query_queue(*context, render::rhi::queue_kind::ePresent);
+    auto gfx_queue     = RHI_SAFE_CALL(rhi.query_queue, *context, render::rhi::queue_kind::eGfx);
+    auto copy_queue    = RHI_SAFE_CALL(rhi.query_queue, *context, render::rhi::queue_kind::eTransfer);
+    auto present_queue = RHI_SAFE_CALL(rhi.query_queue, *context, render::rhi::queue_kind::ePresent);
 
     if (!gfx_queue || !present_queue || !copy_queue)
     {
@@ -189,7 +191,7 @@ int main(const int argc, char* argv[])
         return 1;
     }
 
-    auto textures_set = rhi.create_bindless_set(*context, 65536);
+    auto textures_set = RHI_SAFE_CALL(rhi.create_bindless_set, *context, 65536);
     if (!textures_set)
     {
         LOG_ERROR("failed to create bindless textures set");
@@ -199,6 +201,7 @@ int main(const int argc, char* argv[])
     pso_data pipelines;
     pipelines.load(rhi, *context, *textures_set);
 
+#if RHI_BUFFERS_EXPERIMENTAL
     scene_geometry_pool geometry_pool {
         .vertex           = shared_buffer(rhi, *context, 128_MB, render::rhi::buffer_usage::eShaderRW),
         .meshlets         = shared_buffer(rhi, *context, 16_MB, render::rhi::buffer_usage::eShaderRW),
@@ -209,20 +212,32 @@ int main(const int argc, char* argv[])
 
         .transfer = *rhi_create_buffer_transfer(rhi, *context, render::rhi::queue_kind::eTransfer, *copy_queue, 128_MB),
     };
+#endif
 
-    auto render_loop = [&]()
+    auto get_time = []<typename T = f64>()
     {
-        auto frame_image = rhi.acquire_next_swapchain_image(*context, *swapchain);
+        return static_cast<T>(SDL_GetPerformanceCounter()) / static_cast<T>(SDL_GetPerformanceFrequency());
+    };
+
+    f64 last_frame_time = get_time();
+    auto render_loop    = [&]()
+    {
+        const f64 current_time = get_time();
+        const f64 dt           = current_time - last_frame_time;
+
+        last_frame_time = current_time;
+
+        auto frame_image = RHI_SAFE_CALL(rhi.acquire_next_swapchain_image, *context, *swapchain);
         if (!frame_image)
         {
             return;
         }
 
-        const u32 frame_index            = *rhi.query_current_frame_index(*swapchain);
+        const u32 frame_index            = *RHI_SAFE_CALL(rhi.query_current_frame_index, *swapchain);
         render::rhi::command_buffer& cmd = command_buffers[frame_index];
 
-        rhi.cmd_begin_recording(cmd);
-        rhi.cmd_transition_image(cmd, *frame_image, render::rhi::image_layout::eCommon);
+        RHI_SAFE_CALL(rhi.cmd_begin_recording, cmd);
+        RHI_SAFE_CALL(rhi.cmd_transition_image, cmd, *frame_image, render::rhi::image_layout::eCommon);
 
         render::rhi::attachment_state_info color_attachment {
             .attachment  = *frame_image,
@@ -231,17 +246,19 @@ int main(const int argc, char* argv[])
             .clear_value = {},
         };
 
-        rhi.cmd_set_draw_state(cmd,
-                               {&color_attachment, 1},
-                               render::rhi::null_attachment_state_info,
-                               {0, 0, window.get_size_in_px().x, window.get_size_in_px().y});
-        rhi.cmd_bind_pso(cmd, pipelines[pso_id::triangle]);
-        rhi.cmd_draw_instanced(cmd, 3, 1, 0, 0);
-        rhi.cmd_clear_draw_state(cmd);
+        RHI_SAFE_CALL(rhi.cmd_set_draw_state,
+                      cmd,
+                      {&color_attachment, 1},
+                      render::rhi::null_attachment_state_info,
+                      {0, 0, window.get_size_in_px().x, window.get_size_in_px().y});
+        RHI_SAFE_CALL(rhi.cmd_bind_pso, cmd, pipelines[pso_id::triangle]);
+        RHI_SAFE_CALL(rhi.cmd_draw_instanced, cmd, 3, 1, 0, 0);
+        RHI_SAFE_CALL(rhi.cmd_clear_draw_state, cmd);
 
-        rhi.cmd_transition_image(cmd, *frame_image, render::rhi::image_layout::ePresent);
-        rhi.cmd_end_recording(cmd);
-        rhi.cmd_present_image(cmd, *swapchain, *gfx_queue, *present_queue);
+        RHI_SAFE_CALL(rhi.cmd_transition_image, cmd, *frame_image, render::rhi::image_layout::ePresent);
+        RHI_SAFE_CALL(rhi.cmd_end_recording, cmd);
+        RHI_SAFE_CALL(rhi.cmd_present_image, cmd, *swapchain, *gfx_queue, *present_queue);
+        SDL_SetWindowTitle(window.get_native_handle().window, cpp::stack_string::make_formatted("CPU time: %lfms; FPS: %lf", dt * 1000.0F, 1.0F / dt).c_str());
         FrameMark;
     };
 
@@ -251,6 +268,7 @@ int main(const int argc, char* argv[])
     std::function wrapper(render_loop);
     using type = decltype(wrapper);
 
+#if 1
     events.add_watcher(
         event_type::request_draw,
         [](const event_payload& payload, void* user_data)
@@ -258,29 +276,32 @@ int main(const int argc, char* argv[])
             (*static_cast<type*>(user_data))();
         },
         &wrapper);
+#endif
 
     while (!exit)
     {
         events.poll();
     }
 
-    rhi.device_wait_idle(*context);
+    RHI_SAFE_CALL(rhi.device_wait_idle, *context);
     pipelines.shutdown(rhi, *context);
 
-    rhi.destroy_buffer(*context, geometry_pool.vertex.buffer);
-    rhi.destroy_buffer(*context, geometry_pool.meshlets.buffer);
-    rhi.destroy_buffer(*context, geometry_pool.primitives.buffer);
-    rhi.destroy_buffer(*context, geometry_pool.instances.buffer);
-    rhi.destroy_buffer(*context, geometry_pool.materials.buffer);
-    rhi.destroy_buffer(*context, geometry_pool.meshlets_payload.buffer);
-    rhi.destroy_bindless_set(*context, *textures_set);
+#if RHI_BUFFERS_EXPERIMENTAL
+    RHI_SAFE_CALL(rhi.destroy_buffer, *context, geometry_pool.vertex.buffer);
+    RHI_SAFE_CALL(rhi.destroy_buffer, *context, geometry_pool.meshlets.buffer);
+    RHI_SAFE_CALL(rhi.destroy_buffer, *context, geometry_pool.primitives.buffer);
+    RHI_SAFE_CALL(rhi.destroy_buffer, *context, geometry_pool.instances.buffer);
+    RHI_SAFE_CALL(rhi.destroy_buffer, *context, geometry_pool.materials.buffer);
+    RHI_SAFE_CALL(rhi.destroy_buffer, *context, geometry_pool.meshlets_payload.buffer);
     rhi_destroy_buffer_transfer(rhi, *context, geometry_pool.transfer);
+#endif
 
+    RHI_SAFE_CALL(rhi.destroy_bindless_set, *context, *textures_set);
     for (auto& cmd : command_buffers)
     {
-        rhi.destroy_command_buffer(*context, cmd);
+        RHI_SAFE_CALL(rhi.destroy_command_buffer, *context, cmd);
     }
-    rhi.destroy_swapchain(*context, *swapchain);
-    rhi.destroy_context(*context);
+    RHI_SAFE_CALL(rhi.destroy_swapchain, *context, *swapchain);
+    RHI_SAFE_CALL(rhi.destroy_context, *context);
     return 0;
 }

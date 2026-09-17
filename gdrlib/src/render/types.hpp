@@ -130,7 +130,6 @@ namespace render::rhi
         u32 frames_in_flight           = 2;
         VkFormat format                = VK_FORMAT_R8G8B8A8_UNORM;
         bool vsync                     = false;
-        const swapchain* old_swapchain = nullptr;
     };
 
     struct rendering_features_table

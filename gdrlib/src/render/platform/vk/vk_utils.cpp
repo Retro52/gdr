@@ -7,11 +7,11 @@
     case srgb_format :                                                   \
         return space == color_space::linear ? linear_format : srgb_format
 
-VkFormat render::vk_format_from_dxgi(const u32 gx_format)
+VkFormat render::vk_format_from_dxgi(const u32 dx_format)
 {
     using ddspp::DXGIFormat;
 
-    switch (gx_format)
+    switch (dx_format)
     {
     case ddspp::R32G32B32A32_FLOAT :
         return VK_FORMAT_R32G32B32A32_SFLOAT;
