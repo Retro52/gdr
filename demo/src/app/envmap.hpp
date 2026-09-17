@@ -53,7 +53,7 @@ namespace app
         [[nodiscard]] render::vk_descriptor_info get_conv_descriptor_info() const;
         [[nodiscard]] render::vk_descriptor_info get_pref_descriptor_info() const;
 
-        void init(app::pso_data& pso, render::vk_renderer& renderer);
+        void init(app::pso_data& pso, const render::vk_renderer& renderer);
 
         void load(const fs::path& path, app::pso_data& pso, render::vk_renderer& renderer,
                   const render::vk_buffer_transfer& transfer);

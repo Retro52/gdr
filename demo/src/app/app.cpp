@@ -195,15 +195,16 @@ namespace
                 / shader_constants::kTaskWorkGroups;
         }
 
-        render::upload_data(
+        render::vk_upload_data(
             geometry_pool.transfer, geometry_pool.primitives, ctx.primitives.data(), ctx.primitives.size());
-        render::upload_data(geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
-        render::upload_data(geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
-        render::upload_data(
+        render::vk_upload_data(geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
+        render::vk_upload_data(
+            geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
+        render::vk_upload_data(
             geometry_pool.transfer, geometry_pool.materials, ctx.materials.data(), ctx.materials.size());
-        render::upload_data(
+        render::vk_upload_data(
             geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
-        render::upload_data(geometry_pool.transfer, geometry_pool.instances, instances.data(), instances.size());
+        render::vk_upload_data(geometry_pool.transfer, geometry_pool.instances, instances.data(), instances.size());
 
         return {.meshes           = primitives.size(),
                 .meshlets         = visibility_offset,
@@ -445,9 +446,9 @@ int app::instance::run()
             vkDeviceWaitIdle(ctx.renderer.get_context().device);
             ctx.renderer.resize_swapchain(payload.window.size_px);
 
-            render::destroy_image(
+            render::vk_destroy_image(
                 ctx.renderer.get_context().device, ctx.renderer.get_context().allocator, ctx.depth_image);
-            render::destroy_image(
+            render::vk_destroy_image(
                 ctx.renderer.get_context().device, ctx.renderer.get_context().allocator, ctx.render_target);
 
             ctx.depth_image = create_depth_image(payload.window.size_px,
@@ -467,7 +468,7 @@ int app::instance::run()
                                                      ctx.renderer.get_context().device,
                                                      ctx.renderer.get_context().allocator);
 
-            render::destroy_image(
+            render::vk_destroy_image(
                 ctx.renderer.get_context().device, ctx.renderer.get_context().allocator, ctx.vis_buffer.vis_buffer_img);
 
             ctx.vis_buffer = create_vis_buffer_data(
@@ -477,27 +478,27 @@ int app::instance::run()
 
     render::vk_descriptor_set bindless_textures_desc_set =
         *render::vk_create_bindless_textures_set(m_renderer.get_context().device, 65536);
-    VkSampler bindless_textures_sampler = *render::create_sampler(m_renderer.get_context().device,
-                                                                  VK_FILTER_LINEAR,
-                                                                  VK_SAMPLER_MIPMAP_MODE_LINEAR,
-                                                                  VK_SAMPLER_ADDRESS_MODE_REPEAT,
-                                                                  VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
-                                                                  16.0F);
+    VkSampler bindless_textures_sampler = *render::vk_create_sampler(m_renderer.get_context().device,
+                                                                     VK_FILTER_LINEAR,
+                                                                     VK_SAMPLER_MIPMAP_MODE_LINEAR,
+                                                                     VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                                                                     VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
+                                                                     16.0F);
 
-    VkSampler shadow_alpha_sampler = *render::create_sampler(m_renderer.get_context().device,
-                                                             VK_FILTER_LINEAR,
-                                                             VK_SAMPLER_MIPMAP_MODE_NEAREST,
-                                                             VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    VkSampler shadow_alpha_sampler = *render::vk_create_sampler(m_renderer.get_context().device,
+                                                                VK_FILTER_LINEAR,
+                                                                VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                                                                VK_SAMPLER_ADDRESS_MODE_REPEAT);
 
-    VkSampler color_sampler = *render::create_sampler(m_renderer.get_context().device,
-                                                      VK_FILTER_LINEAR,
-                                                      VK_SAMPLER_MIPMAP_MODE_NEAREST,
-                                                      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    VkSampler color_sampler = *render::vk_create_sampler(m_renderer.get_context().device,
+                                                         VK_FILTER_LINEAR,
+                                                         VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                                                         VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
-    VkSampler depth_texture_sampler = *render::create_sampler(m_renderer.get_context().device,
-                                                              VK_FILTER_NEAREST,
-                                                              VK_SAMPLER_MIPMAP_MODE_NEAREST,
-                                                              VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER);
+    VkSampler depth_texture_sampler = *render::vk_create_sampler(m_renderer.get_context().device,
+                                                                 VK_FILTER_NEAREST,
+                                                                 VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                                                                 VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER);
 
     pso_data pipelines;
     pipelines.load(m_renderer, bindless_textures_desc_set);
@@ -515,7 +516,7 @@ int app::instance::run()
         .materials        = render::vk_shared_buffer(m_renderer, 48_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
         .meshlets_payload = render::vk_shared_buffer(m_renderer, 128_MB, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),
 
-        .transfer = *render::create_buffer_transfer(
+        .transfer = *render::vk_create_buffer_transfer(
             m_renderer.get_context().device,
             m_renderer.get_context().allocator,
             m_renderer.get_context().queues[static_cast<u32>(render::rhi::queue_kind::eTransfer)],
@@ -626,20 +627,20 @@ int app::instance::run()
 
     constexpr u32 kQueryPoolCount = 64;
     render::vk_query timestamp_query_pool =
-        *render::create_query_pool(m_renderer.get_context().device, kQueryPoolCount, VK_QUERY_TYPE_TIMESTAMP);
+        *render::vk_create_query_pool(m_renderer.get_context().device, kQueryPoolCount, VK_QUERY_TYPE_TIMESTAMP);
 
     render::vk_query pipeline_statistics_query;
 #if !NO_PERF_QUERY
     if (pipeline_stats_supported)
     {
-        pipeline_statistics_query =
-            *render::create_pipeline_stat_query_pool(m_renderer.get_context().device,
-                                                     kQueryPoolCount,
-                                                     VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT
-                                                         | VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT
-                                                         | VK_QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT
-                                                         | VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT
-                                                         | VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT);
+        pipeline_statistics_query = *render::vk_create_pipeline_stat_query_pool(
+            m_renderer.get_context().device,
+            kQueryPoolCount,
+            VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT
+                | VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT
+                | VK_QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT
+                | VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT
+                | VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT);
     }
 #endif
 
@@ -667,8 +668,8 @@ int app::instance::run()
         m_renderer.get_context().allocator,
         0);
 
-    render::fill_buffer(geometry_pool.transfer, mesh_visibility_buffer, 0_u8);
-    render::fill_buffer(geometry_pool.transfer, meshlets_visibility_buffer, 0_u8);
+    render::vk_fill_buffer(geometry_pool.transfer, mesh_visibility_buffer, 0_u8);
+    render::vk_fill_buffer(geometry_pool.transfer, meshlets_visibility_buffer, 0_u8);
 
     render::vk_buffer indexed_indices_buffer = *render::vk_create_buffer(
         96_MB,
@@ -694,23 +695,21 @@ int app::instance::run()
 
     for (u32 i = 0; i < m_renderer.get_frames_in_flight(); i++)
     {
-        world_data_buffers[i] =
-            *render::vk_create_buffer(sizeof(shader_types::FrameWorldData),
-                                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                             m_renderer.get_context().allocator,
-                                             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+        world_data_buffers[i] = *render::vk_create_buffer(sizeof(shader_types::FrameWorldData),
+                                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                                          m_renderer.get_context().allocator,
+                                                          VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
         shadow_cascades_data_buffers[i] =
             *render::vk_create_buffer(sizeof(shader_types::ShadowCascadesData),
-                                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                             m_renderer.get_context().allocator,
-                                             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+                                      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                      m_renderer.get_context().allocator,
+                                      VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
-        frame_cull_data_buffers[i] =
-            *render::vk_create_buffer(sizeof(shader_types::FrameCullData),
-                                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                             m_renderer.get_context().allocator,
-                                             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+        frame_cull_data_buffers[i] = *render::vk_create_buffer(sizeof(shader_types::FrameCullData),
+                                                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                                               m_renderer.get_context().allocator,
+                                                               VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
     }
 
     gpu_profile_data profile_data;
@@ -824,13 +823,13 @@ int app::instance::run()
 
         vkCmdDispatchIndirect(cmd, draw_count_buffer.buffer, material_class * 3 * sizeof(u32));
 
-        render::cmd_stage_barrier(cmd,
-                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
-                                      | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
-                                  VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
-                                      | VK_ACCESS_2_INDEX_READ_BIT);
+        render::vk_stage_barrier(cmd,
+                                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                 VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT
+                                     | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                                 VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+                                     | VK_ACCESS_2_INDEX_READ_BIT);
     };
 
     auto draw_scene = [&](VkCommandBuffer cmd, const render::vk_pipeline& pipeline, const u32 material_class)
@@ -845,7 +844,7 @@ int app::instance::run()
             VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
             | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-        render::cmd_stage_barrier(cmd, kAttachmentStages, kAttachmentAccess, kAttachmentStages, kAttachmentAccess);
+        render::vk_stage_barrier(cmd, kAttachmentStages, kAttachmentAccess, kAttachmentStages, kAttachmentAccess);
 
         begin_rendering(cmd,
                         vis_buffer.vis_buffer_img.view,
@@ -922,7 +921,7 @@ int app::instance::run()
         constexpr VkAccessFlags2 kAttachmentAccess =
             VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-        render::cmd_stage_barrier(cmd, kAttachmentStages, kAttachmentAccess, kAttachmentStages, kAttachmentAccess);
+        render::vk_stage_barrier(cmd, kAttachmentStages, kAttachmentAccess, kAttachmentStages, kAttachmentAccess);
 
         begin_rendering(cmd,
                         VK_NULL_HANDLE,
@@ -1009,25 +1008,25 @@ int app::instance::run()
                 envmap.load(env_map, pipelines, m_renderer, geometry_pool.transfer);
             }
 
-            render::transition_image(cmd,
-                                     m_renderer.get_frame_swapchain_image().image.image,
-                                     VK_IMAGE_LAYOUT_UNDEFINED,
-                                     VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                                     VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                     VK_PIPELINE_STAGE_2_NONE,
-                                     VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                                     VK_ACCESS_2_NONE);
+            render::vk_transition_image(cmd,
+                                        m_renderer.get_frame_swapchain_image().image.image,
+                                        VK_IMAGE_LAYOUT_UNDEFINED,
+                                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                        VK_PIPELINE_STAGE_2_NONE,
+                                        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                                        VK_ACCESS_2_NONE);
 
             vkEndCommandBuffer(cmd);
             m_renderer.present_frame(cmd);
         });
 
-    VkClearDepthStencilValue ds_clear      = {0.0F, 0};
-    VkImageSubresourceRange ds_clear_range = render::image_subresource_range(VK_IMAGE_ASPECT_DEPTH_BIT);
+    VkClearDepthStencilValue ds_clear      = {.depth = 0.0F, .stencil = 0};
+    VkImageSubresourceRange ds_clear_range = render::vk_image_subresource_range(VK_IMAGE_ASPECT_DEPTH_BIT);
 
     VkClearColorValue vb_clear;
     cpp::cx_fill(&vb_clear.uint32[0], &vb_clear.uint32[4], ~0U);
-    VkImageSubresourceRange vp_clear_range = render::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+    VkImageSubresourceRange vp_clear_range = render::vk_image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
 
     auto render_loop = [&]()
     {
@@ -1152,7 +1151,7 @@ int app::instance::run()
 
                     cull_pass.dispatch(buffer, static_cast<u32>(scene_info.primitives), 1, 1);
 
-                    render::cmd_stage_barrier(
+                    render::vk_stage_barrier(
                         buffer,
                         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
@@ -1204,7 +1203,7 @@ int app::instance::run()
 
                     cull_pass.dispatch(buffer, static_cast<u32>(scene_info.primitives), 1, 1);
 
-                    render::cmd_stage_barrier(
+                    render::vk_stage_barrier(
                         buffer,
                         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
@@ -1213,22 +1212,22 @@ int app::instance::run()
                         VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
                 }
 
-                render::transition_image(
+                render::vk_transition_image(
                     buffer, render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-                render::transition_image(buffer,
-                                         m_renderer.get_frame_swapchain_image().image.image,
-                                         VK_IMAGE_LAYOUT_UNDEFINED,
-                                         VK_IMAGE_LAYOUT_GENERAL);
+                render::vk_transition_image(buffer,
+                                            m_renderer.get_frame_swapchain_image().image.image,
+                                            VK_IMAGE_LAYOUT_UNDEFINED,
+                                            VK_IMAGE_LAYOUT_GENERAL);
 
-                render::transition_image(
+                render::vk_transition_image(
                     buffer, vis_buffer.vis_buffer_img.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-                render::transition_image(buffer,
-                                         depth_image.image,
-                                         VK_IMAGE_LAYOUT_UNDEFINED,
-                                         VK_IMAGE_LAYOUT_GENERAL,
-                                         VK_IMAGE_ASPECT_DEPTH_BIT);
+                render::vk_transition_image(buffer,
+                                            depth_image.image,
+                                            VK_IMAGE_LAYOUT_UNDEFINED,
+                                            VK_IMAGE_LAYOUT_GENERAL,
+                                            VK_IMAGE_ASPECT_DEPTH_BIT);
 
                 vkCmdSetScissor(buffer, 0, 1, &scissor);
                 vkCmdSetViewport(buffer, 0, 1, &viewport);
@@ -1265,14 +1264,14 @@ int app::instance::run()
                 {
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "depth reduce"));
 
-                    render::cmd_stage_barrier(buffer,
-                                              VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT
-                                                  | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-                                              VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                              VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                    render::vk_stage_barrier(buffer,
+                                             VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT
+                                                 | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+                                             VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                                             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                             VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
-                    render::transition_image(
+                    render::vk_transition_image(
                         buffer, depth_pyramid.image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
                     const auto& depth_reduce_pipeline = pipelines[pso_id::depth_reduce_pipeline];
@@ -1294,12 +1293,12 @@ int app::instance::run()
                         depth_reduce_pipeline.push_constant(buffer, vec2(out_size));
                         depth_reduce_pipeline.dispatch(buffer, out_size.x, out_size.y, 1);
 
-                        render::cmd_stage_barrier(buffer,
-                                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                                  VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
-                                                      | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                        render::vk_stage_barrier(buffer,
+                                                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                                 VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                                 VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
+                                                     | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
                     }
                 }
 
@@ -1360,7 +1359,7 @@ int app::instance::run()
 
                     cull_pass.dispatch(buffer, static_cast<u32>(scene_info.primitives), 1, 1);
 
-                    render::cmd_stage_barrier(
+                    render::vk_stage_barrier(
                         buffer,
                         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
@@ -1395,7 +1394,7 @@ int app::instance::run()
                     ZoneScopedN("Resolve pass");
                     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "vb resolve"));
 
-                    render::cmd_stage_barrier(
+                    render::vk_stage_barrier(
                         buffer,
                         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
                         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
@@ -1438,11 +1437,11 @@ int app::instance::run()
 
                     resolve_pass.dispatch(buffer, m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1);
 
-                    render::cmd_stage_barrier(buffer,
-                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                              VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                              VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                    render::vk_stage_barrier(buffer,
+                                             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                             VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
                 }
 
                 {
@@ -1466,12 +1465,12 @@ int app::instance::run()
 
                     fxaa_pass.dispatch(buffer, m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1);
 
-                    render::cmd_stage_barrier(buffer,
-                                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                              VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                                              VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                              VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT
-                                                  | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+                    render::vk_stage_barrier(buffer,
+                                             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                             VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT
+                                                 | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
                 }
 
                 if (freeze_cull_data)
@@ -1724,14 +1723,14 @@ int app::instance::run()
                 }
 #endif
 
-                render::transition_image(buffer,
-                                         m_renderer.get_frame_swapchain_image().image.image,
-                                         VK_IMAGE_LAYOUT_GENERAL,
-                                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                                         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                         VK_PIPELINE_STAGE_2_NONE,
-                                         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                                         VK_ACCESS_2_NONE);
+                render::vk_transition_image(buffer,
+                                            m_renderer.get_frame_swapchain_image().image.image,
+                                            VK_IMAGE_LAYOUT_GENERAL,
+                                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                            VK_PIPELINE_STAGE_2_NONE,
+                                            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                                            VK_ACCESS_2_NONE);
 
                 vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool.handle, 1);
 
@@ -1803,14 +1802,14 @@ int app::instance::run()
     watcher.shutdown();
     pipelines.shutdown(m_renderer);
 
-    render::destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, depth_image);
-    render::destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, render_target);
-    render::destroy_image(
+    render::vk_destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, depth_image);
+    render::vk_destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, render_target);
+    render::vk_destroy_image(
         m_renderer.get_context().device, m_renderer.get_context().allocator, vis_buffer.vis_buffer_img);
     destroy_depth_pyramid(depth_pyramid, m_renderer.get_context().device, m_renderer.get_context().allocator);
 
-    render::destroy_query_pool(m_renderer.get_context().device, timestamp_query_pool);
-    render::destroy_query_pool(m_renderer.get_context().device, pipeline_statistics_query);
+    render::vk_destroy_query_pool(m_renderer.get_context().device, timestamp_query_pool);
+    render::vk_destroy_query_pool(m_renderer.get_context().device, pipeline_statistics_query);
 
     render::vk_destroy_command_buffer(m_renderer.get_context().device, geometry_pool.transfer.staging_command_buffer);
 
@@ -1853,7 +1852,7 @@ int app::instance::run()
     vkDestroySampler(m_renderer.get_context().device, bindless_textures_sampler, nullptr);
     for (auto& texture : textures)
     {
-        render::destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, texture);
+        render::vk_destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, texture);
     }
 
     return 0;

@@ -3,8 +3,9 @@
 
 #include <cstring>
 
-result<render::vk_buffer_transfer> render::create_buffer_transfer(VkDevice device, VmaAllocator allocator,
-                                                                  const vk_queue_data& queue, u64 staging_memory_size)
+result<render::vk_buffer_transfer> render::vk_create_buffer_transfer(VkDevice device, VmaAllocator allocator,
+                                                                     const vk_queue_data& queue,
+                                                                     u64 staging_memory_size)
 {
     ZoneScoped;
     const auto cmd_buffer =
@@ -25,7 +26,7 @@ result<render::vk_buffer_transfer> render::create_buffer_transfer(VkDevice devic
         .mapped = data, .queue = queue, .staging_buffer = *staging_buffer, .staging_command_buffer = *cmd_buffer};
 }
 
-void render::destroy_buffer_transfer(VkDevice device, VmaAllocator allocator, vk_buffer_transfer& buffer_transfer)
+void render::vk_destroy_buffer_transfer(VkDevice device, VmaAllocator allocator, vk_buffer_transfer& buffer_transfer)
 {
     buffer_transfer.mapped = nullptr;
     vmaUnmapMemory(allocator, buffer_transfer.staging_buffer.allocation);
@@ -34,14 +35,14 @@ void render::destroy_buffer_transfer(VkDevice device, VmaAllocator allocator, vk
     render::vk_destroy_command_buffer(device, buffer_transfer.staging_command_buffer);
 }
 
-void render::submit_transfer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const VkBufferCopy& region)
+void render::vk_submit_transfer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const VkBufferCopy& region)
 {
     ZoneScoped;
 
     assert2(region.dstOffset + region.size <= dst.size);
     assert2(region.srcOffset + region.size <= transfer.staging_buffer.size);
 
-    VkCommandBufferBeginInfo begin_info {
+    const VkCommandBufferBeginInfo begin_info {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
     };
@@ -50,7 +51,7 @@ void render::submit_transfer(const vk_buffer_transfer& transfer, const vk_buffer
     vkCmdCopyBuffer(transfer.staging_command_buffer.cmd_buffer, transfer.staging_buffer.buffer, dst.buffer, 1, &region);
     vkEndCommandBuffer(transfer.staging_command_buffer.cmd_buffer);
 
-    VkSubmitInfo submit_info {
+    const VkSubmitInfo submit_info {
         .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .commandBufferCount = 1,
         .pCommandBuffers    = &transfer.staging_command_buffer.cmd_buffer,
@@ -60,8 +61,8 @@ void render::submit_transfer(const vk_buffer_transfer& transfer, const vk_buffer
     vkQueueWaitIdle(transfer.queue.queue);
 }
 
-void render::fill_buffer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* value_ptr, u64 value_size,
-                         const VkBufferCopy& region)
+void render::vk_fill_buffer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* value_ptr,
+                            const u64 value_size, const VkBufferCopy& region)
 {
     ZoneScoped;
     assert2((region.size % value_size) == 0);
@@ -71,23 +72,23 @@ void render::fill_buffer(const vk_buffer_transfer& transfer, const vk_buffer& ds
     {
         std::memcpy(static_cast<u8*>(transfer.mapped) + region.srcOffset + value_size * i, value_ptr, value_size);
     }
-    submit_transfer(transfer, dst, region);
+    vk_submit_transfer(transfer, dst, region);
 }
 
-void render::upload_data(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* data,
-                         const VkBufferCopy& region)
+void render::vk_upload_data(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* data,
+                            const VkBufferCopy& region)
 {
     ZoneScoped;
 
     assert2(data != nullptr);
     assert2(region.size <= transfer.staging_buffer.size - region.srcOffset);
     std::copy_n(data, region.size, (static_cast<u8*>(transfer.mapped)) + region.srcOffset);
-    submit_transfer(transfer, dst, region);
+    vk_submit_transfer(transfer, dst, region);
 }
 
-void render::upload_image(const vk_buffer_transfer& transfer, const vk_image& dst, const u8* data, const u64 data_size,
-                          const u32 width, const u32 height, const u32 mips, const u32 block_size,
-                          const u32 bits_per_block)
+void render::vk_upload_image(const vk_buffer_transfer& transfer, const vk_image& dst, const u8* data,
+                             const u64 data_size, const u32 width, const u32 height, const u32 mips,
+                             const u32 block_size, const u32 bits_per_block)
 {
     assert2(bits_per_block % 8 == 0);
     auto get_offset = [](const u32 width, const u32 height, const u32 block_size, const u32 bits_per_block)
@@ -119,7 +120,7 @@ void render::upload_image(const vk_buffer_transfer& transfer, const vk_image& ds
         .oldLayout        = VK_IMAGE_LAYOUT_UNDEFINED,
         .newLayout        = VK_IMAGE_LAYOUT_GENERAL,
         .image            = dst.image,
-        .subresourceRange = image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT),
+        .subresourceRange = vk_image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT),
     };
 
     const VkDependencyInfo dependency_info {
@@ -138,13 +139,13 @@ void render::upload_image(const vk_buffer_transfer& transfer, const vk_image& ds
     std::memcpy(transfer.mapped, data, data_size);
     for (unsigned int i = 0; i < mips; ++i)
     {
-        VkBufferImageCopy region = {
+        const VkBufferImageCopy region = {
             src_offset,
             0,
             0,
-            {VK_IMAGE_ASPECT_COLOR_BIT, i, 0, 1},
-            {0, 0, 0},
-            {mip_w, mip_h, 1},
+            {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = i, .baseArrayLayer = 0, .layerCount = 1},
+            {.x = 0, .y = 0, .z = 0},
+            {.width = mip_w, .height = mip_h, .depth = 1},
         };
 
         vkCmdCopyBufferToImage(cmd, transfer.staging_buffer.buffer, dst.image, VK_IMAGE_LAYOUT_GENERAL, 1, &region);
@@ -156,7 +157,7 @@ void render::upload_image(const vk_buffer_transfer& transfer, const vk_image& ds
 
     vkEndCommandBuffer(cmd);
 
-    VkSubmitInfo submit_info {
+    const VkSubmitInfo submit_info {
         .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .commandBufferCount = 1,
         .pCommandBuffers    = &cmd,

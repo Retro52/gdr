@@ -566,7 +566,7 @@ void render::rhi::vk_cmd_transition_image(command_buffer cmd, image dst, image_l
 
     const auto vkdst = dst_layout == image_layout::eCommon ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-    render::transition_image(vkcmd->cmd_buffer, vkimg->image, vkimg->layout, vkdst);
+    render::vk_transition_image(vkcmd->cmd_buffer, vkimg->image, vkimg->layout, vkdst);
     vkimg->layout = vkdst;
 }
 
