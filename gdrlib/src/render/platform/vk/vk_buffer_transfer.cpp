@@ -9,20 +9,14 @@ result<render::vk_buffer_transfer> render::create_buffer_transfer(VkDevice devic
     ZoneScoped;
     const auto cmd_buffer =
         render::vk_create_command_buffer(device, queue.family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-    if (!cmd_buffer)
-    {
-        return error(cmd_buffer.message);
-    }
+    RESULT_FORWARD_IF_FAILED(cmd_buffer);
 
     const auto staging_buffer = render::vk_create_buffer(staging_memory_size,
                                                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                                                          allocator,
                                                          VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
-    if (!staging_buffer)
-    {
-        return error(staging_buffer.message);
-    }
+    RESULT_FORWARD_IF_FAILED(staging_buffer);
 
     void* data = nullptr;
     vmaMapMemory(allocator, staging_buffer->allocation, &data);

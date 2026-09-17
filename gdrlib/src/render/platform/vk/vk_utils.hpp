@@ -12,7 +12,7 @@ namespace render
         srgb
     };
 
-    VkFormat vk_format_from_dxgi(u32 gx_format);
+    VkFormat vk_format_from_dxgi(u32 dx_format);
 
     VkFormat vk_format_force_color_space(VkFormat vk_format, color_space space);
 }

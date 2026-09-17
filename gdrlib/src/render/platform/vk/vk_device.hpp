@@ -52,8 +52,8 @@ namespace render
     void vk_destroy_swapchain(const vk_context& vk_context, vk_swapchain& swapchain);
 
     result<vk_swapchain> vk_create_swapchain(const vk_context& vk_context, VkFormat format, ivec2 size,
-                                          u32 frames_in_flight, bool vsync,
-                                          VkSwapchainKHR old_swapchain = VK_NULL_HANDLE);
+                                             u32 frames_in_flight, bool vsync,
+                                             const vk_swapchain* old_swapchain = nullptr);
 
     void vk_destroy_context(vk_context& ctx);
 

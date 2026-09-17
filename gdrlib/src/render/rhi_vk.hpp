@@ -8,6 +8,7 @@ namespace render::rhi
     void vk_destroy_context(context& context);
 
     result<swapchain> vk_create_swapchain(context context, const create_swapchain_info& desc);
+    result<swapchain> vk_resize_swapchain(context context, swapchain swapchain, const create_swapchain_info& desc);
     void vk_destroy_swapchain(context context, swapchain& swapchain);
 
     result<command_buffer> vk_create_command_buffer(context context, queue_kind queue_kind);
