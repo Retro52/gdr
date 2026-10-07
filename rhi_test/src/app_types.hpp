@@ -19,7 +19,7 @@ struct shared_buffer
     shared_buffer() = default;
 
     explicit shared_buffer(const render::rhi::rhi& rhi, render::rhi::context ctx, const u64 size,
-                           render::rhi::buffer_usage_flags usage)
+                           const render::rhi::buffer_usages usage)
         : size(size)
         , offset(0)
     {
@@ -29,7 +29,7 @@ struct shared_buffer
 
     explicit shared_buffer(const render::rhi::rhi& rhi, render::rhi::context ctx, const u64 size,
                            render::rhi::buffer_usage usage)
-        : shared_buffer(rhi, ctx, size, static_cast<render::rhi::buffer_usage_flags>(usage))
+        : shared_buffer(rhi, ctx, size, static_cast<render::rhi::buffer_usages>(usage))
     {
     }
 };

@@ -50,5 +50,4 @@ namespace render::rhi
     void d3d12_cmd_bind_pso(command_buffer cmd, pipeline pso);
     void d3d12_cmd_draw_instanced(command_buffer cmd, u32 vtx_count, u32 instance_count, u32 first_vertex,
                                   u32 first_instance);
-
 }

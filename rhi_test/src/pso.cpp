@@ -55,7 +55,7 @@ void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, r
             const auto it        = cache.find(shader_id);
             if (it == cache.end())
             {
-                const auto compiled_shader = rhi.create_shader(context, kShadersBinDir / shader);
+                const auto compiled_shader = RHI_SAFE_CALL(rhi.create_shader, context, kShadersBinDir / shader);
                 assert2m(compiled_shader, compiled_shader.message);
                 if (compiled_shader)
                 {
@@ -78,14 +78,15 @@ void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, r
                  "some shaders failed to compile?");
         if (compiled_shaders.size() == shaders.size())
         {
-            auto pso = (shaders.size() == 1
-                        && (*rhi.query_shader_stage(compiled_shaders.front()) & VK_SHADER_STAGE_COMPUTE_BIT))
-                         ? rhi.create_compute_pso(context, compiled_shaders[0], {&textures_set, 1})
-                         : rhi.create_graphics_pso(context,
-                                                   {compiled_shaders.data(), compiled_shaders.size()},
-                                                   {&textures_set, 1},
-                                                   pipeline_info.contains("options") ? pipeline_info["options"]
-                                                                                     : nlohmann::json());
+            auto pso =
+                (shaders.size() == 1
+                 && (*RHI_SAFE_CALL(rhi.query_shader_stage, compiled_shaders.front()) & VK_SHADER_STAGE_COMPUTE_BIT))
+                    ? RHI_SAFE_CALL(rhi.create_compute_pso, context, compiled_shaders[0], {&textures_set, 1})
+                    : RHI_SAFE_CALL(rhi.create_graphics_pso,
+                                    context,
+                                    {compiled_shaders.data(), compiled_shaders.size()},
+                                    {&textures_set, 1},
+                                    pipeline_info.contains("options") ? pipeline_info["options"] : nlohmann::json());
 
             assert2m(pso && key, pso.message);
             if (pso)
@@ -109,7 +110,7 @@ void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, r
 
     for (auto& [_, shader] : cache)
     {
-        rhi.destroy_shader(context, shader);
+        RHI_SAFE_CALL(rhi.destroy_shader, context, shader);
     }
 }
 
@@ -118,6 +119,6 @@ void pso_data::shutdown(const render::rhi::rhi& rhi, render::rhi::context contex
     ZoneScoped;
     for (auto& [_, pso] : m_pipelines)
     {
-        rhi.destroy_pso(context, pso);
+        RHI_SAFE_CALL(rhi.destroy_pso, context, pso);
     }
 }

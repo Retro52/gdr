@@ -99,7 +99,6 @@ namespace render
                                                   const vk_descriptor_set* desc_set = nullptr, u32 desc_set_count = 0);
 
         static result<vk_pipeline> create_graphics(VkDevice device, const vk_shader* shaders, u32 shaders_count,
-                                                   VkFormat default_color_format, VkFormat default_depth_format,
                                                    const vk_descriptor_set* desc_set = nullptr, u32 desc_set_count = 0,
                                                    const nlohmann::json& options = nlohmann::json());
 

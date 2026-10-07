@@ -24,7 +24,6 @@ static render::rhi::instance_desc get_instance_desc()
                                         .require(render::rhi::feature_flag::eSamplerMinMax)
 #endif
                                         .request(render::rhi::feature_flag::eMeshShading)
-                                        .require(render::rhi::feature_flag::e8BitIntegers)
                                         .require(render::rhi::feature_flag::e16BitTypes)
                                         .require(render::rhi::feature_flag::eDrawIndirect)
                                         .require(render::rhi::feature_flag::eDynamicRender)
@@ -96,8 +95,9 @@ static void rhi_destroy_buffer_transfer(const render::rhi::rhi& rhi, render::rhi
     RHI_SAFE_CALL(rhi.destroy_command_buffer, ctx, buffer_transfer.staging_command_buffer);
 }
 
-#define DX12_EXPERIMENTAL        0
-#define RHI_BUFFERS_EXPERIMENTAL 0
+#define DX12_EXPERIMENTAL         0
+#define RHI_BUFFERS_EXPERIMENTAL  0
+#define RHI_TEXTURES_EXPERIMENTAL 0
 
 int main(const int argc, char* argv[])
 {
@@ -111,10 +111,12 @@ int main(const int argc, char* argv[])
     events_queue events(window);
 
 #if DX12_EXPERIMENTAL
-    auto rhi = render::rhi::create_for_d3d12();
+    bool use_dx12 = true;
 #else
-    auto rhi = render::rhi::create_for_vk();
+    bool use_dx12 = false;
 #endif
+    use_dx12 = use_dx12 || (argc == 2 && (strcmp(argv[1], "--d3d12") == 0));
+    auto rhi = use_dx12 ? render::rhi::create_for_d3d12() : render::rhi::create_for_vk();
 
     auto context = RHI_SAFE_CALL(rhi.create_context, window, get_instance_desc());
     if (!context)
@@ -123,10 +125,11 @@ int main(const int argc, char* argv[])
         return 1;
     }
 
+    constexpr auto kSwapchainFormat = VK_FORMAT_R8G8B8A8_UNORM;
     render::rhi::create_swapchain_info create_swapchain_info {
         .size             = window.get_size_in_px(),
         .frames_in_flight = 2,
-        .format           = VK_FORMAT_R8G8B8A8_UNORM,
+        .format           = kSwapchainFormat,
         .vsync            = false,
     };
 
@@ -150,18 +153,22 @@ int main(const int argc, char* argv[])
         {
             auto& ctx = *static_cast<resize_context*>(user_data);
 
-            const render::rhi::create_swapchain_info create_swapchain_info {
+            const render::rhi::create_swapchain_info update_swapchain_info {
                 .size             = payload.window.size_px,
                 .frames_in_flight = 2,
-                .format           = VK_FORMAT_B8G8R8A8_UNORM,
+                .format           = kSwapchainFormat,
                 .vsync            = false,
             };
 
             RHI_SAFE_CALL(ctx.rhi.device_wait_idle, ctx.context);
             if (const auto resized_sc =
-                    RHI_SAFE_CALL(ctx.rhi.resize_swapchain, ctx.context, ctx.sc, create_swapchain_info))
+                    RHI_SAFE_CALL(ctx.rhi.resize_swapchain, ctx.context, ctx.sc, update_swapchain_info))
             {
                 ctx.sc = *resized_sc;
+            }
+            else
+            {
+                LOG_ERROR("failed to resize swapchain. reason: {}", resized_sc.message);
             }
         },
         &resize_ctx);
@@ -220,7 +227,7 @@ int main(const int argc, char* argv[])
     };
 
     f64 last_frame_time = get_time();
-    auto render_loop    = [&]()
+    auto render_loop    = [&]
     {
         const f64 current_time = get_time();
         const f64 dt           = current_time - last_frame_time;
@@ -233,17 +240,17 @@ int main(const int argc, char* argv[])
             return;
         }
 
-        const u32 frame_index            = *RHI_SAFE_CALL(rhi.query_current_frame_index, *swapchain);
-        render::rhi::command_buffer& cmd = command_buffers[frame_index];
+        const u32 frame_index                  = *RHI_SAFE_CALL(rhi.query_current_frame_index, *swapchain);
+        const render::rhi::command_buffer& cmd = command_buffers[frame_index];
 
         RHI_SAFE_CALL(rhi.cmd_begin_recording, cmd);
-        RHI_SAFE_CALL(rhi.cmd_transition_image, cmd, *frame_image, render::rhi::image_layout::eCommon);
+        RHI_SAFE_CALL(rhi.cmd_transition_image, cmd, *frame_image, render::rhi::image_layout::eRenderTargetColor);
 
         render::rhi::attachment_state_info color_attachment {
             .attachment  = *frame_image,
             .load_op     = render::rhi::resource_load_op::eClear,
             .store_op    = render::rhi::resource_store_op::eStore,
-            .clear_value = {},
+            .clear_value = {.f4 = vec4(0.4F, 0.6F, 0.9F, 1.0F)},
         };
 
         RHI_SAFE_CALL(rhi.cmd_set_draw_state,
@@ -258,7 +265,9 @@ int main(const int argc, char* argv[])
         RHI_SAFE_CALL(rhi.cmd_transition_image, cmd, *frame_image, render::rhi::image_layout::ePresent);
         RHI_SAFE_CALL(rhi.cmd_end_recording, cmd);
         RHI_SAFE_CALL(rhi.cmd_present_image, cmd, *swapchain, *gfx_queue, *present_queue);
-        SDL_SetWindowTitle(window.get_native_handle().window, cpp::stack_string::make_formatted("CPU time: %lfms; FPS: %lf", dt * 1000.0F, 1.0F / dt).c_str());
+        SDL_SetWindowTitle(
+            window.get_native_handle().window,
+            cpp::stack_string::make_formatted("CPU time: %lfms; FPS: %lf", dt * 1000.0F, 1.0F / dt).c_str());
         FrameMark;
     };
 

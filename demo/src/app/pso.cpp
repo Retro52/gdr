@@ -98,8 +98,6 @@ void app::pso_data::load(const render::vk_renderer& renderer, const render::vk_d
                                renderer.get_context().device,
                                compiled_shaders.data(),
                                compiled_shaders.size(),
-                               renderer.get_swapchain().surface_format.format,
-                               renderer.get_swapchain().depth_format,
                                &textures_set,
                                1,
                                pipeline_info.contains("options") ? pipeline_info["options"] : nlohmann::json());

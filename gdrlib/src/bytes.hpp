@@ -41,6 +41,13 @@ struct bytes
         other.m_memory = nullptr;
     }
 
+    void release()
+    {
+        delete[] m_memory;
+        m_size   = 0;
+        m_memory = nullptr;
+    }
+
     bytes& operator=(bytes&& other) noexcept
     {
         ZoneScoped;
