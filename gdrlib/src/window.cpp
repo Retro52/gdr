@@ -3,16 +3,25 @@
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
 
-window::window(const char* title, ivec2 size, bool fullscreen)
+window::window(const char* title, const create_window_info& create_info)
 {
     ZoneScoped;
 
     SDL_Init(SDL_INIT_VIDEO);
-    m_window = SDL_CreateWindow(title,
-                                size.x,
-                                size.y,
-                                (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) | SDL_WINDOW_HIGH_PIXEL_DENSITY
-                                    | SDL_WINDOW_RESIZABLE);
+    auto props = SDL_CreateProperties();
+
+    SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, title);
+
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, create_info.size.x);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, create_info.size.y);
+
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, create_info.position.x);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, create_info.position.y);
+
+    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, create_info.fullscreen);
+    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_BORDERLESS_BOOLEAN, create_info.borderless);
+
+    m_window = SDL_CreateWindowWithProperties(props);
 
 #if defined(SDL_PLATFORM_APPLE)
     m_metal_view = SDL_Metal_CreateView(m_window);

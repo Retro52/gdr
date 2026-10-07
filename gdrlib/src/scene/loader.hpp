@@ -1,7 +1,7 @@
 #pragma once
 
+#include <cpp/containers/heap_array.hpp>
 #include <fs/fs.hpp>
-#include <render/platform/vk/vk_geometry_pool.hpp>
 #include <shaders/constants.h>
 #include <shaders/types.h>
 
@@ -30,7 +30,7 @@ namespace loader
         u64 meshlets   = 0;
         u64 triangles  = 0;
         u64 primitives = 0;
-        std::array<u32, shader_constants::kMatClassCount> mat_offset_table;
+        std::array<u32, shader_constants::kMatClassCount> mat_offset_table {};
     };
 
     struct prim_layout
@@ -65,28 +65,40 @@ namespace loader
         cpp::heap_array<mesh::raw_mesh> primitives;
     };
 
-    struct loader_context
+    struct scene_data
     {
         cpp::heap_array<loader::vertex> vertices;
 
         cpp::heap_array<loader::meshlet> meshlets;
         cpp::heap_array<u8> meshlets_data;
 
+        cpp::heap_array<loader::instance> instances;
         cpp::heap_array<loader::material> materials;
         cpp::heap_array<loader::primitive> primitives;
     };
+
+    // struct scene_geometry_pool
+    // {
+    //     shared_buffer vertex;
+    //     shared_buffer meshlets;
+    //     shared_buffer primitives;
+    //     shared_buffer instances;
+    //     shared_buffer materials;
+    //     shared_buffer meshlets_payload;
+    //
+    //     buffer_transfer transfer;
+    // };
 
     u32 get_max_lod_tris(const mesh::raw_mesh& mesh);
 
     u32 get_max_lod_meshlets(const loader::primitive& prim);
 
-    result<render::vk_image> load_texture(const fs::path& path, const render::vk_renderer& renderer,
-                                          const render::vk_buffer_transfer& scratch);
+    // result<render::vk_image> load_texture(const fs::path& path, const render::vk_renderer& renderer,
+    //                                       const render::vk_buffer_transfer& scratch);
 
-    scene_info load_scene(const fs::path& path, scene& scene, const render::vk_renderer& renderer,
-                          render::vk_scene_geometry_pool& geometry_pool, cpp::heap_array<render::vk_image>& textures);
+    scene_data load_scene(const fs::path& path, scene& scene);
 
     result<meshes_context> load_meshes(const fs::path& path);
 
-    void encode_raw_mesh(loader_context& ctx, const mesh::raw_mesh& primitive, const prim_layout& layout);
+    void encode_raw_mesh(scene_data& ctx, const mesh::raw_mesh& primitive, const prim_layout& layout);
 }

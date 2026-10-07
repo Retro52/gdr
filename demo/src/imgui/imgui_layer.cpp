@@ -30,8 +30,8 @@ imgui_layer::imgui_layer(const window& window, const render::vk_renderer& render
     init_info.Instance            = context.instance;
     init_info.PhysicalDevice      = context.physical_device;
     init_info.Device              = context.device;
-    init_info.QueueFamily         = context.queues[static_cast<u32>(render::rhi::queue_kind::eGfx)].family;
-    init_info.Queue               = context.queues[static_cast<u32>(render::rhi::queue_kind::eGfx)].queue;
+    init_info.QueueFamily         = context.queues[static_cast<u32>(render::rhi::queue_kind::gfx)].family;
+    init_info.Queue               = context.queues[static_cast<u32>(render::rhi::queue_kind::gfx)].queue;
     init_info.PipelineCache       = VK_NULL_HANDLE;
     init_info.UseDynamicRendering = true;
     init_info.MinAllocationSize   = 1024 * 1024;
@@ -45,7 +45,6 @@ imgui_layer::imgui_layer(const window& window, const render::vk_renderer& render
         .pNext                   = nullptr,
         .colorAttachmentCount    = 1,
         .pColorAttachmentFormats = &swapchain.surface_format.format,
-        .depthAttachmentFormat   = swapchain.depth_format,
     };
 
     ImGui_ImplVulkan_Init(&init_info);
@@ -296,7 +295,7 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
         auto& pipeline = m_pipelines[req.type == sampler_type::sampler2d ? app::pso_id::blit_sampler2d_pipeline
                                                                          : app::pso_id::blit_sampler2d_array_pipeline];
 
-        pipeline.bind(cmd);
+        // pipeline.bind(cmd);
         VkViewport viewport {
             .x        = static_cast<f32>(req.offset.x),
             .y        = static_cast<f32>(req.offset.y),
@@ -311,12 +310,12 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
         vkCmdSetScissor(cmd, 0, 1, &scissor);
         vkCmdSetCullMode(cmd, VK_CULL_MODE_BACK_BIT);
 
-        pipeline.push_constant(cmd, req.push_constant);
+        // pipeline.push_constant(cmd, req.push_constant);
 
         const render::vk_descriptor_info bindings[] {
             {m_atlas_data.sampler, req.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}
         };
-        pipeline.push_descriptor_set(cmd, bindings);
+        // pipeline.push_descriptor_set(cmd, bindings);
 
         vkCmdDraw(cmd, 3, 1, 0, 0);
     }

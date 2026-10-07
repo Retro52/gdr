@@ -50,16 +50,16 @@ namespace cpp
             }
         }
 
-        u64 reference_add() const noexcept { return ++(m_ref_control_block->strong_ref_counter); }
+        [[nodiscard]] u64 reference_add() const noexcept { return ++(m_ref_control_block->strong_ref_counter); }
 
-        u64 reference_remove() const noexcept
+        [[nodiscard]] u64 reference_remove() const noexcept
         {
             const u64 cnt = --(m_ref_control_block->strong_ref_counter);
-
             if (cnt == 0)
             {
                 delete this;
             }
+
             return cnt;
         }
 

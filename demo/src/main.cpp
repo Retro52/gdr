@@ -2,6 +2,8 @@
 #include <SDL3/SDL_main.h>
 
 #include <app/app.hpp>
+#include <tracy/Tracy.hpp>
+
 #include <chrono>
 
 int main(const int argc, char* argv[])

@@ -2,7 +2,7 @@
 
 #include <app/argv.hpp>
 #include <events.hpp>
-#include <render/platform/vk/vk_renderer.hpp>
+#include <render/rhi.hpp>
 #include <window.hpp>
 
 namespace app
@@ -15,10 +15,10 @@ namespace app
         int run();
 
     private:
+        window m_window;
         app::argv_handler m_args;
 
-        window m_window;
+        render::rhi::rhi m_rhi;
         events_queue m_events_queue;
-        render::vk_renderer m_renderer;
     };
 }

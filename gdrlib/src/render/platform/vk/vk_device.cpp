@@ -203,7 +203,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBi
     if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
         LOG_ERROR("validation error: {}", pCallbackData->pMessage);
-        assert2m(false, pCallbackData->pMessage);
+        // assert2m(false, pCallbackData->pMessage);
     }
     else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
     {
@@ -221,7 +221,7 @@ static void load_instance_layers_and_extensions(const window& window, const rhi:
                                                 cpp::heap_array<const char*>& layers,
                                                 cpp::heap_array<const char*>& extensions)
 {
-    if (desc.device_features.requested(render::rhi::feature_flag::eValidation)
+    if (desc.device_features.requested(render::rhi::feature_flag::validation)
         && layer_available("VK_LAYER_KHRONOS_validation") && inst_ext_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
     {
         layers.push_back("VK_LAYER_KHRONOS_validation");
@@ -394,8 +394,8 @@ static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfa
 
         if (key == "VK_KHR_portability_subset"_crc32)
         {
-            features_table.require(render::rhi::feature_flag::ePortabilitySubset);
-            features_table.set_supported(render::rhi::feature_flag::ePortabilitySubset, true);
+            features_table.require(render::rhi::feature_flag::portability_subset);
+            features_table.set_supported(render::rhi::feature_flag::portability_subset, true);
         }
     }
 
@@ -417,34 +417,34 @@ static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfa
                                                 .pNext = &vk11_features};
     vkGetPhysicalDeviceFeatures2(device, &device_features2);
 
-    features_table.set_supported(render::rhi::feature_flag::eDynamicRender, vk13_features.dynamicRendering);
-    features_table.set_supported(render::rhi::feature_flag::eScalarBlockLayout, vk12_features.scalarBlockLayout);
-    features_table.set_supported(render::rhi::feature_flag::eSynchronization2, vk13_features.synchronization2);
-    features_table.set_supported(render::rhi::feature_flag::eSamplerMinMax, vk12_features.samplerFilterMinmax);
+    features_table.set_supported(render::rhi::feature_flag::dynamic_render, vk13_features.dynamicRendering);
+    features_table.set_supported(render::rhi::feature_flag::scalar_block_layout, vk12_features.scalarBlockLayout);
+    features_table.set_supported(render::rhi::feature_flag::synchronization2, vk13_features.synchronization2);
+    features_table.set_supported(render::rhi::feature_flag::sampler_min_max, vk12_features.samplerFilterMinmax);
 
-    features_table.set_supported(render::rhi::feature_flag::e8BitIntegers, vk12_features.storageBuffer8BitAccess);
-    features_table.set_supported(render::rhi::feature_flag::eMeshShading,
+    features_table.set_supported(render::rhi::feature_flag::types_int8, vk12_features.storageBuffer8BitAccess);
+    features_table.set_supported(render::rhi::feature_flag::mesh_shading,
                                  vk13_features.maintenance4 && mesh_features.meshShader && mesh_features.taskShader);
-    features_table.set_supported(render::rhi::feature_flag::eDrawIndirect,
+    features_table.set_supported(render::rhi::feature_flag::draw_indirect,
 #if !defined(__APPLE__)
                                  vk12_features.drawIndirectCount &&
 #endif
                                      device_features2.features.multiDrawIndirect && vk11_features.shaderDrawParameters);
-    features_table.set_supported(render::rhi::feature_flag::ePipelineStats,
+    features_table.set_supported(render::rhi::feature_flag::pipeline_stats,
                                  device_features2.features.pipelineStatisticsQuery);
 
-    features_table.set_supported(render::rhi::feature_flag::eBindlessTextures,
+    features_table.set_supported(render::rhi::feature_flag::bindless_textures,
                                  vk12_features.descriptorIndexing && vk12_features.runtimeDescriptorArray
                                      && vk12_features.descriptorBindingPartiallyBound
                                      && vk12_features.descriptorBindingVariableDescriptorCount
                                      && vk12_features.shaderSampledImageArrayNonUniformIndexing
                                      && vk12_features.descriptorBindingSampledImageUpdateAfterBind);
 
-    features_table.set_supported(render::rhi::feature_flag::e16BitTypes,
+    features_table.set_supported(render::rhi::feature_flag::types_16bit,
                                  vk11_features.storageBuffer16BitAccess
                                      && vk11_features.uniformAndStorageBuffer16BitAccess);
 
-    return not_found_extensions.empty() && features_table.all_required_supported()
+    return not_found_extensions.empty() && features_table.all_required_supported() && vk12_features.timelineSemaphore
         && device_features2.features.samplerAnisotropy
         && device_features2.features.shaderStorageImageWriteWithoutFormat;
 }
@@ -466,14 +466,14 @@ static ext_array build_extensions_from_feature_table(const rhi::rendering_featur
         {
             switch (feature)
             {
-            case render::rhi::feature_flag::eMeshShading :
+            case render::rhi::feature_flag::mesh_shading :
                 array.emplace_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
                 array.emplace_back(VK_KHR_MAINTENANCE_4_EXTENSION_NAME);
                 break;
-            case render::rhi::feature_flag::e8BitIntegers :
+            case render::rhi::feature_flag::types_int8 :
                 array.emplace_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
                 break;
-            case render::rhi::feature_flag::ePortabilitySubset :
+            case render::rhi::feature_flag::portability_subset :
                 array.emplace_back("VK_KHR_portability_subset");
                 break;
             default :
@@ -508,7 +508,7 @@ static void log_device_features_table(const char* name, const rhi::rendering_fea
         const auto flag = reflection::get_enum_value_at<render::rhi::feature_flag>(i);
 
         // validation is an instance-level flag tbh
-        if (flag == render::rhi::feature_flag::eValidation)
+        if (flag == render::rhi::feature_flag::validation)
         {
             continue;
         }
@@ -715,34 +715,35 @@ static VkResult create_vulkan_device(const rhi::rendering_features_table& render
 
     VkPhysicalDeviceVulkan13Features vk13_features {
         .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        .synchronization2 = rendering_features.wanted(render::rhi::feature_flag::eSynchronization2),
-        .dynamicRendering = rendering_features.wanted(render::rhi::feature_flag::eDynamicRender),
-        .maintenance4     = rendering_features.wanted(render::rhi::feature_flag::eMeshShading)};
+        .synchronization2 = rendering_features.wanted(render::rhi::feature_flag::synchronization2),
+        .dynamicRendering = rendering_features.wanted(render::rhi::feature_flag::dynamic_render),
+        .maintenance4     = rendering_features.wanted(render::rhi::feature_flag::mesh_shading)};
 
     VkPhysicalDeviceVulkan12Features vk12_features {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
 #if !defined(__APPLE__)
-        .drawIndirectCount = rendering_features.wanted(render::rhi::feature_flag::eDrawIndirect),
+        .drawIndirectCount = rendering_features.wanted(render::rhi::feature_flag::draw_indirect),
 #endif
-        .storageBuffer8BitAccess = rendering_features.wanted(render::rhi::feature_flag::e8BitIntegers),
-        .descriptorIndexing      = rendering_features.wanted(render::rhi::feature_flag::eBindlessTextures),
+        .storageBuffer8BitAccess = rendering_features.wanted(render::rhi::feature_flag::types_int8),
+        .descriptorIndexing      = rendering_features.wanted(render::rhi::feature_flag::bindless_textures),
         .shaderSampledImageArrayNonUniformIndexing =
-            rendering_features.wanted(render::rhi::feature_flag::eBindlessTextures),
+            rendering_features.wanted(render::rhi::feature_flag::bindless_textures),
         .descriptorBindingSampledImageUpdateAfterBind =
-            rendering_features.wanted(render::rhi::feature_flag::eBindlessTextures),
-        .descriptorBindingPartiallyBound = rendering_features.wanted(render::rhi::feature_flag::eBindlessTextures),
+            rendering_features.wanted(render::rhi::feature_flag::bindless_textures),
+        .descriptorBindingPartiallyBound = rendering_features.wanted(render::rhi::feature_flag::bindless_textures),
         .descriptorBindingVariableDescriptorCount =
-            rendering_features.wanted(render::rhi::feature_flag::eBindlessTextures),
-        .runtimeDescriptorArray = rendering_features.wanted(render::rhi::feature_flag::eBindlessTextures),
-        .samplerFilterMinmax    = rendering_features.wanted(render::rhi::feature_flag::eSamplerMinMax),
-        .scalarBlockLayout      = rendering_features.wanted(render::rhi::feature_flag::eScalarBlockLayout),
+            rendering_features.wanted(render::rhi::feature_flag::bindless_textures),
+        .runtimeDescriptorArray = rendering_features.wanted(render::rhi::feature_flag::bindless_textures),
+        .samplerFilterMinmax    = rendering_features.wanted(render::rhi::feature_flag::sampler_min_max),
+        .scalarBlockLayout      = rendering_features.wanted(render::rhi::feature_flag::scalar_block_layout),
+        .timelineSemaphore      = VK_TRUE,
     };
 
     VkPhysicalDeviceVulkan11Features vk11_features {
         .sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-        .storageBuffer16BitAccess           = rendering_features.wanted(render::rhi::feature_flag::e16BitTypes),
-        .uniformAndStorageBuffer16BitAccess = rendering_features.wanted(render::rhi::feature_flag::e16BitTypes),
-        .shaderDrawParameters               = rendering_features.wanted(render::rhi::feature_flag::eDrawIndirect),
+        .storageBuffer16BitAccess           = rendering_features.wanted(render::rhi::feature_flag::types_16bit),
+        .uniformAndStorageBuffer16BitAccess = rendering_features.wanted(render::rhi::feature_flag::types_16bit),
+        .shaderDrawParameters               = rendering_features.wanted(render::rhi::feature_flag::draw_indirect),
     };
 
     VkPhysicalDeviceFeatures2 device_features {
@@ -751,10 +752,10 @@ static VkResult create_vulkan_device(const rhi::rendering_features_table& render
 #if !defined(__APPLE__)
                      .geometryShader = VK_TRUE,
 #endif
-                     .multiDrawIndirect       = rendering_features.wanted(render::rhi::feature_flag::eDrawIndirect),
+                     .multiDrawIndirect       = rendering_features.wanted(render::rhi::feature_flag::draw_indirect),
                      .depthClamp              = VK_TRUE,
                      .samplerAnisotropy       = VK_TRUE,
-                     .pipelineStatisticsQuery = rendering_features.wanted(render::rhi::feature_flag::ePipelineStats),
+                     .pipelineStatisticsQuery = rendering_features.wanted(render::rhi::feature_flag::pipeline_stats),
                      .shaderStorageImageWriteWithoutFormat = VK_TRUE,
                      }
     };
@@ -776,7 +777,7 @@ static VkResult create_vulkan_device(const rhi::rendering_features_table& render
 
     // Optional structs
     VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features {};
-    if (rendering_features.wanted(render::rhi::feature_flag::eMeshShading))
+    if (rendering_features.wanted(render::rhi::feature_flag::mesh_shading))
     {
         mesh_features = {.sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
                          .taskShader = true,
@@ -785,7 +786,7 @@ static VkResult create_vulkan_device(const rhi::rendering_features_table& render
     }
 
     VkPhysicalDevicePortabilitySubsetFeaturesKHR portability_features {};
-    if (rendering_features.wanted(render::rhi::feature_flag::ePortabilitySubset))
+    if (rendering_features.wanted(render::rhi::feature_flag::portability_subset))
     {
         portability_features = {
             .sType                     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR,
@@ -848,7 +849,7 @@ static result<vk_context> create_vk_context(const window& window, const rhi::ins
     volkLoadInstance(context.instance);
 
     // Create debug messenger if available and requested
-    if (desc.device_features.requested(render::rhi::feature_flag::eValidation))
+    if (vkCreateDebugUtilsMessengerEXT && desc.device_features.requested(render::rhi::feature_flag::validation))
     {
         constexpr VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -886,10 +887,10 @@ static result<vk_context> create_vk_context(const window& window, const rhi::ins
 
     choose_queue_families(context.physical_device,
                           context.surface,
-                          context.queues[static_cast<u32>(rhi::queue_kind::eGfx)].family,
-                          context.queues[static_cast<u32>(rhi::queue_kind::eCompute)].family,
-                          context.queues[static_cast<u32>(rhi::queue_kind::eTransfer)].family,
-                          context.queues[static_cast<u32>(rhi::queue_kind::ePresent)].family);
+                          context.queues[static_cast<u32>(rhi::queue_kind::gfx)].family,
+                          context.queues[static_cast<u32>(rhi::queue_kind::compute)].family,
+                          context.queues[static_cast<u32>(rhi::queue_kind::transfer)].family,
+                          context.queues[static_cast<u32>(rhi::queue_kind::present)].family);
 
     auto populate_queue_data = [&](const u32 idx)
     {
@@ -1015,11 +1016,11 @@ result<vk_swapchain> render::vk_create_swapchain(const vk_context& vk_context, V
     vk_swapchain sc_data;
     sc_data.surface_format = choose_swapchain_format(vk_context.physical_device, vk_context.surface, format);
 
-    const u32 unique_queues[2] {vk_context.queues[static_cast<u32>(rhi::queue_kind::eGfx)].family,
-                                vk_context.queues[static_cast<u32>(rhi::queue_kind::ePresent)].family};
+    const u32 unique_queues[2] {vk_context.queues[static_cast<u32>(rhi::queue_kind::gfx)].family,
+                                vk_context.queues[static_cast<u32>(rhi::queue_kind::present)].family};
 
-    const bool image_sharing_supported = vk_context.queues[static_cast<u32>(rhi::queue_kind::eGfx)].family
-                                      != vk_context.queues[static_cast<u32>(rhi::queue_kind::ePresent)].family;
+    const bool image_sharing_supported = vk_context.queues[static_cast<u32>(rhi::queue_kind::gfx)].family
+                                      != vk_context.queues[static_cast<u32>(rhi::queue_kind::present)].family;
 
     VkSurfaceCapabilitiesKHR capabilities;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_context.physical_device, vk_context.surface, &capabilities);

@@ -16,9 +16,9 @@ namespace cpp
     class heap_array
     {
     private:
-        T* m_data {nullptr};
-        T* m_end {nullptr};
-        T* m_capacity_end {nullptr};
+        T* m_data         = nullptr;
+        T* m_end          = nullptr;
+        T* m_capacity_end = nullptr;
 
     public:
         heap_array() = default;
@@ -31,7 +31,7 @@ namespace cpp
         }
 
         heap_array(const heap_array& other)
-            : m_data {other.size() ? alloc(other.size()) : nullptr}
+            : m_data {!other.empty() ? alloc(other.size()) : nullptr}
             , m_end {m_data + other.size()}
             , m_capacity_end {m_end}
         {

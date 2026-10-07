@@ -56,7 +56,7 @@ namespace render
 
         render::vk_descriptor_info* get() { return render_bindings; }
 
-        auto& bind_at(const render::vk_descriptor_info& next, u32 index)
+        auto& bind_at(const render::vk_descriptor_info& next, const u32 index)
         {
             assert2(index < kMaxSetZeroBindings);
             render_bindings[index] = next;
@@ -114,7 +114,7 @@ namespace render
 
         void push_constant(VkCommandBuffer command_buffer, u32 offset, u32 size, const void* data) const;
 
-        void bind_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_set& set) const;
+        void bind_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_set& set, u32 first_set) const;
 
         void push_descriptor_set(VkCommandBuffer command_buffer, const vk_descriptor_info* updates) const;
 

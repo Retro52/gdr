@@ -17,3 +17,7 @@ using ivec4 = glm::ivec4;
 using uvec2 = glm::uvec2;
 using uvec3 = glm::uvec3;
 using uvec4 = glm::uvec4;
+
+using u64vec2 = glm::u64vec2;
+using u64vec3 = glm::u64vec3;
+using u64vec4 = glm::u64vec4;

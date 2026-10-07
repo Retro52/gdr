@@ -11,7 +11,7 @@ void render::vk_destroy_descriptor_set(VkDevice device, vk_descriptor_set& descr
 result<render::vk_descriptor_set> render::vk_create_bindless_textures_set(VkDevice device, const u32 max_textures)
 {
     VkDescriptorPoolSize pool_sizes_bindless[] = {
-        {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, max_textures}
+        {.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = max_textures}
     };
 
     const VkDescriptorPoolCreateInfo create_info {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -26,10 +26,11 @@ result<render::vk_descriptor_set> render::vk_create_bindless_textures_set(VkDevi
     VK_RETURN_ON_FAIL(vkCreateDescriptorPool(device, &create_info, nullptr, &descriptor_pool));
 
     VkDescriptorSetLayoutBinding set_layout_bindings[] = {
-        {0,
-         VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, max_textures,
-         VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
-         nullptr}
+        {.binding            = 0,
+         .descriptorType     = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+         .descriptorCount    = max_textures,
+         .stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+         .pImmutableSamplers = nullptr}
     };
 
     VkDescriptorBindingFlags binding_flags[] = {VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT

@@ -1,106 +1,90 @@
 #include <app/render.hpp>
-#include <render/platform/vk/vk_barrier.hpp>
 #include <shaders/constants.h>
 #include <tracy/Tracy.hpp>
 
 #include <cmath>
 
-void app::begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView depth, VkAttachmentLoadOp load_op,
-                          VkAttachmentStoreOp store_op, const VkRect2D& vp)
+void app::begin_rendering(const render::rhi::rhi& rhi, render::rhi::command_buffer cmd, render::rhi::attachment color,
+                          render::rhi::attachment depth, render::rhi::resource_load_op load_op,
+                          render::rhi::resource_store_op store_op, uvec4 viewport)
 {
     ZoneScoped;
-    VkRenderingInfo rendering_info {.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR, .renderArea = vp, .layerCount = 1};
 
-    VkRenderingAttachmentInfo color_attachment_info {};
-    VkRenderingAttachmentInfo depth_attachment_info {};
-    if (color != VK_NULL_HANDLE)
-    {
-        color_attachment_info = {
-            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView   = color,
-            .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
-            .loadOp      = load_op,
-            .storeOp     = store_op,
-        };
+    render::rhi::attachment_state_info color_attachment_state {
+        .attachment = color,
+        .load_op    = load_op,
+        .store_op   = store_op,
+    };
 
-        rendering_info.colorAttachmentCount = 1;
-        rendering_info.pColorAttachments    = &color_attachment_info;
-    }
+    render::rhi::attachment_state_info depth_attachment_state {
+        .attachment = depth,
+        .load_op    = load_op,
+        .store_op   = store_op,
+    };
 
-    if (depth != VK_NULL_HANDLE)
-    {
-        depth_attachment_info = {
-            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView   = depth,
-            .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
-            .loadOp      = load_op,
-            .storeOp     = store_op,
-        };
-
-        rendering_info.pDepthAttachment = &depth_attachment_info;
-    }
-
-    vkCmdBeginRendering(cmd, &rendering_info);
-
-    const VkViewport viewport {static_cast<f32>(vp.offset.x),
-                               static_cast<f32>(vp.offset.y),
-                               static_cast<f32>(vp.extent.width),
-                               static_cast<f32>(vp.extent.height),
-                               0.0F,
-                               1.0F};
-
-    vkCmdSetScissor(cmd, 0, 1, &vp);
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
+    rhi.cmd_set_draw_state(cmd, {&color_attachment_state, 1}, depth_attachment_state, viewport);
 }
 
-void app::zero_buffer(VkCommandBuffer cmd, const render::vk_buffer& buffer, const u64 offset, const u64 size)
+void app::zero_buffer(const render::rhi::rhi& rhi, const render::rhi::command_buffer cmd,
+                      const render::rhi::buffer& draw_count_buffer, const u64 offset, const u64 size)
 {
     ZoneScoped;
 
 #ifdef __APPLE__
-    constexpr auto stage_bits = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    constexpr auto stage_bits = render::rhi::barrier_stage::indirect | render::rhi::barrier_stage::compute_shader;
 #else
-    constexpr auto stage_bits = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT
-                              | VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    constexpr auto stage_bits = render::rhi::barrier_stage::indirect | render::rhi::barrier_stage::task_shader
+                              | render::rhi::barrier_stage::mesh_shader | render::rhi::barrier_stage::compute_shader;
 #endif
 
-    render::vk_buffer_barrier(cmd,
-                              buffer.buffer,
-                              stage_bits,
-                              VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
-                                  | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                              VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                              VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    const render::rhi::buffer_barrier pre_barrier = {
+        .buffer = draw_count_buffer,
+        .before = {.stages = stage_bits,
+                   .access = render::rhi::barrier_access::indirect_read | render::rhi::barrier_access::storage_read
+                           | render::rhi::barrier_access::storage_write               },
+        .after  = {.stages = static_cast<u32>(render::rhi::barrier_stage::copy),
+                   .access = static_cast<u32>(render::rhi::barrier_access::copy_write)}
+    };
 
-    vkCmdFillBuffer(cmd, buffer.buffer, offset, size ? size : (buffer.size - offset), 0);
+    const render::rhi::buffer_barrier pre_barriers[] = {pre_barrier};
+    rhi.cmd_barriers(cmd, {.buffers = pre_barriers});
+    rhi.cmd_clear_buffer(cmd, draw_count_buffer, u64vec2(offset, size ? size : render::rhi::kBufferAll), 0);
 
-    render::vk_buffer_barrier(cmd,
-                              buffer.buffer,
-                              VK_PIPELINE_STAGE_2_CLEAR_BIT,
-                              VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-                              VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
-                                  | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+    const render::rhi::buffer_barrier post_barrier = {
+        .buffer = draw_count_buffer,
+        .before = pre_barrier.after,
+        .after  = {.stages = render::rhi::barrier_stage::compute_shader | render::rhi::barrier_stage::indirect,
+                   .access = render::rhi::barrier_access::indirect_read | render::rhi::barrier_access::storage_read
+                           | render::rhi::barrier_access::storage_write}
+    };
+
+    const render::rhi::buffer_barrier post_barriers[] = {post_barrier};
+    rhi.cmd_barriers(cmd, {.buffers = post_barriers});
 }
 
-void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& draw_count_buffer)
+void app::reset_draw_count_buffer(const render::rhi::rhi& rhi, render::rhi::command_buffer cmd,
+                                  const render::rhi::buffer& draw_count_buffer)
 {
     ZoneScoped;
 
 #ifdef __APPLE__
-    constexpr auto stage_bits = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    constexpr auto stage_bits = render::rhi::barrier_stage::indirect | render::rhi::barrier_stage::compute_shader;
 #else
-    constexpr auto stage_bits = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT
-                              | VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    constexpr auto stage_bits = render::rhi::barrier_stage::indirect | render::rhi::barrier_stage::task_shader
+                              | render::rhi::barrier_stage::mesh_shader | render::rhi::barrier_stage::compute_shader;
 #endif
 
-    render::vk_buffer_barrier(cmd,
-                              draw_count_buffer.buffer,
-                              stage_bits,
-                              VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
-                                  | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                              VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                              VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    const render::rhi::buffer_barrier pre_barrier = {
+        .buffer = draw_count_buffer,
+        .before = {.stages = stage_bits,
+                   .access = render::rhi::barrier_access::indirect_read | render::rhi::barrier_access::storage_read
+                           | render::rhi::barrier_access::storage_write               },
+        .after  = {.stages = static_cast<u32>(render::rhi::barrier_stage::copy),
+                   .access = static_cast<u32>(render::rhi::barrier_access::copy_write)}
+    };
+
+    const render::rhi::buffer_barrier pre_barriers[] = {pre_barrier};
+    rhi.cmd_barriers(cmd, {.buffers = pre_barriers});
 
     u32 counts[shader_constants::kMatClassCount * 3];
     for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
@@ -110,95 +94,79 @@ void app::reset_draw_count_buffer(VkCommandBuffer cmd, const render::vk_buffer& 
         counts[i * 3 + 2] = 1;
     }
 
-    vkCmdUpdateBuffer(cmd, draw_count_buffer.buffer, 0, sizeof(u32) * COUNT_OF(counts), counts);
-    render::vk_buffer_barrier(cmd,
-                              draw_count_buffer.buffer,
-                              VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-                              VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                              VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-                              VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
-                                  | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
-}
-
-render::vk_image app::create_color_image(const ivec2& size, VkFormat format, VkDevice device, VmaAllocator allocator)
-{
-    ZoneScoped;
-    const VkImageCreateInfo image_create_info {
-        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType     = VK_IMAGE_TYPE_2D,
-        .format        = format,
-        .extent        = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
-        .mipLevels     = 1,
-        .arrayLayers   = 1,
-        .samples       = VK_SAMPLE_COUNT_1_BIT,
-        .tiling        = VK_IMAGE_TILING_OPTIMAL,
-        .usage         = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    rhi.cmd_update_buffer(cmd, draw_count_buffer, u64vec2(0, sizeof(u32) * COUNT_OF(counts)), counts);
+    const render::rhi::buffer_barrier post_barrier = {
+        .buffer = draw_count_buffer,
+        .before = pre_barrier.after,
+        .after  = {.stages = render::rhi::barrier_stage::compute_shader | render::rhi::barrier_stage::indirect,
+                   .access = render::rhi::barrier_access::indirect_read | render::rhi::barrier_access::storage_read
+                           | render::rhi::barrier_access::storage_write}
     };
 
-    return *render::vk_create_image(device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, allocator);
+    const render::rhi::buffer_barrier post_barriers[] = {post_barrier};
+    rhi.cmd_barriers(cmd, {.buffers = post_barriers});
 }
 
-render::vk_image app::create_depth_image(const ivec2& size, const VkFormat format, VkDevice device,
-                                         VmaAllocator allocator)
+render::rhi::image app::create_color_image(const render::rhi::rhi& rhi, const ivec2& size,
+                                           const render::rhi::image_format format, const render::rhi::context ctx)
 {
     ZoneScoped;
-    const VkImageCreateInfo image_create_info {
-        .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType   = VK_IMAGE_TYPE_2D,
+    const render::rhi::create_image_info info {
         .format      = format,
-        .extent      = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
-        .mipLevels   = 1,
-        .arrayLayers = 1,
-        .samples     = VK_SAMPLE_COUNT_1_BIT,
-        .tiling      = VK_IMAGE_TILING_OPTIMAL,
-        .usage =
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
+        .usage_flags = render::rhi::image_usage::sampled | render::rhi::image_usage::storage,
     };
 
-    return *render::vk_create_image(device, image_create_info, VK_IMAGE_ASPECT_DEPTH_BIT, allocator);
+    return *rhi.create_image(ctx, info);
 }
 
-void app::destroy_depth_pyramid(depth_pyramid_data& pyramid, VkDevice device, VmaAllocator allocator)
+render::rhi::image app::create_depth_image(const render::rhi::rhi& rhi, const ivec2& size,
+                                           const render::rhi::image_format format, const render::rhi::context ctx)
+{
+    ZoneScoped;
+
+    const render::rhi::create_image_info info {
+        .format      = format,
+        .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
+        .usage_flags = render::rhi::image_usage::sampled | render::rhi::image_usage::transfer_dst
+                     | render::rhi::image_usage::attachment_ds,
+    };
+
+    return *rhi.create_image(ctx, info);
+}
+
+void app::destroy_depth_pyramid(const render::rhi::rhi& rhi, depth_pyramid_data& pyramid,
+                                const render::rhi::context ctx)
 {
     ZoneScoped;
     for (u32 i = 0; i < pyramid.pyramid_count; ++i)
     {
-        vkDestroyImageView(device, pyramid.views[i], nullptr);
+        rhi.destroy_image_view(ctx, pyramid.views[i]);
     }
 
     pyramid.pyramid_count = 0;
-    render::vk_destroy_image(device, allocator, pyramid.image);
-    vkDestroySampler(device, pyramid.sampler, nullptr);
+    rhi.destroy_image(ctx, pyramid.image);
+    rhi.destroy_sampler(ctx, pyramid.sampler);
 }
 
-app::vis_buffer_data app::create_vis_buffer_data(const ivec2& size, VkDevice device, VmaAllocator allocator)
+render::rhi::image app::create_vis_buffer_image(const render::rhi::rhi& rhi, const ivec2& size,
+                                                const render::rhi::context ctx)
 {
     ZoneScoped;
-
-    const VkImageCreateInfo image_create_info {
-        .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType   = VK_IMAGE_TYPE_2D,
-        .format      = VK_FORMAT_R32G32_UINT,
-        .extent      = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
-        .mipLevels   = 1,
-        .arrayLayers = 1,
-        .samples     = VK_SAMPLE_COUNT_1_BIT,
-        .tiling      = VK_IMAGE_TILING_OPTIMAL,
-        .usage       = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
-               | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    const render::rhi::create_image_info info {
+        .format      = render::rhi::image_format::r32g32ui,
+        .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
+        .usage_flags = render::rhi::image_usage::sampled | render::rhi::image_usage::transfer_src
+                     | render::rhi::image_usage::transfer_dst | render::rhi::image_usage::attachment_color
+                     | render::rhi::image_usage::storage,
     };
 
-    return {*render::vk_create_image(device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, allocator)};
+    return *rhi.create_image(ctx, info);
 }
 
-app::depth_pyramid_data app::create_depth_pyramid(const ivec2& size, const VkFormat format, VkDevice device,
-                                                  VmaAllocator allocator)
+app::depth_pyramid_data app::create_depth_pyramid(const render::rhi::rhi& rhi, const ivec2& size,
+                                                  const render::rhi::image_format format,
+                                                  const render::rhi::context ctx)
 {
     ZoneScoped;
     depth_pyramid_data depth_pyramid {
@@ -216,36 +184,74 @@ app::depth_pyramid_data app::create_depth_pyramid(const ivec2& size, const VkFor
     depth_pyramid.pyramid_count =
         std::min(depth_pyramid.pyramid_count, static_cast<u32>(COUNT_OF(depth_pyramid.views)));
 
-    const VkImageCreateInfo image_create_info {
-        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType     = VK_IMAGE_TYPE_2D,
-        .format        = format,
-        .extent        = {static_cast<u32>(depth_pyramid.base_size.x), static_cast<u32>(depth_pyramid.base_size.y), 1},
-        .mipLevels     = depth_pyramid.pyramid_count,
-        .arrayLayers   = 1,
-        .samples       = VK_SAMPLE_COUNT_1_BIT,
-        .tiling        = VK_IMAGE_TILING_OPTIMAL,
-        .usage         = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
-        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    const render::rhi::create_image_info img_info {
+        .format      = format,
+        .mips_count  = depth_pyramid.pyramid_count,
+        .dimensions  = {depth_pyramid.base_size.x, depth_pyramid.base_size.y, 1},
+        .usage_flags = render::rhi::image_usage::sampled | render::rhi::image_usage::transfer_src
+                     | render::rhi::image_usage::storage,
     };
 
-    depth_pyramid.image   = *render::vk_create_image(device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, allocator);
-    depth_pyramid.sampler = *render::vk_create_sampler(device,
-                                                       VK_FILTER_LINEAR,
-                                                       VK_SAMPLER_MIPMAP_MODE_NEAREST,
-                                                       VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-#ifdef __APPLE__
-                                                       VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE);
-#else
-                                                       VK_SAMPLER_REDUCTION_MODE_MIN);
+    constexpr render::rhi::create_sampler_info sampler_info {
+#ifndef __APPLE__
+        .reduction = render::rhi::sampler_reduction::min,
 #endif
+        .mipmap_mode  = render::rhi::sampler_mipmap_mode::nearest,
+        .address_mode = render::rhi::sampler_address_mode::clamp_to_edge,
+    };
+
+    depth_pyramid.image   = *rhi.create_image(ctx, img_info);
+    depth_pyramid.sampler = *rhi.create_sampler(ctx, sampler_info);
 
     for (u32 i = 0; i < depth_pyramid.pyramid_count; ++i)
     {
-        depth_pyramid.views[i] = *render::vk_create_image_view(
-            device, depth_pyramid.image.image, VK_IMAGE_VIEW_TYPE_2D, format, VK_IMAGE_ASPECT_COLOR_BIT, i, 1);
+        const render::rhi::create_image_view_info view_info {
+            .range  = {.mips_range = {i, 1}},
+            .format = format,
+        };
+
+        depth_pyramid.views[i] = *rhi.create_image_view(ctx, depth_pyramid.image, view_info);
     }
 
     return depth_pyramid;
+}
+
+render::rhi::image_barrier app::make_image_barrier(const render::rhi::image image,
+                                                   const render::rhi::image_layout new_layout,
+                                                   const render::rhi::image_aspects aspect)
+{
+    ZoneScoped;
+    constexpr u32 kOverkillWriteAccess =
+        render::rhi::barrier_access::copy_write | render::rhi::barrier_access::color_attachment_write
+        | render::rhi::barrier_access::storage_write | render::rhi::barrier_access::depth_stencil_write;
+    constexpr u32 kOverkillReadAccess =
+        render::rhi::barrier_access::copy_read | render::rhi::barrier_access::sampled_read
+        | render::rhi::barrier_access::color_attachment_read | render::rhi::barrier_access::storage_read
+        | render::rhi::barrier_access::depth_stencil_read;
+
+    return make_image_barrier(image,
+                              render::rhi::image_layout::current,
+                              new_layout,
+                              static_cast<u32>(render::rhi::barrier_stage::all_commands),
+                              kOverkillWriteAccess,
+                              static_cast<u32>(render::rhi::barrier_stage::all_commands),
+                              kOverkillWriteAccess | kOverkillReadAccess,
+                              aspect);
+}
+
+render::rhi::image_barrier app::make_image_barrier(
+    const render::rhi::image image, const render::rhi::image_layout old_layout,
+    const render::rhi::image_layout new_layout, const render::rhi::barrier_stages src_stages,
+    const render::rhi::barrier_stages dst_stages, const render::rhi::barrier_accesses src_access,
+    const render::rhi::barrier_accesses dst_access, const render::rhi::image_aspects aspect)
+{
+    ZoneScoped;
+    return render::rhi::image_barrier {
+        .image         = image,
+        .before        = {.stages = src_stages, .access = src_access},
+        .after         = {.stages = dst_stages, .access = dst_access},
+        .layout_before = old_layout,
+        .layout_after  = new_layout,
+        .range         = {.aspects = aspect},
+    };
 }

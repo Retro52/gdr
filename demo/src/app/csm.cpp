@@ -5,26 +5,26 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/geometric.hpp>
-#include <render/platform/vk/vk_barrier.hpp>
-#include <render/platform/vk/vk_buffer_transfer.hpp>
-#include <render/platform/vk/vk_renderer.hpp>
+#include <glm/mat4x4.hpp>
 #include <scene/matrix_common.hpp>
 #include <shaders/types.h>
 
-static std::array<glm::vec4, 8> get_frustum_corners_world(const glm::mat4& pv_inverse)
+#include <array>
+
+static std::array<vec4, 8> get_frustum_corners_world(const glm::mat4& pv_inverse)
 {
-    std::array<glm::vec4, 8> corners {};
+    std::array<vec4, 8> corners {};
     for (unsigned int x = 0; x < 2; ++x)
     {
         for (unsigned int y = 0; y < 2; ++y)
         {
             for (unsigned int z = 0; z < 2; ++z)
             {
-                const glm::vec4 pt = pv_inverse
-                                   * glm::vec4(2.0f * static_cast<f32>(x) - 1.0f,
-                                               2.0f * static_cast<f32>(y) - 1.0f,
-                                               static_cast<f32>(z),
-                                               1.0f);
+                const vec4 pt = pv_inverse
+                              * vec4(2.0f * static_cast<f32>(x) - 1.0f,
+                                     2.0f * static_cast<f32>(y) - 1.0f,
+                                     static_cast<f32>(z),
+                                     1.0f);
                 corners[x * 4 + y * 2 + z] = pt / pt.w;
             }
         }
@@ -33,7 +33,7 @@ static std::array<glm::vec4, 8> get_frustum_corners_world(const glm::mat4& pv_in
     return corners;
 }
 
-static glm::vec3 get_corners_center(const std::array<glm::vec4, 8>& corners)
+static vec3 get_corners_center(const std::array<glm::vec4, 8>& corners)
 {
     glm::vec3 center {0, 0, 0};
     for (const auto& v : corners)
@@ -44,75 +44,71 @@ static glm::vec3 get_corners_center(const std::array<glm::vec4, 8>& corners)
     return center / static_cast<f32>(corners.size());
 }
 
-app::csm::csm(const render::vk_renderer& renderer, VkFormat format, const csm_config& cfg)
+app::csm::csm(const render::rhi::rhi& rhi, const render::rhi::context ctx, const render::rhi::image_format format,
+              const csm_config& cfg)
     : resolution(cfg.resolution)
     , max_range(cfg.max_range)
     , split_lambda(cfg.split_lambda)
 {
-    const VkImageCreateInfo image_create_info {
-        .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType   = VK_IMAGE_TYPE_2D,
-        .format      = format,
-        .extent      = {resolution, resolution, 1},
-        .mipLevels   = 1,
-        .arrayLayers = shader_constants::kMaxShadowCascades,
-        .samples     = VK_SAMPLE_COUNT_1_BIT,
-        .tiling      = VK_IMAGE_TILING_OPTIMAL,
-        .usage =
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    sampler = *rhi.create_sampler(ctx,
+                                  {
+                                      .address_mode = render::rhi::sampler_address_mode::clamp_to_border,
+                                      .compare_op   = render::rhi::compare_op::equal_or_greater,
+                                      .border_color = render::rhi::sampler_border_color::black,
+                                  });
+
+    const render::rhi::create_image_info image_create_info {
+        .format = format,
+
+        .mips_count  = 1,
+        .layer_count = shader_constants::kMaxShadowCascades,
+
+        .dimensions  = uvec3(resolution, resolution, 1),
+        .usage_flags = render::rhi::image_usage::sampled | render::rhi::image_usage::transfer_dst
+                     | render::rhi::image_usage::attachment_ds,
     };
 
-    sampler = *render::vk_create_sampler(renderer.get_context().device,
-                                         VK_FILTER_LINEAR,
-                                         VK_SAMPLER_MIPMAP_MODE_LINEAR,
-                                         VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
-                                         VK_SAMPLER_REDUCTION_MODE_MAX_ENUM,
-                                         0.0F,
-                                         VK_COMPARE_OP_GREATER_OR_EQUAL,
-                                         VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK);
-
-    shadow_map = *render::vk_create_image(
-        renderer.get_context().device, image_create_info, VK_IMAGE_ASPECT_DEPTH_BIT, renderer.get_context().allocator);
+    shadow_map = *rhi.create_image(ctx, image_create_info);
 
     cascade_views.resize(shader_constants::kMaxShadowCascades);
     for (u32 i = 0; i < shader_constants::kMaxShadowCascades; ++i)
     {
-        cascade_views[i] = *render::vk_create_image_array_view(renderer.get_context().device,
-                                                               shadow_map.image,
-                                                               VK_IMAGE_VIEW_TYPE_2D,
-                                                               format,
-                                                               VK_IMAGE_ASPECT_DEPTH_BIT,
-                                                               i,
-                                                               1);
+        render::rhi::create_image_view_info image_view_info {
+            .range  = {.layers_range = {i, 1}},
+            .format = format,
+        };
+        cascade_views[i] = *rhi.create_image_view(ctx, shadow_map, image_view_info);
     }
 }
 
-void app::csm::init(const render::vk_renderer& renderer)
+void app::csm::init(const render::rhi::rhi& rhi, const render::rhi::command_buffer cmd)
 {
-    renderer.submit(
-        [&](VkCommandBuffer cmd)
-        {
-            render::vk_transition_image(
-                cmd, shadow_map.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_DEPTH_BIT);
-        });
+    const render::rhi::image_barrier barrier = app::make_image_barrier(
+        shadow_map, render::rhi::image_layout::common, static_cast<u32>(render::rhi::image_aspect::depth));
+
+    const render::rhi::barrier_batch barriers {
+        .images = {&barrier, 1}
+    };
+
+    rhi.cmd_barriers(cmd, barriers);
 }
 
-void app::csm::shutdown(const render::vk_renderer& renderer)
+void app::csm::shutdown(const render::rhi::rhi& rhi, const render::rhi::context ctx)
 {
-    for (const auto& view : cascade_views)
+    for (auto& view : cascade_views)
     {
-        vkDestroyImageView(renderer.get_context().device, view, nullptr);
+        rhi.destroy_image_view(ctx, view);
     }
 
-    vkDestroySampler(renderer.get_context().device, sampler, nullptr);
-    render::vk_destroy_image(renderer.get_context().device, renderer.get_context().allocator, shadow_map);
+    cascade_views.clear();
+
+    rhi.destroy_sampler(ctx, sampler);
+    rhi.destroy_image(ctx, shadow_map);
 }
 
-render::vk_descriptor_info app::csm::get_descriptor_info() const
+render::rhi::binding app::csm::get_descriptor_info() const
 {
-    return {sampler, shadow_map.view, VK_IMAGE_LAYOUT_GENERAL};
+    return {shadow_map, sampler};
 }
 
 [[nodiscard]] f32 app::csm::get_cascade_range(const f32 near, const u32 index) const

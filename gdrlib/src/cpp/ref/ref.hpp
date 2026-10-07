@@ -132,7 +132,7 @@ namespace cpp
         {
             if (p)
             {
-                p->reference_add();
+                std::ignore = p->reference_add();
             }
         }
 
@@ -140,7 +140,7 @@ namespace cpp
         {
             if (p)
             {
-                p->reference_remove();
+                std::ignore = p->reference_remove();
             }
         }
 

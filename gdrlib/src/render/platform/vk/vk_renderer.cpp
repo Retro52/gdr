@@ -22,7 +22,7 @@ vk_renderer::vk_renderer(const render::rhi::instance_desc& desc, const window& w
     for (auto& frame : m_in_flight_frames)
     {
         frame.command_buffer = *render::vk_create_command_buffer(
-            m_context.device, m_context.queues[static_cast<u32>(render::rhi::queue_kind::eGfx)].family);
+            m_context.device, m_context.queues[static_cast<u32>(render::rhi::queue_kind::gfx)].family);
 
         VK_ASSERT_ON_FAIL(vkCreateFence(m_context.device, &fence_create_info, nullptr, &frame.fence));
         VK_ASSERT_ON_FAIL(
@@ -30,7 +30,7 @@ vk_renderer::vk_renderer(const render::rhi::instance_desc& desc, const window& w
         TRACY_ONLY(frame.tracy_ctx =
                        TracyVkContextCalibrated(m_context.physical_device,
                                                 m_context.device,
-                                                m_context.queues[static_cast<u32>(render::rhi::queue_kind::eGfx)].queue,
+                                                m_context.queues[static_cast<u32>(render::rhi::queue_kind::gfx)].queue,
                                                 frame.command_buffer.cmd_buffer,
                                                 vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
                                                 vkGetCalibratedTimestampsEXT))
@@ -136,7 +136,7 @@ void vk_renderer::present_frame(VkCommandBuffer buffer)
         .pSignalSemaphoreInfos    = &signal_semaphore_info,
     };
 
-    VK_ASSERT_ON_FAIL(vkQueueSubmit2(m_context.queues[static_cast<u32>(render::rhi::queue_kind::eGfx)].queue,
+    VK_ASSERT_ON_FAIL(vkQueueSubmit2(m_context.queues[static_cast<u32>(render::rhi::queue_kind::gfx)].queue,
                                      1,
                                      &gfx_submit_info,
                                      m_in_flight_frames[m_frame_index].fence));
@@ -153,7 +153,7 @@ void vk_renderer::present_frame(VkCommandBuffer buffer)
     };
 
     const auto present_result = vkQueuePresentKHR(
-        m_context.queues[static_cast<u32>(render::rhi::queue_kind::ePresent)].queue, &present_info_khr);
+        m_context.queues[static_cast<u32>(render::rhi::queue_kind::present)].queue, &present_info_khr);
 
     switch (present_result)
     {

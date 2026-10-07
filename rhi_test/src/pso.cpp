@@ -8,12 +8,6 @@
 namespace
 {
     constexpr fs::path kShadersBinDir = "../shaders/bin";
-
-    template<typename T>
-    T opt_get(const nlohmann::json& options, const char* key, T defval)
-    {
-        return options.contains(key) ? static_cast<T>(options[key]) : defval;
-    }
 }
 
 void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, render::rhi::swapchain swapchain,
@@ -95,7 +89,7 @@ void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, r
         {
             auto pso =
                 (shaders.size() == 1
-                 && (*RHI_SAFE_CALL(rhi.query_shader_stage, compiled_shaders.front()) & VK_SHADER_STAGE_COMPUTE_BIT))
+                 && (*RHI_SAFE_CALL(rhi.query_shader_stage, compiled_shaders.front()) == render::rhi::shader_stage::compute))
                     ? RHI_SAFE_CALL(rhi.create_compute_pso, context, compiled_shaders[0], {&textures_set, 1})
                     : RHI_SAFE_CALL(rhi.create_graphics_pso,
                                     context,
