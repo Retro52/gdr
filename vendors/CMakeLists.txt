@@ -1,4 +1,5 @@
 add_subdirectory(glm)
+add_subdirectory(gch)
 add_subdirectory(vma)
 add_subdirectory(sdl3)
 add_subdirectory(entt)

@@ -18,6 +18,12 @@ if (UNIX)
     list(APPEND SOURCES ${ASM_SOURCES})
 endif ()
 
+if (NOT WIN32 OR NOT GDR_ENABLE_DX12_BACKEND)
+    list(FILTER SOURCES EXCLUDE REGEX "platform/d3d12/")
+endif ()
+
+message(STATUS "SOURCES: ${SOURCES}")
+
 #TODO: get rid of codegen, it was bad idea :(
 include(../cmake/py_venv.cmake)
 include(../cmake/codegen/codegen.cmake)
@@ -38,6 +44,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
         volk::volk
         quill::quill
         Tracy::TracyClient
+        gch::gch_small_vector
         SDL3_image::SDL3_image
         Microsoft::DirectX-Headers
         SPIRV-Headers::SPIRV-Headers
@@ -60,6 +67,12 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC
         TRACY_FIBERS
         VK_NO_PROTOTYPES
 )
+
+if (WIN32 AND GDR_ENABLE_DX12_BACKEND)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC GDR_ENABLE_DX12_BACKEND=1)
+else ()
+    target_compile_definitions(${PROJECT_NAME} PUBLIC GDR_ENABLE_DX12_BACKEND=0)
+endif ()
 
 target_include_directories(${PROJECT_NAME} PUBLIC
         "${PROJECT_SOURCE_DIR}/src"
