@@ -387,7 +387,7 @@ auto render::rhi::vk_create_compute_pso(context context, shader shader, std::spa
 }
 
 auto render::rhi::vk_create_graphics_pso(context context, std::span<const shader> shaders,
-                                         const std::span<const bindless_set> sets, const nlohmann::json& options)
+                                         const std::span<const bindless_set> sets, const pso_options& options)
     -> result<pipeline>
 {
     ZoneScoped;
@@ -473,6 +473,16 @@ auto render::rhi::vk_query_current_frame_index(swapchain swapchain) -> result<u3
     if (auto* sc = cast_from_handle<vk_rhi_swaphain_data>(swapchain))
     {
         return sc->frame_index;
+    }
+
+    return error("failed to access the swapchain");
+}
+
+auto render::rhi::vk_query_swapchain_color_format(swapchain swapchain) -> result<VkFormat>
+{
+    if (const auto* sc = cast_from_handle<vk_rhi_swaphain_data>(swapchain))
+    {
+        return sc->root.surface_format.format;
     }
 
     return error("failed to access the swapchain");

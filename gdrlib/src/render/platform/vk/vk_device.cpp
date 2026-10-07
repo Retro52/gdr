@@ -217,8 +217,9 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBi
     return VK_FALSE;
 }
 
-void load_instance_layers_and_extensions(const window& window, const rhi::instance_desc& desc,
-                                         cpp::heap_array<const char*>& layers, cpp::heap_array<const char*>& extensions)
+static void load_instance_layers_and_extensions(const window& window, const rhi::instance_desc& desc,
+                                                cpp::heap_array<const char*>& layers,
+                                                cpp::heap_array<const char*>& extensions)
 {
     if (desc.device_features.requested(render::rhi::feature_flag::eValidation)
         && layer_available("VK_LAYER_KHRONOS_validation") && inst_ext_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
@@ -934,30 +935,6 @@ static VkPresentModeKHR choose_present_mode(VkPhysicalDevice device, VkSurfaceKH
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-static VkFormat choose_depth_format(VkPhysicalDevice device)
-{
-    ZoneScoped;
-    constexpr VkFormatFeatureFlags features = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    constexpr VkFormat candidates[] = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
-    for (auto candidate : candidates)
-    {
-        VkFormatProperties props;
-        vkGetPhysicalDeviceFormatProperties(device, candidate, &props);
-
-        if ((props.optimalTilingFeatures & features) == features)
-        {
-            return candidate;
-        }
-    }
-
-    return VK_FORMAT_UNDEFINED;
-}
-
-static bool format_has_stencil_component(VkFormat format)
-{
-    return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
-}
-
 static VkSurfaceFormatKHR choose_swapchain_format(VkPhysicalDevice device, VkSurfaceKHR surface, VkFormat format)
 {
     ZoneScoped;
@@ -1081,7 +1058,6 @@ result<vk_swapchain> render::vk_create_swapchain(const vk_context& vk_context, V
     cpp::heap_array<VkImage> imgs(img_count);
     vkGetSwapchainImagesKHR(vk_context.device, sc_data.sc, &img_count, imgs.data());
 
-    sc_data.depth_format = choose_depth_format(vk_context.physical_device);
     for (u32 i = 0; i < img_count; i++)
     {
         VkImageViewCreateInfo image_view_create_info {
@@ -1121,6 +1097,9 @@ result<vk_swapchain> render::vk_create_swapchain(const vk_context& vk_context, V
 void render::vk_destroy_context(vk_context& ctx)
 {
     ZoneScoped;
+
+    ctx.instance_extensions.clear();
+    ctx.enabled_device_extensions.clear();
 
     VK_DO_IF_NOT_NULL(ctx.device, vkDeviceWaitIdle(ctx.device));
     VK_DO_IF_NOT_NULL(ctx.allocator, vmaDestroyAllocator(ctx.allocator));

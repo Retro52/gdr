@@ -8,15 +8,30 @@
 namespace
 {
     constexpr fs::path kShadersBinDir = "../shaders/bin";
+
+    template<typename T>
+    T opt_get(const nlohmann::json& options, const char* key, T defval)
+    {
+        return options.contains(key) ? static_cast<T>(options[key]) : defval;
+    }
 }
 
-void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, render::rhi::bindless_set textures_set)
+void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, render::rhi::swapchain swapchain,
+                    render::rhi::bindless_set textures_set)
 {
     ZoneScoped;
     auto data = fs::read_file("../shaders/pipelines.json");
     if (!data)
     {
         assert2m(false, data.message);
+        return;
+    }
+
+    const auto sc_format = RHI_SAFE_CALL(rhi.query_swapchain_color_format, swapchain);
+    assert2(sc_format);
+
+    if (!sc_format)
+    {
         return;
     }
 
@@ -86,7 +101,7 @@ void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, r
                                     context,
                                     {compiled_shaders.data(), compiled_shaders.size()},
                                     {&textures_set, 1},
-                                    pipeline_info.contains("options") ? pipeline_info["options"] : nlohmann::json());
+                                    render::rhi::pso_options().add_color_attachment(*sc_format));
 
             assert2m(pso && key, pso.message);
             if (pso)

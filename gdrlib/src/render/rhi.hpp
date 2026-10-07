@@ -5,8 +5,8 @@
 #endif
 
 #include <fs/path.hpp>
-#include <nlohmann/json.hpp>
 #include <render/resources.hpp>
+#include <render/rhi_pso_options.hpp>
 #include <render/types.hpp>
 #include <result.hpp>
 #include <window.hpp>
@@ -56,11 +56,12 @@ namespace render::rhi
                                                         std::span<const bindless_set> sets);
     using create_graphics_pso_fpn = result<pipeline> (*)(context context, std::span<const shader> shaders,
                                                          std::span<const bindless_set> sets,
-                                                         const nlohmann::json& options);
+                                                         const pso_options& options);
     using destroy_pso_fpn         = void (*)(context context, pipeline& pso);
 
     using query_swapchain_images_count_fpn = result<u32> (*)(swapchain swapchain);
     using query_current_frame_index_fpn    = result<u32> (*)(swapchain swapchain);
+    using query_swapchain_color_format_fpn = result<VkFormat> (*)(swapchain swapchain);
     using query_shader_stage_fpn           = result<VkShaderStageFlagBits> (*)(shader shader);
 
     using query_queue_fpn           = result<queue> (*)(context context, queue_kind kind);
@@ -111,6 +112,7 @@ namespace render::rhi
         query_shader_stage_fpn query_shader_stage;
         query_swapchain_images_count_fpn query_swapchain_images_count;
         query_current_frame_index_fpn query_current_frame_index;
+        query_swapchain_color_format_fpn query_swapchain_color_format;
 
         query_queue_fpn query_queue;
         query_device_fpn query_device;
