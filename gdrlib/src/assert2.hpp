@@ -10,13 +10,13 @@ namespace debug
 
 #if !defined(NDEBUG)
 #define assert2(EXPR)                              \
-    if (!(EXPR))                                   \
+    if (!(EXPR)) [[unlikely]]                      \
     {                                              \
         ::debug::assert2_show_assert_popup(#EXPR); \
     }
 
 #define assert2m(EXPR, MESSAGE)                      \
-    if (!(EXPR))                                     \
+    if (!(EXPR)) [[unlikely]]                        \
     {                                                \
         ::debug::assert2_show_assert_popup(MESSAGE); \
     }

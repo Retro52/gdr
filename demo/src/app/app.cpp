@@ -43,7 +43,7 @@
 #include <window.hpp>
 
 #define NO_EDITOR     0
-#define NO_PERF_QUERY 0
+#define NO_PERF_QUERY 1
 
 namespace
 {
@@ -395,11 +395,13 @@ int app::instance::run()
                                                             m_renderer.get_context().allocator);
 
     app::envmap envmap {
-        m_renderer, VK_FORMAT_R16G16B16A16_SFLOAT, {1024, 512, 128, 32}
+        m_renderer,
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+        {.env_resolution = 1024, .brdf_lut_resolution = 512, .prefilter_resolution = 128, .irradiance_resolution = 32}
     };
 
     app::csm csm {
-        m_renderer, VK_FORMAT_D32_SFLOAT, {4096, 250.0F, 0.65F}
+        m_renderer, VK_FORMAT_D32_SFLOAT, {.resolution = 2048, .max_range = 96.0F, .split_lambda = 0.65F}
     };
 
     bool exit = false;
@@ -593,11 +595,11 @@ int app::instance::run()
         t.rotation = glm::quat(vec3(0, 1, 0));
     }
 
-    sun.get_component<transform_component>().rotation = glm::quat(glm::radians(
-        m_args.read_vec3("--sun_direction", glm::eulerAngles(sun.get_component<transform_component>().rotation))));
+    sun.get_component<transform_component>().rotation = glm::quat(glm::radians(m_args.read_vec3(
+        "--sun_direction", glm::degrees(glm::eulerAngles(sun.get_component<transform_component>().rotation)))));
 
     camera.get_component<transform_component>().rotation = glm::quat(glm::radians(m_args.read_vec3(
-        "--camera_direction", glm::eulerAngles(camera.get_component<transform_component>().rotation))));
+        "--camera_direction", glm::degrees(glm::eulerAngles(camera.get_component<transform_component>().rotation)))));
 
     camera.get_component<transform_component>().position =
         m_args.read_vec3("--camera_position", camera.get_component<transform_component>().position);

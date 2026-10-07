@@ -369,19 +369,19 @@ static result<render::vk_image> upload_texture(const parsed_texture& texture, co
         .usage       = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
     };
 
-    const auto image_r = render::create_image(
+    const auto image_r = render::vk_create_image(
         renderer.get_context().device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, renderer.get_context().allocator);
 
     RESULT_FORWARD_IF_FAILED(image_r);
-    render::upload_image(scratch,
-                         *image_r,
-                         static_cast<const u8*>(desc.pdata),
-                         desc.data_size,
-                         desc.width,
-                         desc.height,
-                         desc.mips_count,
-                         desc.block_size,
-                         desc.bits_per_block);
+    render::vk_upload_image(scratch,
+                            *image_r,
+                            static_cast<const u8*>(desc.pdata),
+                            desc.data_size,
+                            desc.width,
+                            desc.height,
+                            desc.mips_count,
+                            desc.block_size,
+                            desc.bits_per_block);
     return *image_r;
 }
 
@@ -605,11 +605,11 @@ loader::scene_info loader::load_scene(const fs::path& path, scene& scene, const 
         wg1.wait_till_done();
     }
 
-    upload_data(geometry_pool.transfer, geometry_pool.primitives, ctx.primitives.data(), ctx.primitives.size());
-    upload_data(geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
-    upload_data(geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
-    upload_data(geometry_pool.transfer, geometry_pool.materials, ctx.materials.data(), ctx.materials.size());
-    upload_data(
+    vk_upload_data(geometry_pool.transfer, geometry_pool.primitives, ctx.primitives.data(), ctx.primitives.size());
+    vk_upload_data(geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
+    vk_upload_data(geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
+    vk_upload_data(geometry_pool.transfer, geometry_pool.materials, ctx.materials.data(), ctx.materials.size());
+    vk_upload_data(
         geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
 
 #if !defined(NDEBUG)
@@ -698,9 +698,9 @@ loader::scene_info loader::load_scene(const fs::path& path, scene& scene, const 
 #endif
     }
 
-    render::submit_transfer(geometry_pool.transfer,
-                            geometry_pool.instances.buffer,
-                            VkBufferCopy {.size = instance_count * sizeof(loader::instance)});
+    render::vk_submit_transfer(geometry_pool.transfer,
+                               geometry_pool.instances.buffer,
+                               VkBufferCopy {.size = instance_count * sizeof(loader::instance)});
     geometry_pool.instances.offset += instance_count * sizeof(loader::instance);
     // TODO
 

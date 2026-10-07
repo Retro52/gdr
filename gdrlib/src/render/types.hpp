@@ -57,6 +57,8 @@ namespace render::rhi
     REGISTER_ENUM(image_layout,
         eCommon,
         ePresent,
+        eRenderTargetColor,
+        eRenderTargetDepthStencil,
         COUNT
     );
 
@@ -97,11 +99,11 @@ namespace render::rhi
 
     struct create_image_info
     {
-        image_kind kind               = image_kind::e2D;
-        uvec3 dimensions              = uvec3(1, 1, 1);
-        image_usage_flags usage_flags = static_cast<u32>(image_usage::eSampled);
-        u32 mips_count                = 1;
-        u32 layer_count               = 1;
+        u32 mips_count           = 1;
+        u32 layer_count          = 1;
+        image_kind kind          = image_kind::e2D;
+        uvec3 dimensions         = uvec3(1, 1, 1);
+        image_usages usage_flags = static_cast<u32>(image_usage::eSampled);
         // I hate these custom enums that try to cover a gajillion different formats from the API they abstract, so fuck
         // it, VkFormat is my new universal enum
         VkFormat format = VK_FORMAT_UNDEFINED;
@@ -120,16 +122,18 @@ namespace render::rhi
         resource_load_op load_op;
         resource_store_op store_op;
         clear_value clear_value;
+
+        constexpr operator bool() const noexcept { return attachment != null_image; }
     };
 
-    constexpr attachment_state_info null_attachment_state_info = attachment_state_info {.attachment = null_image};
+    constexpr auto null_attachment_state_info = attachment_state_info {.attachment = null_image};
 
     struct create_swapchain_info
     {
         ivec2 size;
-        u32 frames_in_flight           = 2;
-        VkFormat format                = VK_FORMAT_R8G8B8A8_UNORM;
-        bool vsync                     = false;
+        u32 frames_in_flight = 2;
+        VkFormat format      = VK_FORMAT_R8G8B8A8_UNORM;
+        bool vsync           = false;
     };
 
     struct rendering_features_table

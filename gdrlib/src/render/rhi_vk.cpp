@@ -31,7 +31,7 @@ static T vk_rhi_vkobj_from_handle(H&& handle)
     return reinterpret_cast<T>(handle.id);
 }
 
-static VkBufferUsageFlags vk_rhi_parse_buffer_usage_flags(render::rhi::buffer_usage_flags usage)
+static VkBufferUsageFlags vk_rhi_parse_buffer_usage_flags(const render::rhi::buffer_usages usage)
 {
     VkBufferUsageFlags result = 0;
     for (u32 i = 0; i < reflection::get_enum_values_count<render::rhi::buffer_usage>(); i++)
@@ -66,6 +66,26 @@ static VkBufferUsageFlags vk_rhi_parse_buffer_usage_flags(render::rhi::buffer_us
 
     return result;
 }
+
+template<bool IsDepth>
+static VkClearValue vk_rhi_parse_clear_value(render::rhi::clear_value cv)
+{
+    VkClearValue value;
+    if constexpr (IsDepth)
+    {
+        value.depthStencil.depth   = cv.ds.depth;
+        value.depthStencil.stencil = cv.ds.stencil;
+    }
+    else
+    {
+        cpp::cx_memcpy(value.color.float32, &cv.f4.x, COUNT_OF(value.color.float32) * sizeof(cv.f4[0]));
+    }
+
+    return value;
+}
+
+constexpr auto vk_rhi_parse_clear_value_depth = vk_rhi_parse_clear_value<true>;
+constexpr auto vk_rhi_parse_clear_value_color = vk_rhi_parse_clear_value<false>;
 
 static VkAttachmentLoadOp vk_rhi_parse_load_op(render::rhi::resource_load_op load_op)
 {
@@ -116,6 +136,22 @@ static cpp::heap_array<vk_swapchain_sync_objects> vk_rhi_create_sc_sync(VkDevice
     }
 
     return result;
+}
+
+static VkImageLayout vk_rhi_parse_image_layout(const render::rhi::image_layout layout)
+{
+    switch (layout)
+    {
+    case render::rhi::image_layout::ePresent :
+        return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    case render::rhi::image_layout::eRenderTargetColor :
+        return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    case render::rhi::image_layout::eRenderTargetDepthStencil :
+        return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    default :
+    case render::rhi::image_layout::eCommon :
+        return VK_IMAGE_LAYOUT_GENERAL;
+    }
 }
 
 auto render::rhi::vk_create_context(const window& window, const instance_desc& desc) -> result<context>
@@ -389,14 +425,8 @@ auto render::rhi::vk_create_graphics_pso(context context, std::span<const shader
         vk_shaders[i] = *vkset;
     }
 
-    auto vkpso = render::vk_pipeline::create_graphics(ctx->device,
-                                                      vk_shaders,
-                                                      shaders.size(),
-                                                      VK_FORMAT_B8G8R8A8_UNORM,
-                                                      VK_FORMAT_UNDEFINED,
-                                                      vk_desc_sets,
-                                                      sets.size(),
-                                                      options);
+    auto vkpso = render::vk_pipeline::create_graphics(
+        ctx->device, vk_shaders, shaders.size(), vk_desc_sets, sets.size(), options);
 
     RESULT_FORWARD_IF_FAILED(vkpso);
     return create_handle<pipeline>(*vkpso);
@@ -554,7 +584,7 @@ void render::rhi::vk_cmd_end_recording(command_buffer cmd)
     }
 }
 
-void render::rhi::vk_cmd_transition_image(command_buffer cmd, image dst, image_layout dst_layout)
+void render::rhi::vk_cmd_transition_image(command_buffer cmd, image dst, const image_layout dst_layout)
 {
     ZoneScoped;
     auto* vkcmd = cast_from_handle<render::vk_command_buffer>(cmd);
@@ -564,7 +594,7 @@ void render::rhi::vk_cmd_transition_image(command_buffer cmd, image dst, image_l
         return;
     }
 
-    const auto vkdst = dst_layout == image_layout::eCommon ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    const auto vkdst = vk_rhi_parse_image_layout(dst_layout);
 
     render::vk_transition_image(vkcmd->cmd_buffer, vkimg->image, vkimg->layout, vkdst);
     vkimg->layout = vkdst;
@@ -668,6 +698,7 @@ void render::rhi::vk_cmd_set_draw_state(command_buffer cmd, std::span<const atta
             .imageLayout = vkimage->layout,
             .loadOp      = vk_rhi_parse_load_op(color_attachments[i].load_op),
             .storeOp     = vk_rhi_parse_store_op(color_attachments[i].store_op),
+            .clearValue  = vk_rhi_parse_clear_value_color(color_attachments[i].clear_value),
         };
     }
 
@@ -692,6 +723,7 @@ void render::rhi::vk_cmd_set_draw_state(command_buffer cmd, std::span<const atta
             .imageLayout = vkimage->layout,
             .loadOp      = vk_rhi_parse_load_op(depth_attachment.load_op),
             .storeOp     = vk_rhi_parse_store_op(depth_attachment.store_op),
+            .clearValue  = vk_rhi_parse_clear_value_depth(depth_attachment.clear_value),
         };
 
         rendering_info.pDepthAttachment = &depth_attachment_info;

@@ -32,7 +32,7 @@
     }
 
 #define REGISTER_FLAGS(Name, ...)                                                       \
-    using Name##_flags = u32;                                                           \
+    using Name##s = u32;                                                                \
                                                                                         \
     enum class Name : u32                                                               \
     {                                                                                   \

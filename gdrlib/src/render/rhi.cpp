@@ -4,12 +4,27 @@
 
 render::rhi::rhi render::rhi::create_for_d3d12()
 {
-    render::rhi::rhi result {
-        .create_context    = d3d12_create_context,
-        .destroy_context   = d3d12_destroy_context,
-        .create_swapchain  = d3d12_create_swapchain,
-        .resize_swapchain  = d3d12_resize_swapchain,
-        .destroy_swapchain = d3d12_destroy_swapchain,
+    constexpr render::rhi::rhi result {
+        .create_context         = d3d12_create_context,
+        .destroy_context        = d3d12_destroy_context,
+        .create_swapchain       = d3d12_create_swapchain,
+        .resize_swapchain       = d3d12_resize_swapchain,
+        .destroy_swapchain      = d3d12_destroy_swapchain,
+        .create_command_buffer  = d3d12_create_command_buffer,
+        .destroy_command_buffer = d3d12_destroy_command_buffer,
+
+        .create_bindless_set  = d3d12_create_bindless_set,
+        .destroy_bindless_set = d3d12_destroy_bindless_set,
+
+        .create_shader  = d3d12_create_shader,
+        .destroy_shader = d3d12_destroy_shader,
+
+        .create_buffer  = d3d12_create_buffer,
+        .destroy_buffer = d3d12_destroy_buffer,
+
+        .create_compute_pso  = d3d12_create_compute_pso,
+        .create_graphics_pso = d3d12_create_graphics_pso,
+        .destroy_pso         = d3d12_destroy_pso,
 
         .query_shader_stage           = d3d12_query_shader_stage,
         .query_swapchain_images_count = d3d12_query_swapchain_images_count,
@@ -18,6 +33,19 @@ render::rhi::rhi render::rhi::create_for_d3d12()
         .query_queue           = d3d12_query_queue,
         .query_device          = d3d12_query_device,
         .query_physical_device = d3d12_query_physical_device,
+
+        .queue_wait_idle              = d3d12_queue_wait_idle,
+        .device_wait_idle             = d3d12_device_wait_idle,
+        .acquire_next_swapchain_image = d3d12_acquire_next_swapchain_image,
+
+        .cmd_begin_recording  = d3d12_cmd_begin_recording,
+        .cmd_end_recording    = d3d12_cmd_end_recording,
+        .cmd_transition_image = d3d12_cmd_transition_image,
+        .cmd_present_image    = d3d12_cmd_present_image,
+        .cmd_set_draw_state   = d3d12_cmd_set_draw_state,
+        .cmd_clear_draw_state = d3d12_cmd_clear_draw_state,
+        .cmd_bind_pso         = d3d12_cmd_bind_pso,
+        .cmd_draw_instanced   = d3d12_cmd_draw_instanced,
     };
     return result;
 }
@@ -66,7 +94,6 @@ render::rhi::rhi render::rhi::create_for_vk()
         .cmd_clear_draw_state = vk_cmd_clear_draw_state,
         .cmd_bind_pso         = vk_cmd_bind_pso,
         .cmd_draw_instanced   = vk_cmd_draw_instanced,
-
     };
 
     return result;

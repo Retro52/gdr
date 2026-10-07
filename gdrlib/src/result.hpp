@@ -15,7 +15,7 @@ inline result_error_t error(const char* msg)
 }
 
 #define RESULT_FORWARD_IF_FAILED(result) \
-    if (!result)                         \
+    if (!result) [[unlikely]]            \
         return error(result.message);
 
 template<class T>

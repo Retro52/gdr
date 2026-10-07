@@ -543,7 +543,6 @@ result<vk_pipeline> vk_pipeline::create_compute(VkDevice device, const vk_shader
 }
 
 result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shader* shaders, u32 shaders_count,
-                                                 VkFormat default_color_format, VkFormat default_depth_format,
                                                  const vk_descriptor_set* desc_set, u32 desc_set_count,
                                                  const nlohmann::json& options)
 {
@@ -626,8 +625,8 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
     };
 
     const auto color_counts  = opt_get(options, "color_attachments", 1U);
-    const auto depth_format  = opt_get(options, "depth_format", default_depth_format);
-    const auto color_formats = opt_get(options, "color_format", default_color_format);
+    const auto depth_format  = opt_get(options, "depth_format", VK_FORMAT_UNDEFINED);
+    const auto color_formats = opt_get(options, "color_format", VK_FORMAT_UNDEFINED);
 
     const VkPipelineRenderingCreateInfo pipeline_rendering_create_info {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,

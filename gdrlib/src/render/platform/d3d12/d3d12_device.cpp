@@ -1,4 +1,5 @@
 #include <log.hpp>
+#include <render/platform/d3d12/d3d12_desc_heap.hpp>
 #include <render/platform/d3d12/d3d12_device.hpp>
 #include <render/platform/d3d12/d3d12_error.hpp>
 #include <render/platform/d3d12/d3d12_queue.hpp>
@@ -261,7 +262,7 @@ static bool check_device_features(ID3D12Device* device, const D3D_SHADER_MODEL d
     wanted_features.set_supported(render::rhi::feature_flag::ePortabilitySubset, false);
 
     // not directly portable afaik
-    wanted_features.set_supported(render::rhi::feature_flag::e8BitIntegers, true);
+    wanted_features.set_supported(render::rhi::feature_flag::e8BitIntegers, false);
     wanted_features.set_supported(render::rhi::feature_flag::eScalarBlockLayout, true);
 
     wanted_features.set_supported(render::rhi::feature_flag::eMeshShading,
@@ -375,7 +376,7 @@ void render::d3d12_destroy_context(d3d12_context& ctx)
 
     if (ctx.info_queue)
     {
-        ctx.info_queue->UnregisterMessageCallback(ctx.info_queue_cookie);
+        D3D12_ASSERT_ON_FAIL(ctx.info_queue->UnregisterMessageCallback(ctx.info_queue_cookie));
 
         ctx.info_queue.Reset();
         ctx.info_queue_cookie = 0;
@@ -417,37 +418,66 @@ auto render::d3d12_create_context(const window& window, const rhi::instance_desc
     D3D12_RETURN_ON_FAIL(pick_and_create_device(context, desc.device_features, desc.device_id_hint));
 
     const D3D12MA::ALLOCATOR_DESC allocator_desc {
-        .Flags              = D3D12MA_RECOMMENDED_ALLOCATOR_FLAGS,
+        .Flags              = static_cast<D3D12MA::ALLOCATOR_FLAGS>(D3D12MA_RECOMMENDED_ALLOCATOR_FLAGS),
         .pDevice            = context.device.Get(),
         .PreferredBlockSize = 0,  // i.e. default?
         .pAdapter           = context.adapter.Get(),
     };
     D3D12_RETURN_ON_FAIL(D3D12MA::CreateAllocator(&allocator_desc, &context.allocator));
 
-    const auto queue_copy    = create_queue(context, D3D12_COMMAND_LIST_TYPE_COPY);
-    const auto queue_direct  = create_queue(context, D3D12_COMMAND_LIST_TYPE_DIRECT);
-    const auto queue_compute = create_queue(context, D3D12_COMMAND_LIST_TYPE_COMPUTE);
+    const auto queue_copy    = d3d12_create_queue(context.device.Get(), D3D12_COMMAND_LIST_TYPE_COPY);
+    const auto queue_direct  = d3d12_create_queue(context.device.Get(), D3D12_COMMAND_LIST_TYPE_DIRECT);
+    const auto queue_compute = d3d12_create_queue(context.device.Get(), D3D12_COMMAND_LIST_TYPE_COMPUTE);
 
     RESULT_FORWARD_IF_FAILED(queue_copy);
     RESULT_FORWARD_IF_FAILED(queue_direct);
     RESULT_FORWARD_IF_FAILED(queue_compute);
 
-    context.queues[static_cast<u32>(render::rhi::queue_kind::eGfx)]      = *queue_direct;
-    context.queues[static_cast<u32>(render::rhi::queue_kind::ePresent)]  = *queue_direct;
-    context.queues[static_cast<u32>(render::rhi::queue_kind::eCompute)]  = *queue_compute;
-    context.queues[static_cast<u32>(render::rhi::queue_kind::eTransfer)] = *queue_copy;
+    context.queues[kD3D12CommandQueueCopy]    = *queue_copy;
+    context.queues[kD3D12CommandQueueDirect]  = *queue_direct;
+    context.queues[kD3D12CommandQueueCompute] = *queue_compute;
 
+    auto rtv_desc_heap =
+        d3d12_create_desc_heap(context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, kD3D12RTVHeapMaxDescCount);
+    RESULT_FORWARD_IF_FAILED(rtv_desc_heap);
+
+    context.rtv_descriptor_heap = d3d12_track_heap<kD3D12RTVHeapMaxDescCount>(std::move(*rtv_desc_heap));
     return context;
 }
 
-void render::d3d12_destroy_swapchain(const d3d12_context& /* d3d12_context */, d3d12_swapchain& swapchain)
+auto render::d3d12_update_back_buffers(render::d3d12_context& d3d12_context, IDXGISwapChain4* swapchain,
+                                       const u32 count) -> result<cpp::heap_array<d3d12_sc_back_buffer>>
 {
     ZoneScoped;
-    swapchain.images.clear();
-    swapchain.swapchain.Reset();
+    cpp::heap_array<render::d3d12_sc_back_buffer> result(count);
+    for (u32 i = 0; i < count; ++i)
+    {
+        auto& pfd = result[i];
+        D3D12_RETURN_ON_FAIL(swapchain->GetBuffer(i, IID_PPV_ARGS(&pfd.image.resource)));
+
+        const auto handle = d3d12_context.rtv_descriptor_heap.alloc();
+        d3d12_context.device->CreateRenderTargetView(pfd.image.resource.Get(), nullptr, handle);
+
+        pfd.image.cpu_handle = handle;
+    }
+
+    return result;
 }
 
-auto render::d3d12_create_swapchain(const d3d12_context& d3d12_context, const u32 format, const ivec2 size,
+void render::d3d12_destroy_swapchain(d3d12_context& d3d12_context, d3d12_swapchain& swapchain)
+{
+    ZoneScoped;
+    for (auto& back_buffer : swapchain.back_buffers)
+    {
+        d3d12_context.rtv_descriptor_heap.free(back_buffer.image.cpu_handle);
+    }
+
+    swapchain.swapchain.Reset();
+    swapchain.back_buffers.clear();
+    d3d12_destroy_fence(swapchain.sc_sync_fence);
+}
+
+auto render::d3d12_create_swapchain(d3d12_context& d3d12_context, const u32 format, const ivec2 size,
                                     const u32 frames_in_flight, const bool vsync) -> result<d3d12_swapchain>
 {
     ZoneScoped;
@@ -464,8 +494,8 @@ auto render::d3d12_create_swapchain(const d3d12_context& d3d12_context, const u3
         .Height      = static_cast<UINT>(size.y),
         .Format      = static_cast<DXGI_FORMAT>(format),
         .Stereo      = FALSE,
-        .SampleDesc  = {1, 0},
-        .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
+        .SampleDesc  = {.Count = 1, .Quality = 0},
+        .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_BACK_BUFFER,
         .BufferCount = frames_in_flight,
         .Scaling     = DXGI_SCALING_NONE,
         .SwapEffect  = DXGI_SWAP_EFFECT_FLIP_DISCARD,
@@ -474,18 +504,29 @@ auto render::d3d12_create_swapchain(const d3d12_context& d3d12_context, const u3
     };
 
     com_ptr<IDXGISwapChain1> swapchain;
-    D3D12_RETURN_ON_FAIL(d3d12_context.factory->CreateSwapChainForHwnd(
-        d3d12_context.queues[static_cast<u32>(render::rhi::queue_kind::ePresent)].Get(),
-        d3d12_context.window_handle,
-        &desc,
-        nullptr,
-        nullptr,
-        &swapchain));
+    D3D12_RETURN_ON_FAIL(
+        d3d12_context.factory->CreateSwapChainForHwnd(d3d12_context.queues[kD3D12CommandQueueDirect].Get(),
+                                                      d3d12_context.window_handle,
+                                                      &desc,
+                                                      nullptr,
+                                                      nullptr,
+                                                      &swapchain));
 
     d3d12_swapchain result;
     D3D12_RETURN_ON_FAIL(swapchain.As(&result.swapchain));
     D3D12_ASSERT_ON_FAIL(
         d3d12_context.factory->MakeWindowAssociation(d3d12_context.window_handle, DXGI_MWA_NO_ALT_ENTER));
 
+    auto fence = render::d3d12_create_fence(d3d12_context.device.Get(), 0);
+    RESULT_FORWARD_IF_FAILED(fence);
+
+    result.sc_sync_fence = std::move(*fence);
+    result.flags         = vsync ? (result.flags | swapchain_flag::eVsync) : result.flags;
+    result.flags         = tearing_supported ? (result.flags | swapchain_flag::eTearing) : result.flags;
+
+    auto back_buffers = d3d12_update_back_buffers(d3d12_context, result.swapchain.Get(), frames_in_flight);
+    RESULT_FORWARD_IF_FAILED(back_buffers);
+
+    result.back_buffers = std::move(*back_buffers);
     return result;
 }
