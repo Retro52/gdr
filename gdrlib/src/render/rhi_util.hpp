@@ -7,15 +7,22 @@
 namespace render::rhi
 {
     template<typename H, typename T>
-    [[nodiscard]] H create_handle(T& handle)
+    [[nodiscard]] H create_handle(T&& handle)
     {
-        return H {.id = reinterpret_cast<u64>(new T(std::move(handle)))};
+        using raw_t = std::remove_cvref_t<T>;
+        return H {.id = reinterpret_cast<u64>(new raw_t(std::forward<T>(handle)))};
     }
 
     template<typename H, typename T>
     [[nodiscard]] H reference_handle(const T* storage)
     {
         return H {.id = reinterpret_cast<u64>(storage)};
+    }
+
+    template<typename H>
+    void clear_handle(const nullptr_t storage, H&& data)
+    {
+        memset(&data, 0, sizeof(data));
     }
 
     template<typename T, typename H>

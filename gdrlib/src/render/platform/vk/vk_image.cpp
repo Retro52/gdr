@@ -101,6 +101,7 @@ result<render::vk_image> render::vk_create_image(VkDevice device, const VkImageC
     constexpr VmaAllocationCreateInfo alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO};
     VK_RETURN_ON_FAIL(
         vmaCreateImage(allocator, &image_create_info, &alloc_info, &image.image, &image.allocation, nullptr));
+
     image.view = *render::vk_create_image_view(device,
                                                image.image,
                                                image_create_info.arrayLayers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY
@@ -178,11 +179,12 @@ result<VkSampler> render::vk_create_sampler(VkDevice device, const VkFilter filt
         .addressModeW     = sampler_address_mode,
         .anisotropyEnable = anisotropic_filtering_factor > 0 ? VK_TRUE : VK_FALSE,
         .maxAnisotropy    = anisotropic_filtering_factor > 0 ? anisotropic_filtering_factor : 0.0F,
-        .compareEnable    = compare_op != VK_COMPARE_OP_MAX_ENUM ? VK_TRUE : VK_FALSE,
-        .compareOp        = compare_op != VK_COMPARE_OP_MAX_ENUM ? compare_op : VK_COMPARE_OP_NEVER,
-        .minLod           = 0.0F,
-        .maxLod           = 16.0F,
-        .borderColor      = border_color,
+        .compareEnable =
+            (compare_op != VK_COMPARE_OP_MAX_ENUM && compare_op != VK_COMPARE_OP_NEVER) ? VK_TRUE : VK_FALSE,
+        .compareOp   = compare_op != VK_COMPARE_OP_MAX_ENUM ? compare_op : VK_COMPARE_OP_NEVER,
+        .minLod      = 0.0F,
+        .maxLod      = 16.0F,
+        .borderColor = border_color,
     };
 
     VkSamplerReductionModeCreateInfo reduction_mode_info {VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO};

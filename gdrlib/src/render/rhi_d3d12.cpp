@@ -1,9 +1,10 @@
+#if GDR_ENABLE_DX12_BACKEND
+
 #include <render/platform/d3d12/d3d12.hpp>
 #include <render/platform/d3d12/d3d12_command_list.hpp>
 #include <render/platform/d3d12/d3d12_device.hpp>
 #include <render/platform/d3d12/d3d12_error.hpp>
 #include <render/platform/d3d12/d3d12_pipeline.hpp>
-#include <render/platform/d3d12/d3d12_queue.hpp>
 #include <render/platform/d3d12/d3d12_utils.hpp>
 #include <render/platform/vk/vk_utils.hpp>
 #include <render/rhi_d3d12.hpp>
@@ -22,13 +23,13 @@ static D3D12_RESOURCE_STATES d3d12_rhi_prase_image_layout(const render::rhi::ima
     ZoneScoped;
     switch (layout)
     {
-    case render::rhi::image_layout::ePresent :
+    case render::rhi::image_layout::present :
         return D3D12_RESOURCE_STATE_PRESENT;
-    case render::rhi::image_layout::eRenderTargetColor :
-    case render::rhi::image_layout::eRenderTargetDepthStencil :
+    case render::rhi::image_layout::render_target_color :
+    case render::rhi::image_layout::render_target_depth_stencil :
         return D3D12_RESOURCE_STATE_RENDER_TARGET;
     default :
-    case render::rhi::image_layout::eCommon :
+    case render::rhi::image_layout::common :
         return D3D12_RESOURCE_STATE_COMMON;
     }
 }
@@ -70,8 +71,11 @@ auto render::rhi::d3d12_create_swapchain(context context, const create_swapchain
         return error("Failed to access context");
     }
 
-    auto sc = render::d3d12_create_swapchain(
-        *d3d12_ctx, d3d12_format_from_vk(desc.format), desc.size, desc.frames_in_flight, desc.vsync);
+    auto sc = render::d3d12_create_swapchain(*d3d12_ctx,
+                                             d3d12_format_from_vk(static_cast<VkFormat>(desc.format)),
+                                             desc.size,
+                                             desc.frames_in_flight,
+                                             desc.vsync);
 
     RESULT_FORWARD_IF_FAILED(sc);
     return create_handle<swapchain>(*sc);
@@ -97,11 +101,12 @@ auto render::rhi::d3d12_resize_swapchain(context context, swapchain swapchain, c
         d3d12_ctx->rtv_descriptor_heap.free(back_buffer.image.cpu_handle);
     }
 
-    D3D12_RETURN_ON_FAIL(d3d12_sc->swapchain->ResizeBuffers(desc.frames_in_flight,
-                                                            desc.size.x,
-                                                            desc.size.y,
-                                                            static_cast<DXGI_FORMAT>(d3d12_format_from_vk(desc.format)),
-                                                            new_flags));
+    D3D12_RETURN_ON_FAIL(d3d12_sc->swapchain->ResizeBuffers(
+        desc.frames_in_flight,
+        desc.size.x,
+        desc.size.y,
+        static_cast<DXGI_FORMAT>(d3d12_format_from_vk(static_cast<VkFormat>(desc.format))),
+        new_flags));
 
     auto new_buffers = render::d3d12_update_back_buffers(*d3d12_ctx, d3d12_sc->swapchain.Get(), desc.frames_in_flight);
     RESULT_FORWARD_IF_FAILED(new_buffers);
@@ -137,15 +142,15 @@ auto render::rhi::d3d12_create_command_buffer(context context, const queue_kind 
     D3D12_COMMAND_LIST_TYPE type = D3D12_COMMAND_LIST_TYPE_NONE;
     switch (queue_kind)
     {
-    case queue_kind::eCompute :
+    case queue_kind::compute :
         type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
         break;
-    case queue_kind::eTransfer :
+    case queue_kind::transfer :
         type = D3D12_COMMAND_LIST_TYPE_COPY;
         break;
     default :
-    case queue_kind::eGfx :
-    case queue_kind::ePresent :
+    case queue_kind::gfx :
+    case queue_kind::present :
         type = D3D12_COMMAND_LIST_TYPE_DIRECT;
         break;
     }
@@ -308,7 +313,7 @@ result<VkFormat> render::rhi::d3d12_query_swapchain_color_format(swapchain swapc
     return error("Failed to access swapchain");
 }
 
-auto render::rhi::d3d12_query_queue(context context, queue_kind kind) -> result<queue>
+auto render::rhi::d3d12_query_queue(context context, const queue_kind kind) -> result<queue>
 {
     ZoneScoped;
     const auto* d3d12_ctx = cast_from_handle<render::d3d12_context>(context);
@@ -320,15 +325,15 @@ auto render::rhi::d3d12_query_queue(context context, queue_kind kind) -> result<
     u32 idx = render::kD3D12CommandQueueDirect;
     switch (kind)
     {
-    case queue_kind::eCompute :
+    case queue_kind::compute :
         idx = kD3D12CommandQueueCompute;
         break;
-    case queue_kind::eTransfer :
+    case queue_kind::transfer :
         idx = kD3D12CommandQueueCopy;
         break;
     default :
-    case queue_kind::eGfx :
-    case queue_kind::ePresent :
+    case queue_kind::gfx :
+    case queue_kind::present :
         idx = kD3D12CommandQueueDirect;
         break;
     }
@@ -360,7 +365,7 @@ auto render::rhi::d3d12_query_physical_device(context context) -> result<physica
     return physical_device {.id = reinterpret_cast<u64>(d3d12_ctx->adapter.Get())};
 }
 
-void render::rhi::d3d12_queue_wait_idle(queue queue)
+void render::rhi::d3d12_queue_wait_idle(const queue queue)
 {
     ZoneScoped;
     auto* d3d12_queue = d3d12_rhi_object_from_handle<ID3D12CommandQueue>(queue);
@@ -524,7 +529,10 @@ void render::rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const a
 
     for (u32 i = 0; i < cpp::min(color_attachments.size(), COUNT_OF(color_handles)); i++)
     {
-        const auto* d3d12_img = cast_from_handle<render::d3d12_image>(color_attachments[i].attachment);
+        auto& attachment      = color_attachments[i].attachment;
+        const auto* d3d12_img = attachment.is_image_view()
+                                  ? nullptr
+                                  : cast_from_handle<render::d3d12_image>(color_attachments[i].attachment.get_image());
         if (!d3d12_img)
         {
             return;
@@ -534,15 +542,15 @@ void render::rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const a
 
         switch (color_attachments[i].load_op)
         {
-        case resource_load_op::eDiscard :
+        case resource_load_op::discard :
             gfx_command_list->DiscardResource(d3d12_img->resource.Get(), nullptr);
             break;
-        case resource_load_op::eClear :
+        case resource_load_op::clear :
             gfx_command_list->ClearRenderTargetView(
                 d3d12_img->cpu_handle, &color_attachments[i].clear_value.f4.x, 0, nullptr);
             break;
         default :
-        case resource_load_op::eLoad :
+        case resource_load_op::load :
             break;
         }
     }
@@ -550,7 +558,9 @@ void render::rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const a
     const D3D12_CPU_DESCRIPTOR_HANDLE* depth_stencil = nullptr;
     if (depth_attachment)
     {
-        const auto* d3d12_img = cast_from_handle<render::d3d12_image>(depth_attachment.attachment);
+        const auto* d3d12_img = depth_attachment.attachment.is_image_view()
+                                  ? nullptr
+                                  : cast_from_handle<render::d3d12_image>(depth_attachment.attachment.get_image());
         if (!d3d12_img)
         {
             return;
@@ -560,10 +570,10 @@ void render::rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const a
 
         switch (depth_attachment.load_op)
         {
-        case resource_load_op::eDiscard :
+        case resource_load_op::discard :
             gfx_command_list->DiscardResource(d3d12_img->resource.Get(), nullptr);
             break;
-        case resource_load_op::eClear :
+        case resource_load_op::clear :
             gfx_command_list->ClearDepthStencilView(d3d12_img->cpu_handle,
                                                     D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
                                                     depth_attachment.clear_value.ds.depth,
@@ -572,14 +582,10 @@ void render::rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const a
                                                     nullptr);
             break;
         default :
-        case resource_load_op::eLoad :
+        case resource_load_op::load :
             break;
         }
     }
-
-    {
-
-    };
 
     D3D12_RECT scissor = CD3DX12_RECT(static_cast<LONG>(viewport.x),
                                       static_cast<LONG>(viewport.y),
@@ -636,3 +642,5 @@ void render::rhi::d3d12_cmd_draw_instanced(command_buffer cmd, const u32 vtx_cou
         gfx_command_list->DrawInstanced(vtx_count, instance_count, first_vertex, first_instance);
     }
 }
+
+#endif

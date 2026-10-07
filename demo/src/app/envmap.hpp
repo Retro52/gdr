@@ -1,14 +1,9 @@
 #pragma once
 
-#include <app/render.hpp>
+#include <app/gpu_upload_mgr.hpp>
 #include <fs/fs.hpp>
+#include <render/rhi.hpp>
 #include <shaders/constants.h>
-
-namespace render
-{
-    class vk_renderer;
-    struct vk_buffer_transfer;
-}
 
 namespace app
 {
@@ -29,33 +24,34 @@ namespace app
         i32 prefilter_resolution;
         i32 irradiance_resolution;
 
-        VkSampler sampler;
-        VkSampler brdf_sampler;
+        render::rhi::sampler sampler;
+        render::rhi::sampler brdf_sampler;
 
-        VkImageView conv_view;
-        render::vk_image convolution;
+        render::rhi::image_view conv_view;
+        render::rhi::image convolution;
 
-        VkImageView pref_view;
-        VkImageView pref_mips[shader_constants::kEnvPrefilterMips];
-        render::vk_image prefiltered;
+        render::rhi::image_view pref_view;
+        render::rhi::image_view pref_mips[shader_constants::kEnvPrefilterMips];
+        render::rhi::image prefiltered;
 
-        VkImageView cube_view;
-        render::vk_image cubemap;
+        render::rhi::image_view cube_view;
+        render::rhi::image cubemap;
 
-        render::vk_image brdf_lut;
+        render::rhi::image brdf_lut;
 
-        envmap(const render::vk_renderer& renderer, VkFormat format, const envmap_config& cfg);
+        envmap(const render::rhi::rhi& rhi, render::rhi::context ctx, render::rhi::image_format format,
+               const envmap_config& cfg);
 
-        void shutdown(const render::vk_renderer& renderer);
+        void shutdown(const render::rhi::rhi& rhi, render::rhi::context ctx);
 
-        [[nodiscard]] render::vk_descriptor_info get_lut_descriptor_info() const;
-        [[nodiscard]] render::vk_descriptor_info get_cube_descriptor_info() const;
-        [[nodiscard]] render::vk_descriptor_info get_conv_descriptor_info() const;
-        [[nodiscard]] render::vk_descriptor_info get_pref_descriptor_info() const;
+        [[nodiscard]] render::rhi::binding get_lut_descriptor_info() const;
+        [[nodiscard]] render::rhi::binding get_cube_descriptor_info() const;
+        [[nodiscard]] render::rhi::binding get_conv_descriptor_info() const;
+        [[nodiscard]] render::rhi::binding get_pref_descriptor_info() const;
 
-        void init(app::pso_data& pso, const render::vk_renderer& renderer);
+        void init(const render::rhi::rhi& rhi, render::rhi::command_buffer cmd, app::pso_data& pso);
 
-        void load(const fs::path& path, app::pso_data& pso, render::vk_renderer& renderer,
-                  const render::vk_buffer_transfer& transfer);
+        void load(const fs::path& path, app::pso_data& pso, const render::rhi::rhi& rhi, render::rhi::context ctx,
+                  const app::gpu_upload_mgr& upload_mgr);
     };
 }

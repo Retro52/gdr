@@ -10,6 +10,16 @@
 
 struct SDL_Window;
 
+struct create_window_info
+{
+    ivec2 size     = ivec2(1920, 960);
+    ivec2 position = ivec2(0, 0);
+
+    u32 fullscreen : 1  = 0;
+    u32 borderless : 1  = 0;
+    u32 reserved   : 30 = 0;
+};
+
 class window
 {
 public:
@@ -66,7 +76,7 @@ public:
     };
 
 public:
-    window(const char* title, ivec2 size, bool fullscreen);
+    window(const char* title, const create_window_info& create_info);
 
     ~window();
 

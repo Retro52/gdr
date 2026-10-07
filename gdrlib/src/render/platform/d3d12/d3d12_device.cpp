@@ -116,7 +116,7 @@ static void log_device_features_table(const char* name, const D3D_FEATURE_LEVEL 
         const auto flag = reflection::get_enum_value_at<render::rhi::feature_flag>(i);
 
         // validation is an instance-level flag tbh
-        if (flag == render::rhi::feature_flag::eValidation)
+        if (flag == render::rhi::feature_flag::validation)
         {
             continue;
         }
@@ -256,28 +256,28 @@ static bool check_device_features(ID3D12Device* device, const D3D_SHADER_MODEL d
 
     // shading-level feature anyway, so I just need to make sure to request proper SM
     // FIXME: I think DirectX doesn't support some draw parameters, need to check
-    wanted_features.set_supported(render::rhi::feature_flag::eDrawIndirect, true);
-    wanted_features.set_supported(render::rhi::feature_flag::eDynamicRender, true);
-    wanted_features.set_supported(render::rhi::feature_flag::eSamplerMinMax, true);
-    wanted_features.set_supported(render::rhi::feature_flag::ePipelineStats, true);
-    wanted_features.set_supported(render::rhi::feature_flag::ePortabilitySubset, false);
+    wanted_features.set_supported(render::rhi::feature_flag::draw_indirect, true);
+    wanted_features.set_supported(render::rhi::feature_flag::dynamic_render, true);
+    wanted_features.set_supported(render::rhi::feature_flag::sampler_min_max, true);
+    wanted_features.set_supported(render::rhi::feature_flag::pipeline_stats, true);
+    wanted_features.set_supported(render::rhi::feature_flag::portability_subset, false);
 
     // not directly portable afaik
-    wanted_features.set_supported(render::rhi::feature_flag::e8BitIntegers, false);
-    wanted_features.set_supported(render::rhi::feature_flag::eScalarBlockLayout, true);
+    wanted_features.set_supported(render::rhi::feature_flag::types_int8, false);
+    wanted_features.set_supported(render::rhi::feature_flag::scalar_block_layout, true);
 
-    wanted_features.set_supported(render::rhi::feature_flag::eMeshShading,
+    wanted_features.set_supported(render::rhi::feature_flag::mesh_shading,
                                   device_shader_model >= D3D_SHADER_MODEL_6_5
                                       && d3d12_options7.MeshShaderTier > D3D12_MESH_SHADER_TIER_NOT_SUPPORTED);
 
-    wanted_features.set_supported(render::rhi::feature_flag::eSynchronization2,
+    wanted_features.set_supported(render::rhi::feature_flag::synchronization2,
                                   d3d12_options12.EnhancedBarriersSupported);
 
-    wanted_features.set_supported(render::rhi::feature_flag::e16BitTypes,
+    wanted_features.set_supported(render::rhi::feature_flag::types_16bit,
                                   device_shader_model >= D3D_SHADER_MODEL_6_2
                                       && d3d12_options4.Native16BitShaderOpsSupported);
 
-    wanted_features.set_supported(render::rhi::feature_flag::eBindlessTextures,
+    wanted_features.set_supported(render::rhi::feature_flag::bindless_textures,
                                   device_shader_model >= D3D_SHADER_MODEL_6_6
                                       && d3d12_options0.ResourceBindingTier >= D3D12_RESOURCE_BINDING_TIER_3);
 
@@ -356,7 +356,7 @@ static HRESULT pick_and_create_device(render::d3d12_context& ctx,
         LOG_INFO("Selected device: {}", name.c_str());
         log_device_features_table(name.c_str(), ctx.feature_level, ctx.shader_model, ctx.enabled_device_features);
 
-        if (ctx.enabled_device_features.requested(render::rhi::feature_flag::eValidation))
+        if (ctx.enabled_device_features.requested(render::rhi::feature_flag::validation))
         {
             create_debug_layer(ctx);
         }
@@ -389,7 +389,7 @@ void render::d3d12_destroy_context(d3d12_context& ctx)
 
     ctx.window_handle = nullptr;
 
-    if (ctx.enabled_device_features.requested(render::rhi::feature_flag::eValidation))
+    if (ctx.enabled_device_features.requested(render::rhi::feature_flag::validation))
     {
         com_ptr<IDXGIDebug1> dxgi_debug;
         if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgi_debug))))
@@ -406,7 +406,7 @@ auto render::d3d12_create_context(const window& window, const rhi::instance_desc
     ZoneScoped;
     d3d12_context context;
 
-    const bool enable_validation = desc.device_features.requested(render::rhi::feature_flag::eValidation);
+    const bool enable_validation = desc.device_features.requested(render::rhi::feature_flag::validation);
     if (enable_validation)
     {
         enable_debug_layer();

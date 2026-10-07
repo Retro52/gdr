@@ -143,7 +143,7 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
     )
     list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.spv")
 
-    if (WIN32)
+    if (WIN32 AND GDR_ENABLE_DX12_BACKEND)
         if (NOT DEFINED SPIRV_CROSS_EXECUTABLE OR NOT DEFINED DXC_EXECUTABLE)
             message(FATAL_ERROR "windows compiles dx12 backend which requires spirv-cross and dxc executables")
         endif ()
@@ -151,7 +151,7 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
                 OUTPUT "${SHADER_BIN_OUTPUT}.dxl"
                 COMMAND ${SPIRV_CROSS_EXECUTABLE} "${SHADER_BIN_OUTPUT}.spv" --hlsl --shader-model 68 --hlsl-enable-16bit-types --output "${SHADER_HLSL_OUTPUT}"
                 COMMAND ${DXC_EXECUTABLE} -T ${SHADER_PROFILE} -E main -WX -Fo "${SHADER_BIN_OUTPUT}.dxl" "$<$<CONFIG:Debug>:-Zi>" "$<$<CONFIG:Debug>:-Qembed_debug>" "$<$<NOT:$<CONFIG:Debug>>:-O3>" "${SHADER_HLSL_OUTPUT}"
-                COMMAND ${CMAKE_COMMAND} -E rm -f "${SHADER_HLSL_OUTPUT}"
+#                COMMAND ${CMAKE_COMMAND} -E rm -f "${SHADER_HLSL_OUTPUT}"
                 DEPENDS "${SHADER_BIN_OUTPUT}.spv"
                 COMMENT "Converting shader from '${SHADER_BIN_OUTPUT}.spv' to '${SHADER_BIN_OUTPUT}.dxl'"
         )

@@ -2,9 +2,7 @@
 
 #include <cpp/hash/crc_hash.hpp>
 #include <pod_types.hpp>
-#include <render/platform/vk/vk_descriptor_set.hpp>
-#include <render/platform/vk/vk_pipeline.hpp>
-#include <render/platform/vk/vk_renderer.hpp>
+#include <render/rhi.hpp>
 
 #include <thread>
 #include <unordered_map>
@@ -56,16 +54,17 @@ namespace app
     struct pso_data
     {
     private:
-        std::unordered_map<u32, render::vk_pipeline> m_pipelines;
+        std::unordered_map<u32, render::rhi::pipeline> m_pipelines;
 
     public:
-        render::vk_pipeline& operator[](const pso_id id) { return m_pipelines[static_cast<u32>(id)]; }
+        render::rhi::pipeline& operator[](const pso_id id) { return m_pipelines[static_cast<u32>(id)]; }
 
-        void load(const render::vk_renderer& renderer, const render::vk_descriptor_set& textures_set);
+        void load(const render::rhi::rhi& rhi, render::rhi::context context, render::rhi::swapchain swapchain,
+                  render::rhi::bindless_set textures_set);
 
-        void shutdown(const render::vk_renderer& renderer);
+        void destroy(const render::rhi::rhi& rhi, render::rhi::context context, pso_id id);
 
-        void destroy(const render::vk_renderer& renderer, pso_id id);
+        void shutdown(const render::rhi::rhi& rhi, render::rhi::context context);
     };
 
     struct pso_watcher
@@ -76,13 +75,14 @@ namespace app
         u64 m_last_write_time;
 
         pso_data& m_pdata;
-        render::vk_renderer& m_renderer;
+        render::rhi::context m_context;
+        render::rhi::bindless_set m_textures_set;
 
-        const render::vk_descriptor_set& m_textures_set;
+        const render::rhi::rhi& m_rhi;
 
     public:
-        pso_watcher(pso_data& pipelines, render::vk_renderer& renderer,
-                    const render::vk_descriptor_set& textures_set);
+        pso_watcher(pso_data& pipelines, render::rhi::rhi& rhi, render::rhi::context context,
+                    render::rhi::bindless_set textures_set);
 
         void shutdown();
     };

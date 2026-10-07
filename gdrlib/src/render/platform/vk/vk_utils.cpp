@@ -283,3 +283,339 @@ VkFormat render::vk_format_force_color_space(const VkFormat vk_format, const col
         return vk_format;
     }
 }
+
+VkImageViewType render::vk_rhi_parse_image_view_type(const render::rhi::image_view_kind kind)
+{
+    switch (kind)
+    {
+    case render::rhi::image_view_kind::flat_1d :
+        return VK_IMAGE_VIEW_TYPE_1D;
+    case render::rhi::image_view_kind::array_1d :
+        return VK_IMAGE_VIEW_TYPE_1D_ARRAY;
+    case render::rhi::image_view_kind::flat_2d :
+        return VK_IMAGE_VIEW_TYPE_2D;
+    case render::rhi::image_view_kind::array_2d :
+        return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+    case render::rhi::image_view_kind::flat_cube :
+        return VK_IMAGE_VIEW_TYPE_CUBE;
+    case render::rhi::image_view_kind::array_cube :
+        return VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
+    case render::rhi::image_view_kind::flat_3d :
+        return VK_IMAGE_VIEW_TYPE_3D;
+    default :
+        break;
+    }
+
+    return VK_IMAGE_VIEW_TYPE_2D;
+}
+
+VkImageAspectFlags render::vk_rhi_parse_aspect_flags(const render::rhi::image_aspects aspects)
+{
+    VkImageAspectFlags result = 0;
+    assert2(!(aspects & render::rhi::image_aspect::format));
+
+    result |= aspects & render::rhi::image_aspect::color ? VK_IMAGE_ASPECT_COLOR_BIT : result;
+    result |= aspects & render::rhi::image_aspect::depth ? VK_IMAGE_ASPECT_DEPTH_BIT : result;
+    result |= aspects & render::rhi::image_aspect::stencil ? VK_IMAGE_ASPECT_STENCIL_BIT : result;
+
+    return result;
+}
+
+VkImageAspectFlags render::vk_rhi_parse_format_aspect_flags(const VkFormat format)
+{
+    switch (format)
+    {
+    case VK_FORMAT_S8_UINT :
+        return VK_IMAGE_ASPECT_STENCIL_BIT;
+    case VK_FORMAT_D16_UNORM :
+    case VK_FORMAT_D32_SFLOAT :
+    case VK_FORMAT_X8_D24_UNORM_PACK32 :
+        return VK_IMAGE_ASPECT_DEPTH_BIT;
+    case VK_FORMAT_D16_UNORM_S8_UINT :
+    case VK_FORMAT_D24_UNORM_S8_UINT :
+    case VK_FORMAT_D32_SFLOAT_S8_UINT :
+        return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    default :
+        return VK_IMAGE_ASPECT_COLOR_BIT;
+    }
+}
+
+render::rhi::shader_stage render::vk_rhi_translate_shader_stage(const VkShaderStageFlagBits stage)
+{
+    switch (stage)
+    {
+    case VK_SHADER_STAGE_TASK_BIT_EXT :
+        return render::rhi::shader_stage::task;
+    case VK_SHADER_STAGE_MESH_BIT_EXT :
+        return render::rhi::shader_stage::mesh;
+    case VK_SHADER_STAGE_COMPUTE_BIT :
+        return render::rhi::shader_stage::compute;
+    case VK_SHADER_STAGE_FRAGMENT_BIT :
+        return render::rhi::shader_stage::fragment;
+    default :
+    case VK_SHADER_STAGE_VERTEX_BIT :
+        return render::rhi::shader_stage::vertex;
+    }
+}
+
+VkImageUsageFlags render::vk_rhi_parse_image_usage_flags(const render::rhi::image_usages usage)
+{
+    VkImageUsageFlags result = 0;
+    for (u32 i = 0; i < reflection::get_enum_values_count<render::rhi::image_usage>(); i++)
+    {
+        const auto flag = reflection::get_enum_value_at<render::rhi::image_usage>(i);
+        if (!(flag & usage))
+        {
+            continue;
+        }
+
+        switch (flag)
+        {
+        case render::rhi::image_usage::sampled :
+            result |= VK_IMAGE_USAGE_SAMPLED_BIT;
+            break;
+        case render::rhi::image_usage::storage :
+            result |= VK_IMAGE_USAGE_STORAGE_BIT;
+            break;
+        case render::rhi::image_usage::attachment_color :
+            result |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+            break;
+        case render::rhi::image_usage::attachment_ds :
+            result |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+            break;
+        case render::rhi::image_usage::transfer_src :
+            result |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+            break;
+        case render::rhi::image_usage::transfer_dst :
+            result |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+            break;
+        default :
+            break;
+        }
+    }
+
+    return result;
+}
+
+VkBufferUsageFlags render::vk_rhi_parse_buffer_usage_flags(const render::rhi::buffer_usages usage)
+{
+    VkBufferUsageFlags result = 0;
+    for (u32 i = 0; i < reflection::get_enum_values_count<render::rhi::buffer_usage>(); i++)
+    {
+        const auto flag = reflection::get_enum_value_at<render::rhi::buffer_usage>(i);
+        if (!(flag & usage))
+        {
+            continue;
+        }
+
+        switch (flag)
+        {
+        case render::rhi::buffer_usage::copy_src :
+            result |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            break;
+        case render::rhi::buffer_usage::copy_dst :
+            result |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            break;
+        case render::rhi::buffer_usage::shader_rw :
+            result |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            break;
+        case render::rhi::buffer_usage::indirect :
+            result |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+            break;
+        case render::rhi::buffer_usage::index :
+            result |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+            break;
+        default :
+            break;
+        }
+    }
+
+    return result;
+}
+
+VkFilter render::vk_rhi_parse_sampler_filter(const render::rhi::sampler_filter sampler_filter)
+{
+    switch (sampler_filter)
+    {
+    case render::rhi::sampler_filter::nearest :
+        return VK_FILTER_NEAREST;
+    default :
+    case render::rhi::sampler_filter::linear :
+        return VK_FILTER_LINEAR;
+    }
+}
+
+VkBorderColor render::vk_rhi_parse_sampler_border_color(const render::rhi::sampler_border_color sampler_border_color)
+{
+    switch (sampler_border_color)
+    {
+    case render::rhi::sampler_border_color::white :
+        return VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    case render::rhi::sampler_border_color::black :
+        return VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+    default :
+    case render::rhi::sampler_border_color::black_transparent :
+        return VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+    }
+}
+
+VkSamplerReductionMode render::vk_rhi_parse_sampler_reduction(const render::rhi::sampler_reduction sampler_reduction)
+{
+    switch (sampler_reduction)
+    {
+    case render::rhi::sampler_reduction::min :
+        return VK_SAMPLER_REDUCTION_MODE_MIN;
+    case render::rhi::sampler_reduction::max :
+        return VK_SAMPLER_REDUCTION_MODE_MAX;
+    default :
+    case render::rhi::sampler_reduction::none :
+        return VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE;
+    }
+}
+
+VkSamplerMipmapMode render::vk_rhi_parse_sampler_mipmap_mode(const render::rhi::sampler_mipmap_mode sampler_mipmap_mode)
+{
+    switch (sampler_mipmap_mode)
+    {
+    case render::rhi::sampler_mipmap_mode::nearest :
+        return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    default :
+    case render::rhi::sampler_mipmap_mode::linear :
+        return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    }
+}
+
+VkSamplerAddressMode render::vk_rhi_parse_sampler_address_mode(
+    const render::rhi::sampler_address_mode sampler_address_mode)
+{
+    switch (sampler_address_mode)
+    {
+    case render::rhi::sampler_address_mode::clamp_to_edge :
+        return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    case render::rhi::sampler_address_mode::clamp_to_border :
+        return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    case render::rhi::sampler_address_mode::mirrored_repeat :
+        return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+    case render::rhi::sampler_address_mode::mirrored_clamp_to_edge :
+        return VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
+    default :
+    case render::rhi::sampler_address_mode::repeat :
+        return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    }
+}
+
+VkCompareOp render::vk_rhi_parse_compare_op(const render::rhi::compare_op compare_op)
+{
+    switch (compare_op)
+    {
+    case render::rhi::compare_op::always :
+        return VK_COMPARE_OP_ALWAYS;
+    case render::rhi::compare_op::less :
+        return VK_COMPARE_OP_LESS;
+    case render::rhi::compare_op::greater :
+        return VK_COMPARE_OP_GREATER;
+    case render::rhi::compare_op::equal :
+        return VK_COMPARE_OP_EQUAL;
+    case render::rhi::compare_op::not_equal :
+        return VK_COMPARE_OP_NOT_EQUAL;
+    case render::rhi::compare_op::equal_or_less :
+        return VK_COMPARE_OP_LESS_OR_EQUAL;
+    case render::rhi::compare_op::equal_or_greater :
+        return VK_COMPARE_OP_GREATER_OR_EQUAL;
+    default :
+    case render::rhi::compare_op::none :
+    case render::rhi::compare_op::never :
+        return VK_COMPARE_OP_NEVER;
+    }
+}
+
+VkClearValue render::vk_rhi_parse_color_clear_value(render::rhi::clear_value cv)
+{
+    VkClearValue value;
+    cpp::cx_memcpy(value.color.float32, &cv.color.f4.x, COUNT_OF(value.color.float32) * sizeof(cv.color.f4[0]));
+    return value;
+}
+
+VkClearValue render::vk_rhi_parse_depth_clear_value(const render::rhi::clear_value cv)
+{
+    return {
+        .depthStencil = {.depth = cv.ds.depth, .stencil = cv.ds.stencil}
+    };
+}
+
+VkPrimitiveTopology render::vk_rhi_parse_topology(const render::rhi::topology topology)
+{
+    switch (topology)
+    {
+    case render::rhi::topology::list_points :
+        return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+    case render::rhi::topology::list_patches :
+        return VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
+
+    case render::rhi::topology::list_lines :
+        return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    case render::rhi::topology::list_lines_adjacent :
+        return VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY;
+    case render::rhi::topology::list_triangles_adjacent :
+        return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY;
+
+    case render::rhi::topology::strip_lines :
+        return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+    case render::rhi::topology::strip_triangles :
+        return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+    case render::rhi::topology::strip_lines_adjacent :
+        return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY;
+    case render::rhi::topology::strip_triangles_adjacent :
+        return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY;
+
+    default :
+    case render::rhi::topology::list_triangles :
+        return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    }
+}
+
+VkBlendOp render::vk_rhi_parse_blend_op(const render::rhi::blend_op blend_op)
+{
+    switch (blend_op)
+    {
+    case render::rhi::blend_op::max :
+        return VK_BLEND_OP_MAX;
+    case render::rhi::blend_op::add :
+        return VK_BLEND_OP_ADD;
+    case render::rhi::blend_op::subtract :
+        return VK_BLEND_OP_SUBTRACT;
+    case render::rhi::blend_op::reverse_subtract :
+        return VK_BLEND_OP_REVERSE_SUBTRACT;
+    default :
+    case render::rhi::blend_op::min :
+        return VK_BLEND_OP_MIN;
+    }
+}
+
+VkBlendFactor render::vk_rhi_parse_blend_factor(const render::rhi::blend_factor blend_factor)
+{
+    switch (blend_factor)
+    {
+    case render::rhi::blend_factor::one :
+        return VK_BLEND_FACTOR_ONE;
+    case render::rhi::blend_factor::src_color :
+        return VK_BLEND_FACTOR_SRC_COLOR;
+    case render::rhi::blend_factor::src_alpha :
+        return VK_BLEND_FACTOR_SRC_ALPHA;
+    case render::rhi::blend_factor::one_minus_src_color :
+        return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+    case render::rhi::blend_factor::one_minus_src_alpha :
+        return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    case render::rhi::blend_factor::dst_color :
+        return VK_BLEND_FACTOR_DST_COLOR;
+    case render::rhi::blend_factor::dst_alpha :
+        return VK_BLEND_FACTOR_DST_ALPHA;
+    case render::rhi::blend_factor::one_minus_dst_color :
+        return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
+    case render::rhi::blend_factor::one_minus_dst_alpha :
+        return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+    default :
+    case render::rhi::blend_factor::zero :
+        return VK_BLEND_FACTOR_ZERO;
+    }
+}

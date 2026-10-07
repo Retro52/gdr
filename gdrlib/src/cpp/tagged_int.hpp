@@ -18,7 +18,7 @@ namespace cpp
         constexpr static u8 kTotalBits = sizeof(T) * 8;
         constexpr static u8 kValueBits = sizeof(T) * 8 - N;
 
-        constexpr static T kMaxValue = kIdentity << static_cast<T>(kValueBits) - 1;
+        constexpr static T kMaxValue = (kIdentity << static_cast<T>(kValueBits)) - 1;
 
 #if 0
         // I think it can support signed integers as well, but then I'd have to overcomplicate the
@@ -33,13 +33,19 @@ namespace cpp
 
         constexpr tagged_int(T value) noexcept { set(value); }
 
-        constexpr bool get_flag(u32 index) const noexcept
+        constexpr tagged_int(T value, const bool flag) noexcept
+        {
+            set(value);
+            set_flag(flag);
+        }
+
+        [[nodiscard]] constexpr bool get_flag(u32 index = 0) const noexcept
         {
             assert2m(index < N, "flag index out of range");
             return m_value & (kIdentity << index);
         }
 
-        constexpr void set_flag(u32 index, bool value) noexcept
+        constexpr void set_flag(bool value, u32 index = 0) noexcept
         {
             assert2m(index < N, "flag index out of range");
             m_value = value ? m_value | (kIdentity << index) : m_value & ~(kIdentity << index);

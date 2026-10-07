@@ -1,8 +1,8 @@
 #pragma once
 
 #include <app/gpu_stats.hpp>
+#include <cpp/containers/heap_array.hpp>
 #include <imgui/gpu_profile_data.hpp>
-#include <render/platform/vk/vk_geometry_pool.hpp>
 
 struct camera_controller;
 
@@ -15,6 +15,5 @@ namespace editor
 
         camera_controller& m_camera;
         gpu_profile_data& m_gpu_profile;
-        render::vk_scene_geometry_pool& m_geometry_pool;
     };
 }

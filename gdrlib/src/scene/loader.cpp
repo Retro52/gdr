@@ -9,6 +9,7 @@
 #include <log.hpp>
 #include <reflection/enum.hpp>
 #include <render/platform/vk/vk_utils.hpp>
+#include <render/types.hpp>
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 #include <scene/loader.hpp>
@@ -39,16 +40,16 @@ namespace
 
     struct unified_tex_desc
     {
-        u32 width          = 0;
-        u32 height         = 0;
-        u32 depth          = 0;
-        u32 data_size      = 0;
-        u32 mips_count     = 0;
-        u32 arrays_count   = 0;
-        u32 block_size     = 0;
-        u32 bits_per_block = 0;
-        VkFormat format    = VK_FORMAT_UNDEFINED;
-        const void* pdata  = nullptr;
+        u32 width                        = 0;
+        u32 height                       = 0;
+        u32 depth                        = 0;
+        u32 data_size                    = 0;
+        u32 mips_count                   = 0;
+        u32 arrays_count                 = 0;
+        u32 block_size                   = 0;
+        u32 bits_per_block               = 0;
+        render::rhi::image_format format = render::rhi::image_format::none;
+        const void* pdata                = nullptr;
     };
 
     REGISTER_ENUM(texture_usage, unknown, albedo, normal, metalic_roughness)
@@ -112,9 +113,10 @@ namespace
                     result.arrays_count   = data.dds_descriptor.arraySize;
                     result.block_size     = data.dds_descriptor.blockHeight;
                     result.bits_per_block = data.dds_descriptor.bitsPerPixelOrBlock;
-                    result.format         = render::vk_format_from_dxgi(data.dds_descriptor.format);
-                    result.pdata          = data.data.template get<u8>() + data.dds_descriptor.headerSize;
-                    result.data_size      = data.data.template length<u8>() - data.dds_descriptor.headerSize;
+                    result.format =
+                        static_cast<render::rhi::image_format>(render::vk_format_from_dxgi(data.dds_descriptor.format));
+                    result.pdata     = data.data.template get<u8>() + data.dds_descriptor.headerSize;
+                    result.data_size = data.data.template length<u8>() - data.dds_descriptor.headerSize;
                 }
                 else if constexpr (std::is_same_v<desc_t, SDL_Surface*>)
                 {
@@ -125,7 +127,7 @@ namespace
                     result.arrays_count = 1;
                     result.pdata        = data->pixels;
                     result.data_size    = data->pitch * data->h;
-                    result.format       = VK_FORMAT_R8G8B8A8_UNORM;
+                    result.format       = render::rhi::image_format::r8g8b8a8un;
                 }
                 else
                 {
@@ -136,10 +138,10 @@ namespace
 
         if (parsed_texture.usage != texture_usage::unknown)
         {
-            result.format = render::vk_format_force_color_space(result.format,
-                                                                parsed_texture.usage == texture_usage::albedo
-                                                                    ? render::color_space::srgb
-                                                                    : render::color_space::linear);
+            result.format = static_cast<render::rhi::image_format>(render::vk_format_force_color_space(
+                static_cast<VkFormat>(result.format),
+                parsed_texture.usage == texture_usage::albedo ? render::color_space::srgb
+                                                              : render::color_space::linear));
         }
 
         return result;
@@ -176,13 +178,13 @@ static vec4 compute_bounding_sphere(const cpp::heap_array<mesh::raw_vertex>& mes
 }
 
 static loader::material build_material(const cgltf_data* data, const cgltf_material& material,
-                                       const cpp::heap_array<render::vk_image>& textures, const u32 base_texture = 1)
+                                       const u32 base_texture = 1)
 {
     loader::material mat {};
 
     auto tex_idx = [&](const cgltf_texture* texture) -> u32
     {
-        if (!texture || textures[cgltf_texture_index(data, texture)].image == VK_NULL_HANDLE)
+        if (!texture)
         {
             return 0;
         }
@@ -327,7 +329,7 @@ static result<parsed_texture> read_texture(const fs::path& uri, texture_usage us
             return error("failed to read texture as DDS");
         }
 
-        result.desc = dds_data {*r_data, desc};
+        result.desc = dds_data {.data = *r_data, .dds_descriptor = desc};
         return result;
     }
 
@@ -352,6 +354,7 @@ static result<parsed_texture> read_texture(const fs::path& uri, texture_usage us
     return error("failed to load texture -- unsupported format?");
 }
 
+#if 0
 static result<render::vk_image> upload_texture(const parsed_texture& texture, const render::vk_renderer& renderer,
                                                const render::vk_buffer_transfer& scratch)
 {
@@ -384,6 +387,7 @@ static result<render::vk_image> upload_texture(const parsed_texture& texture, co
                             desc.bits_per_block);
     return *image_r;
 }
+#endif
 
 u32 loader::get_max_lod_tris(const mesh::raw_mesh& mesh)
 {
@@ -407,21 +411,19 @@ u32 loader::get_max_lod_meshlets(const loader::primitive& prim)
     return res;
 }
 
-result<render::vk_image> loader::load_texture(const fs::path& path, const render::vk_renderer& renderer,
-                                              const render::vk_buffer_transfer& scratch)
-{
-    ZoneScoped;
-    if (const auto read_r = read_texture(path, texture_usage::unknown))
-    {
-        return upload_texture(*read_r, renderer, scratch);
-    }
+// result<render::vk_image> loader::load_texture(const fs::path& path, const render::vk_renderer& renderer,
+//                                               const render::vk_buffer_transfer& scratch)
+// {
+//     ZoneScoped;
+//     if (const auto read_r = read_texture(path, texture_usage::unknown))
+//     {
+//         return upload_texture(*read_r, renderer, scratch);
+//     }
+//
+//     return error("failed to read texture");
+// }
 
-    return error("failed to read texture");
-}
-
-loader::scene_info loader::load_scene(const fs::path& path, scene& scene, const render::vk_renderer& renderer,
-                                      render::vk_scene_geometry_pool& geometry_pool,
-                                      cpp::heap_array<render::vk_image>& textures)
+loader::scene_data loader::load_scene(const fs::path& path, scene& scene)
 {
     ZoneScoped;
     LOG_INFO("loading GLTF scene {}", path.c_str());
@@ -460,7 +462,7 @@ loader::scene_info loader::load_scene(const fs::path& path, scene& scene, const 
              data->textures_count,
              data->nodes_count);
 
-    loader_context ctx;
+    scene_data scene_data;
 
 #if TRACY_ENABLE
     cpp::heap_array<cpp::stack_string> debug_names;
@@ -501,56 +503,56 @@ loader::scene_info loader::load_scene(const fs::path& path, scene& scene, const 
         }
     }
 
-    textures.resize(data->textures_count);
-    cpp::heap_array<parsed_texture> textures_data(data->textures_count);
+    // textures.resize(data->textures_count);
+    //     cpp::heap_array<parsed_texture> textures_data(data->textures_count);
+    //
+    //     {
+    //         ZoneScopedN("loader::load_scene::schedule_load_textures");
+    //
+    //         for (u64 i = 0; i < data->textures_count; ++i)
+    //         {
+    //             const auto& texture = data->textures[i];
+    //             if (!texture.image->uri)
+    //             {
+    //                 continue;
+    //             }
+    //
+    //             textures_wg.add(1);
+    //             job::schedule_async(
+    //                 [&path, &textures_data, i, data]()
+    //                 {
+    //                     const auto* tex = &data->textures[i];
+    //                     const auto uri  = path.parent() / fs::path(tex->image->uri);
+    // #if TRACY_ENABLE
+    //                     const auto debug_name =
+    //                         cpp::big_stack_string::make_formatted("read texture: %s", uri.filename().c_str());
+    //                     TracyMessage(debug_name.c_str(), debug_name.length());
+    // #endif
+    //
+    //                     if (auto res = read_texture(uri, try_get_texture_usage(data, tex)))
+    //                     {
+    //                         textures_data[i] = std::move(*res);
+    //                     }
+    //                 },
+    //                 textures_wg);
+    //         }
+    //     }
+    //
+    //     textures_wg.wait_till_done();
+    // for (u32 i = 0; i < textures_data.size(); ++i)
+    // {
+    //     if (auto image_r = upload_texture(textures_data[i], renderer, geometry_pool.transfer))
+    //     {
+    //         textures[i] = *image_r;
+    //     }
+    // }
 
-    {
-        ZoneScopedN("loader::load_scene::schedule_load_textures");
-
-        for (u64 i = 0; i < data->textures_count; ++i)
-        {
-            const auto& texture = data->textures[i];
-            if (!texture.image->uri)
-            {
-                continue;
-            }
-
-            textures_wg.add(1);
-            job::schedule_async(
-                [&path, &textures_data, i, data]()
-                {
-                    const auto* tex = &data->textures[i];
-                    const auto uri  = path.parent() / fs::path(tex->image->uri);
-#if TRACY_ENABLE
-                    const auto debug_name =
-                        cpp::big_stack_string::make_formatted("read texture: %s", uri.filename().c_str());
-                    TracyMessage(debug_name.c_str(), debug_name.length());
-#endif
-
-                    if (auto res = read_texture(uri, try_get_texture_usage(data, tex)))
-                    {
-                        textures_data[i] = std::move(*res);
-                    }
-                },
-                textures_wg);
-        }
-    }
-
-    textures_wg.wait_till_done();
-    for (u32 i = 0; i < textures_data.size(); ++i)
-    {
-        if (auto image_r = upload_texture(textures_data[i], renderer, geometry_pool.transfer))
-        {
-            textures[i] = *image_r;
-        }
-    }
-
-    ctx.materials.resize(data->materials_count + 1);
-    ctx.materials[0].diffuse_factor = vec4(1.0F, 0.0F, 0.71F, 1.0F);  // -> pinkish <-
+    scene_data.materials.resize(data->materials_count + 1);
+    scene_data.materials[0].diffuse_factor = vec4(1.0F, 0.0F, 0.71F, 1.0F);  // -> pinkish <-
 
     for (u32 i = 0; i < data->materials_count; ++i)
     {
-        ctx.materials[i + 1] = build_material(data, data->materials[i], textures);
+        scene_data.materials[i + 1] = build_material(data, data->materials[i]);
     }
 
     primitives_wg.wait_till_done();
@@ -563,16 +565,18 @@ loader::scene_info loader::load_scene(const fs::path& path, scene& scene, const 
     for (u32 p = 0; p < prim_count; ++p)
     {
         auto& layout         = layouts[p];
-        layout.prim_index    = p + geometry_pool.primitives.offset / sizeof(loader::primitive);
-        layout.vertex_offset = total_vertices + (geometry_pool.vertex.offset / sizeof(loader::vertex));
+        layout.prim_index    = p;
+        layout.vertex_offset = total_vertices;
 
         total_vertices += raw_meshes[p].raw_vertices.size();
 
         for (u32 i = 0; i < raw_meshes[p].lod_count; ++i)
         {
             const auto& lod     = raw_meshes[p].lod_array[i];
-            layout.lod_array[i] = {total_meshlets + (geometry_pool.meshlets.offset / sizeof(loader::meshlet)),
-                                   total_payload + geometry_pool.meshlets_payload.offset};
+            layout.lod_array[i] = {
+                .meshlet_offset      = total_meshlets,
+                .meshlet_data_offset = total_payload,
+            };
 
             total_indices += lod.raw_indices.size();
             total_meshlets += lod.raw_meshlets.size();
@@ -586,10 +590,10 @@ loader::scene_info loader::load_scene(const fs::path& path, scene& scene, const 
              total_meshlets,
              total_payload);
 
-    ctx.primitives.resize(prim_count);
-    ctx.vertices.resize(total_vertices);
-    ctx.meshlets.resize(total_meshlets);
-    ctx.meshlets_data.resize(total_payload);
+    scene_data.primitives.resize(prim_count);
+    scene_data.vertices.resize(total_vertices);
+    scene_data.meshlets.resize(total_meshlets);
+    scene_data.meshlets_data.resize(total_payload);
 
     {
         job::wait_group wg1(prim_count);
@@ -598,28 +602,17 @@ loader::scene_info loader::load_scene(const fs::path& path, scene& scene, const 
             job::schedule_async(
                 [&, i]
                 {
-                    encode_raw_mesh(ctx, raw_meshes[i], layouts[i]);
+                    encode_raw_mesh(scene_data, raw_meshes[i], layouts[i]);
                 },
                 wg1);
         }
         wg1.wait_till_done();
     }
 
-    vk_upload_data(geometry_pool.transfer, geometry_pool.primitives, ctx.primitives.data(), ctx.primitives.size());
-    vk_upload_data(geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
-    vk_upload_data(geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
-    vk_upload_data(geometry_pool.transfer, geometry_pool.materials, ctx.materials.data(), ctx.materials.size());
-    vk_upload_data(
-        geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
-
 #if !defined(NDEBUG)
     auto& hierarchy = scene.hierarchy;
     hierarchy.nodes.resize(data->nodes_count);
 #endif
-
-    // TODO: refactor (moving objects?)
-    // Also need to be careful with not writing anything to transfer in the meantime
-    auto* instances = static_cast<loader::instance*>(geometry_pool.transfer.mapped);
 
     u32 triangles_max     = 0;
     u32 instance_count    = 0;
@@ -643,21 +636,21 @@ loader::scene_info loader::load_scene(const fs::path& path, scene& scene, const 
 
             for (u32 j = 0; j < desc.prim_count; ++j)
             {
-                instances[instance_count].pos_and_scale     = {transform_comp.position, transform_comp.uniform_scale};
-                instances[instance_count].rotation_quat     = transform_comp.rotation;
-                instances[instance_count].visibility_offset = visibility_offset;
-                instances[instance_count].mesh_data_index   = desc.offset + j;
-                instances[instance_count].base_vertex       = ctx.primitives[desc.offset + j].base_vertex;
-                instances[instance_count].material_index =
-                    node->mesh->primitives[j].material
-                        ? (cgltf_material_index(data, node->mesh->primitives[j].material) + 1)
-                        : 0;
-                mat_offset_table[ctx.materials[instances[instance_count].material_index].material_class] +=
-                    get_max_draw_commands(get_max_lod_meshlets(ctx.primitives[desc.offset + j]));
+                auto& instance             = scene_data.instances.emplace_back();
+                instance.pos_and_scale     = {transform_comp.position, transform_comp.uniform_scale};
+                instance.rotation_quat     = transform_comp.rotation;
+                instance.visibility_offset = visibility_offset;
+                instance.mesh_data_index   = desc.offset + j;
+                instance.base_vertex       = scene_data.primitives[desc.offset + j].base_vertex;
+                instance.material_index    = node->mesh->primitives[j].material
+                                               ? (cgltf_material_index(data, node->mesh->primitives[j].material) + 1)
+                                               : 0;
+                mat_offset_table[scene_data.materials[instance.material_index].material_class] +=
+                    get_max_draw_commands(get_max_lod_meshlets(scene_data.primitives[desc.offset + j]));
 
                 ++instance_count;
                 triangles_max += get_max_lod_tris(raw_meshes[desc.offset + j]);
-                visibility_offset += get_max_lod_meshlets(ctx.primitives[desc.offset + j]);
+                visibility_offset += get_max_lod_meshlets(scene_data.primitives[desc.offset + j]);
             }
         }
 
@@ -698,17 +691,7 @@ loader::scene_info loader::load_scene(const fs::path& path, scene& scene, const 
 #endif
     }
 
-    render::vk_submit_transfer(geometry_pool.transfer,
-                               geometry_pool.instances.buffer,
-                               VkBufferCopy {.size = instance_count * sizeof(loader::instance)});
-    geometry_pool.instances.offset += instance_count * sizeof(loader::instance);
-    // TODO
-
-    return {.meshes           = meshes.size(),
-            .meshlets         = visibility_offset,
-            .triangles        = triangles_max,
-            .primitives       = instance_count,
-            .mat_offset_table = mat_offset_table};
+    return scene_data;
 }
 
 result<loader::meshes_context> loader::load_meshes(const fs::path& path)
@@ -782,12 +765,12 @@ result<loader::meshes_context> loader::load_meshes(const fs::path& path)
     return ctx;
 }
 
-void loader::encode_raw_mesh(loader_context& ctx, const mesh::raw_mesh& primitive, const prim_layout& layout)
+void loader::encode_raw_mesh(scene_data& data, const mesh::raw_mesh& primitive, const prim_layout& layout)
 {
     ZoneScoped;
 
     // Create new primitive descriptor
-    auto& prim_desc            = ctx.primitives[layout.prim_index];
+    auto& prim_desc            = data.primitives[layout.prim_index];
     const vec4 bounding_sphere = compute_bounding_sphere(primitive.raw_vertices);
 
     prim_desc.base_vertex = layout.vertex_offset;
@@ -801,7 +784,7 @@ void loader::encode_raw_mesh(loader_context& ctx, const mesh::raw_mesh& primitiv
     for (u32 i = 0; i < primitive.raw_vertices.size(); ++i)
     {
         const auto& vertex = primitive.raw_vertices[i];
-        auto& encoded_vtx  = ctx.vertices[layout.vertex_offset + i];
+        auto& encoded_vtx  = data.vertices[layout.vertex_offset + i];
 
         encoded_vtx.px = vertex.position.x;
         encoded_vtx.py = vertex.position.y;
@@ -833,7 +816,7 @@ void loader::encode_raw_mesh(loader_context& ctx, const mesh::raw_mesh& primitiv
         const u64 meshlet_base_offset = lod_layout.meshlet_data_offset;
 
         // simple copy
-        std::memcpy(ctx.meshlets_data.data() + lod_layout.meshlet_data_offset,
+        std::memcpy(data.meshlets_data.data() + lod_layout.meshlet_data_offset,
                     lod_level.raw_meshlets_payload.data(),
                     lod_level.raw_meshlets_payload.size());
 
@@ -841,7 +824,7 @@ void loader::encode_raw_mesh(loader_context& ctx, const mesh::raw_mesh& primitiv
         for (u32 j = 0; j < lod_level.raw_meshlets.size(); ++j)
         {
             const auto& meshlet = lod_level.raw_meshlets[j];
-            auto& encoded_mst   = ctx.meshlets[lod_layout.meshlet_offset + j];
+            auto& encoded_mst   = data.meshlets[lod_layout.meshlet_offset + j];
 
             encoded_mst.cone_axis[0] = meshlet.cone_axis.x;
             encoded_mst.cone_axis[1] = meshlet.cone_axis.y;
