@@ -33,7 +33,7 @@
 #include <vector>
 
 #define NO_EDITOR          0
-#define NO_PERF_QUERY      0
+#define NO_PERF_QUERY      1
 #define TEST_MULTI_OBJECTS 0
 
 struct pc_data
@@ -136,7 +136,7 @@ void begin_rendering(VkCommandBuffer cmd, VkImageView color, VkImageView depth, 
         color_attachment_info = {
             .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
             .imageView   = color,
-            .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR,
+            .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
             .loadOp      = load_op,
             .storeOp     = store_op,
             .clearValue  = {
@@ -600,6 +600,7 @@ int main(int argc, char* argv[])
         *render::create_vk_query_pool(renderer.get_context().device, kQueryPoolCount, VK_QUERY_TYPE_TIMESTAMP);
 
     VkQueryPool pipeline_statistics_query = VK_NULL_HANDLE;
+#if !NO_PERF_QUERY
     if (pipeline_stats_supported)
     {
         pipeline_statistics_query = *render::create_vk_pipeline_stat_query_pool(
@@ -611,6 +612,7 @@ int main(int argc, char* argv[])
                 | VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT
                 | VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT);
     }
+#endif
 
     render::vk_buffer draw_count_buffer = *render::create_buffer(
         sizeof(u32),
@@ -962,6 +964,7 @@ int main(int argc, char* argv[])
                     draw_shared_buffer_stats("Meshlets", geometry_pool.meshlets);
                     draw_shared_buffer_stats("Meshlets payload", geometry_pool.meshlets_payload);
 
+#if !NO_PERF_QUERY
                     ImGui::SeparatorText("Last frame pipeline stats");
                     ImGui::Text("input_assembly_vertices: %s",
                                 format_big_number(frame_stats_data.input_assembly_vertices).c_str());
@@ -972,6 +975,7 @@ int main(int argc, char* argv[])
                     ImGui::Text("triangles_count: %s", format_big_number(frame_stats_data.triangles_count).c_str());
                     ImGui::Text("fragment_shader_invocations: %s",
                                 format_big_number(frame_stats_data.fragment_shader_invocations).c_str());
+#endif
 
                     ImGui::SeparatorText("render controls");
 
@@ -1103,6 +1107,8 @@ int main(int argc, char* argv[])
     {
         client_events.poll();
     }
+
+    vkDeviceWaitIdle(renderer.get_context().device);
 
     return 0;
 }

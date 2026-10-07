@@ -435,12 +435,16 @@ VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
     for (const auto device : devices)
     {
         const auto rating = rate_device(device);
-        if (check_device_basic_features_support(device, surface, required_extensions, required_features)
-            && rating > best_rating)
+        if (rating > best_rating && check_device_basic_features_support(device, surface, required_extensions, required_features))
         {
             best_rating             = rating;
             current_pick            = device;
             device_features_support = required_features;
+
+            VkPhysicalDeviceProperties device_properties;
+            vkGetPhysicalDeviceProperties(device, &device_properties);
+
+            assert(device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
         }
     }
 

@@ -76,7 +76,7 @@ void main()
         vs_out[i].normal = vec3(vertices[vid].nx, vertices[vid].ny, vertices[vid].nz);
 
 #if VISUALIZE_MESHLETS
-        vs_out[i].meshlet_id = meshlet_task.meshlet_ids[gl_WorkGroupID.x];
+        vs_out[i].meshlet_id = m_idx;
 #endif
 
 #if 0
