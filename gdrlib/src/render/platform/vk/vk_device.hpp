@@ -21,7 +21,6 @@ namespace render
         VkSurfaceFormatKHR surface_format;
 
         VkSwapchainKHR sc     = VK_NULL_HANDLE;
-        VkFormat depth_format = VK_FORMAT_UNDEFINED;
     };
 
     struct vk_queue_data

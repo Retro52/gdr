@@ -29,6 +29,7 @@ render::rhi::rhi render::rhi::create_for_d3d12()
         .query_shader_stage           = d3d12_query_shader_stage,
         .query_swapchain_images_count = d3d12_query_swapchain_images_count,
         .query_current_frame_index    = d3d12_query_current_frame_index,
+        .query_swapchain_color_format = d3d12_query_swapchain_color_format,
 
         .query_queue           = d3d12_query_queue,
         .query_device          = d3d12_query_device,
@@ -77,6 +78,7 @@ render::rhi::rhi render::rhi::create_for_vk()
         .query_shader_stage           = vk_query_shader_stage,
         .query_swapchain_images_count = vk_query_swapchain_images_count,
         .query_current_frame_index    = vk_query_current_frame_index,
+        .query_swapchain_color_format = vk_query_swapchain_color_format,
 
         .query_queue           = vk_query_queue,
         .query_device          = vk_query_device,

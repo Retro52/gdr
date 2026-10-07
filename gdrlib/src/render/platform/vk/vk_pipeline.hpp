@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 #include <render/platform/vk/vk_descriptor_set.hpp>
 #include <render/platform/vk/vk_renderer.hpp>
+#include <render/rhi_pso_options.hpp>
 #include <result.hpp>
 
 namespace render
@@ -19,11 +20,18 @@ namespace render
 
         vk_descriptor_info() = default;
 
-        vk_descriptor_info(VkSampler sampler, VkImageView imageView, VkImageLayout imageLayout)
+        vk_descriptor_info(VkSampler sampler, const vk_image& image)
         {
             m_image.sampler     = sampler;
-            m_image.imageView   = imageView;
-            m_image.imageLayout = imageLayout;
+            m_image.imageView   = image.view;
+            m_image.imageLayout = image.layout;
+        }
+
+        vk_descriptor_info(VkSampler sampler, VkImageView view, VkImageLayout layout)
+        {
+            m_image.sampler     = sampler;
+            m_image.imageView   = view;
+            m_image.imageLayout = layout;
         }
 
         vk_descriptor_info(VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range)
@@ -100,7 +108,7 @@ namespace render
 
         static result<vk_pipeline> create_graphics(VkDevice device, const vk_shader* shaders, u32 shaders_count,
                                                    const vk_descriptor_set* desc_set = nullptr, u32 desc_set_count = 0,
-                                                   const nlohmann::json& options = nlohmann::json());
+                                                   const render::rhi::pso_options& options = {});
 
         void bind(VkCommandBuffer command_buffer) const;
 

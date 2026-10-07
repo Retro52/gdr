@@ -59,7 +59,7 @@ private:
 public:
     render::rhi::pipeline& operator[](const pso_id id) { return m_pipelines[static_cast<u32>(id)]; }
 
-    void load(const render::rhi::rhi& rhi, render::rhi::context context, render::rhi::bindless_set textures_set);
+    void load(const render::rhi::rhi& rhi, render::rhi::context context, render::rhi::swapchain swapchain, render::rhi::bindless_set textures_set);
 
     void shutdown(const render::rhi::rhi& rhi, render::rhi::context context);
 };

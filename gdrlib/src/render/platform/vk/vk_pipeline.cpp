@@ -15,12 +15,6 @@ using namespace render;
 
 namespace
 {
-    template<typename T>
-    T opt_get(const nlohmann::json& options, const char* key, T defval)
-    {
-        return options.contains(key) ? static_cast<T>(options[key]) : defval;
-    }
-
     std::string parse_spv_string(const u32* raw)
     {
         ZoneScoped;
@@ -544,7 +538,7 @@ result<vk_pipeline> vk_pipeline::create_compute(VkDevice device, const vk_shader
 
 result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shader* shaders, u32 shaders_count,
                                                  const vk_descriptor_set* desc_set, u32 desc_set_count,
-                                                 const nlohmann::json& options)
+                                                 const render::rhi::pso_options& options)
 {
     ZoneScoped;
     cpp::heap_array<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
@@ -569,17 +563,17 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
         .pDynamicStates    = dynamic_state,
     };
 
-    const VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info {
+    constexpr VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
     };
 
     const VkPipelineInputAssemblyStateCreateInfo assembly_state_create_info {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology               = opt_get(options, "topology", VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST),
+        .topology               = options.topology,
         .primitiveRestartEnable = VK_FALSE,
     };
 
-    const VkPipelineViewportStateCreateInfo viewport_state_create_info {
+    constexpr VkPipelineViewportStateCreateInfo viewport_state_create_info {
         .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
         .viewportCount = 1,
         .scissorCount  = 1,
@@ -587,12 +581,12 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
 
     const VkPipelineRasterizationStateCreateInfo rasterizer {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .depthClampEnable        = opt_get(options, "depth_clamp", VK_FALSE),
+        .depthClampEnable        = options.flags & rhi::pso_flag::eDepthClamp,
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode             = VK_POLYGON_MODE_FILL,
         .cullMode                = VK_CULL_MODE_BACK_BIT,
         .frontFace               = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-        .depthBiasEnable         = opt_get(options, "depth_bias", VK_FALSE),
+        .depthBiasEnable         = options.flags & rhi::pso_flag::eDepthBias,
         .lineWidth               = 1.0f,
     };
 
@@ -607,13 +601,13 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
     };
 
     const VkPipelineColorBlendAttachmentState color_blend_attachment_state {
-        .blendEnable         = VK_FALSE,
-        .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-        .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-        .colorBlendOp        = VK_BLEND_OP_ADD,
-        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-        .alphaBlendOp        = VK_BLEND_OP_ADD,
+        .blendEnable         = options.flags & rhi::pso_flag::eBlendEnable,
+        .srcColorBlendFactor = options.src_color_blend_factor,
+        .dstColorBlendFactor = options.dst_color_blend_factor,
+        .colorBlendOp        = options.color_blend_op,
+        .srcAlphaBlendFactor = options.src_alpha_blend_factor,
+        .dstAlphaBlendFactor = options.dst_alpha_blend_factor,
+        .alphaBlendOp        = options.alpha_blend_op,
         .colorWriteMask =
             VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
     };
@@ -624,24 +618,21 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
         .pAttachments    = &color_blend_attachment_state,
     };
 
-    const auto color_counts  = opt_get(options, "color_attachments", 1U);
-    const auto depth_format  = opt_get(options, "depth_format", VK_FORMAT_UNDEFINED);
-    const auto color_formats = opt_get(options, "color_format", VK_FORMAT_UNDEFINED);
-
     const VkPipelineRenderingCreateInfo pipeline_rendering_create_info {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
         .pNext                   = nullptr,
-        .colorAttachmentCount    = color_counts,
-        .pColorAttachmentFormats = &color_formats,
-        .depthAttachmentFormat   = depth_format,
+        .colorAttachmentCount    = options.color_attachments_count,
+        .pColorAttachmentFormats = options.color_formats,
+        .depthAttachmentFormat   = options.depth_format,
     };
 
+    const bool has_depth = options.depth_format != VK_FORMAT_UNDEFINED;
     const VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info {
         .sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
         .pNext            = nullptr,
-        .depthTestEnable  = VK_TRUE,
-        .depthWriteEnable = VK_TRUE,
-        .depthCompareOp   = VK_COMPARE_OP_GREATER,
+        .depthTestEnable  = has_depth ? options.flags & rhi::pso_flag::eDepthTest : false,
+        .depthWriteEnable = has_depth ? options.flags & rhi::pso_flag::eDepthWrite : false,
+        .depthCompareOp   = has_depth ? options.depth_compare_op : VK_COMPARE_OP_NEVER,
         .minDepthBounds   = 0.0f,
         .maxDepthBounds   = 1.0f,
     };

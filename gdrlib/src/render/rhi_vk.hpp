@@ -25,12 +25,13 @@ namespace render::rhi
 
     result<pipeline> vk_create_compute_pso(context context, shader shader, std::span<const bindless_set> sets);
     result<pipeline> vk_create_graphics_pso(context context, std::span<const shader> shaders,
-                                            std::span<const bindless_set> sets, const nlohmann::json& options);
+                                            std::span<const bindless_set> sets, const pso_options& options);
     void vk_destroy_pso(context context, pipeline& pso);
 
     result<VkShaderStageFlagBits> vk_query_shader_stage(shader shader);
     result<u32> vk_query_swapchain_images_count(swapchain swapchain);
     result<u32> vk_query_current_frame_index(swapchain swapchain);
+    result<VkFormat> vk_query_swapchain_color_format(swapchain swapchain);
 
     result<queue> vk_query_queue(context context, queue_kind kind);
     result<device> vk_query_device(context context);

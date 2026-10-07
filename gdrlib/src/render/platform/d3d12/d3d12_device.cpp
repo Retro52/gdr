@@ -163,6 +163,7 @@ static void message_callback(D3D12_MESSAGE_CATEGORY category, D3D12_MESSAGE_SEVE
         assert2m(false, message);
         break;
     case D3D12_MESSAGE_SEVERITY_WARNING :
+        assert2m(false, message);
         LOG_WARNING("validation warning ({}): {}", debug_message_category_to_str(category), message);
         break;
     case D3D12_MESSAGE_SEVERITY_INFO :

@@ -125,12 +125,14 @@ int main(const int argc, char* argv[])
         return 1;
     }
 
+    constexpr auto kFramesInFlight  = 2;
+    constexpr auto kSwapchainVsync  = true;
     constexpr auto kSwapchainFormat = VK_FORMAT_R8G8B8A8_UNORM;
     render::rhi::create_swapchain_info create_swapchain_info {
         .size             = window.get_size_in_px(),
-        .frames_in_flight = 2,
+        .frames_in_flight = kFramesInFlight,
         .format           = kSwapchainFormat,
-        .vsync            = false,
+        .vsync            = kSwapchainVsync,
     };
 
     auto swapchain = RHI_SAFE_CALL(rhi.create_swapchain, *context, create_swapchain_info);
@@ -155,9 +157,9 @@ int main(const int argc, char* argv[])
 
             const render::rhi::create_swapchain_info update_swapchain_info {
                 .size             = payload.window.size_px,
-                .frames_in_flight = 2,
+                .frames_in_flight = kFramesInFlight,
                 .format           = kSwapchainFormat,
-                .vsync            = false,
+                .vsync            = kSwapchainVsync,
             };
 
             RHI_SAFE_CALL(ctx.rhi.device_wait_idle, ctx.context);
@@ -206,7 +208,7 @@ int main(const int argc, char* argv[])
     }
 
     pso_data pipelines;
-    pipelines.load(rhi, *context, *textures_set);
+    pipelines.load(rhi, *context, *swapchain, *textures_set);
 
 #if RHI_BUFFERS_EXPERIMENTAL
     scene_geometry_pool geometry_pool {

@@ -39,6 +39,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
         quill::quill
         Tracy::TracyClient
         SDL3_image::SDL3_image
+        Microsoft::DirectX-Headers
         SPIRV-Headers::SPIRV-Headers
         D3D12MemoryAllocator
         GPUOpen::VulkanMemoryAllocator

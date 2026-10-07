@@ -2,8 +2,10 @@
 #include <render/platform/d3d12/d3d12_command_list.hpp>
 #include <render/platform/d3d12/d3d12_device.hpp>
 #include <render/platform/d3d12/d3d12_error.hpp>
+#include <render/platform/d3d12/d3d12_pipeline.hpp>
 #include <render/platform/d3d12/d3d12_queue.hpp>
 #include <render/platform/d3d12/d3d12_utils.hpp>
+#include <render/platform/vk/vk_utils.hpp>
 #include <render/rhi_d3d12.hpp>
 #include <render/rhi_util.hpp>
 #include <tracy/Tracy.hpp>
@@ -178,15 +180,23 @@ void render::rhi::d3d12_destroy_bindless_set(context context, bindless_set& set)
     ZoneScoped;
 }
 
-auto render::rhi::d3d12_create_shader(context context, const fs::path& path) -> result<shader>
+auto render::rhi::d3d12_create_shader(context /* context */, const fs::path& path) -> result<shader>
 {
     ZoneScoped;
-    return null_shader;
+
+    const auto d3d12_shader = render::d3d12_create_shader(path);
+    RESULT_FORWARD_IF_FAILED(d3d12_shader);
+
+    return create_handle<shader>(*d3d12_shader);
 }
 
-void render::rhi::d3d12_destroy_shader(context context, shader& shader)
+void render::rhi::d3d12_destroy_shader(context /* context */, shader& shader)
 {
     ZoneScoped;
+    if (const auto d3d12_shader = cast_from_handle<render::d3d12_shader>(shader))
+    {
+        clear_handle(d3d12_shader, shader);
+    }
 }
 
 auto render::rhi::d3d12_create_buffer(context context, const create_buffer_info& buffer_info) -> result<buffer>
@@ -208,22 +218,57 @@ auto render::rhi::d3d12_create_compute_pso(context context, shader shader, std::
 }
 
 auto render::rhi::d3d12_create_graphics_pso(context context, std::span<const shader> shaders,
-                                            std::span<const bindless_set> sets, const nlohmann::json& options)
+                                            std::span<const bindless_set> sets, const pso_options& options)
     -> result<pipeline>
 {
     ZoneScoped;
-    return null_pipeline;
+
+    const auto* d3d12_ctx = cast_from_handle<render::d3d12_context>(context);
+    if (!d3d12_ctx)
+    {
+        return error("Failed to access context");
+    }
+
+    d3d12_shader d3d12_shaders[16];
+    assert2(shaders.size() <= COUNT_OF(d3d12_shaders));
+
+    for (u32 i = 0; i < cpp::min(shaders.size(), COUNT_OF(d3d12_shaders)); i++)
+    {
+        const auto* d3d12s = cast_from_handle<d3d12_shader>(shaders[i]);
+        if (!d3d12s)
+        {
+            return error("failed to access the shader");
+        }
+
+        d3d12_shaders[i] = *d3d12s;
+    }
+
+    const auto d3d12_pso = render::d3d12_create_pipeline_graphics(
+        d3d12_ctx->device.Get(), d3d12_shaders, shaders.size(), nullptr, 0, options);
+    RESULT_FORWARD_IF_FAILED(d3d12_pso);
+
+    return create_handle<pipeline>(*d3d12_pso);
 }
 
 void render::rhi::d3d12_destroy_pso(context context, pipeline& pso)
 {
     ZoneScoped;
+    if (auto* d3d12_pso = cast_from_handle<render::d3d12_pipeline>(pso))
+    {
+        render::d3d12_destroy_pipeline(*d3d12_pso);
+        clear_handle(d3d12_pso, pso);
+    }
 }
 
 result<VkShaderStageFlagBits> render::rhi::d3d12_query_shader_stage(shader shader)
 {
     ZoneScoped;
-    return VK_SHADER_STAGE_VERTEX_BIT;
+    if (const auto d3d12_shader = cast_from_handle<render::d3d12_shader>(shader))
+    {
+        return d3d12_shader->spv_meta.stage;
+    }
+
+    return error("Failed to query shader stage");
 }
 
 result<u32> render::rhi::d3d12_query_swapchain_images_count(swapchain swapchain)
@@ -248,6 +293,19 @@ result<u32> render::rhi::d3d12_query_current_frame_index(swapchain swapchain)
     }
 
     return d3d12_sc->swapchain->GetCurrentBackBufferIndex();
+}
+
+result<VkFormat> render::rhi::d3d12_query_swapchain_color_format(swapchain swapchain)
+{
+    if (const auto* d3d12_sc = cast_from_handle<render::d3d12_swapchain>(swapchain))
+    {
+        DXGI_SWAP_CHAIN_DESC1 desc = {};
+        D3D12_RETURN_ON_FAIL(d3d12_sc->swapchain->GetDesc1(&desc));
+
+        return vk_format_from_dxgi(desc.Format);
+    }
+
+    return error("Failed to access swapchain");
 }
 
 auto render::rhi::d3d12_query_queue(context context, queue_kind kind) -> result<queue>
@@ -519,6 +577,22 @@ void render::rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const a
         }
     }
 
+    {
+
+    };
+
+    D3D12_RECT scissor = CD3DX12_RECT(static_cast<LONG>(viewport.x),
+                                      static_cast<LONG>(viewport.y),
+                                      static_cast<LONG>(viewport.z),
+                                      static_cast<LONG>(viewport.w));
+
+    D3D12_VIEWPORT vp = CD3DX12_VIEWPORT(static_cast<FLOAT>(viewport.x),
+                                         static_cast<FLOAT>(viewport.y + viewport.w),
+                                         static_cast<FLOAT>(viewport.z),
+                                         -static_cast<FLOAT>(viewport.w));
+
+    gfx_command_list->RSSetViewports(1, &vp);
+    gfx_command_list->RSSetScissorRects(1, &scissor);
     gfx_command_list->OMSetRenderTargets(color_attachments.size(), color_handles, FALSE, depth_stencil);
 }
 
@@ -530,10 +604,35 @@ void render::rhi::d3d12_cmd_clear_draw_state(command_buffer cmd)
 void render::rhi::d3d12_cmd_bind_pso(command_buffer cmd, pipeline pso)
 {
     ZoneScoped;
+
+    const auto* d3d12_pso = cast_from_handle<render::d3d12_pipeline>(pso);
+    const auto* d3d12_cmd = cast_from_handle<render::d3d12_command_list>(cmd);
+    if (!d3d12_cmd || !d3d12_pso)
+    {
+        return;
+    }
+
+    if (const auto gfx_command_list = d3d12_rhi_get_gfx_command_list(d3d12_cmd))
+    {
+        gfx_command_list->SetPipelineState(d3d12_pso->pso.Get());
+        gfx_command_list->SetGraphicsRootSignature(d3d12_pso->root_signature.Get());
+
+        gfx_command_list->IASetPrimitiveTopology(d3d12_pso->topology);
+    }
 }
 
-void render::rhi::d3d12_cmd_draw_instanced(command_buffer cmd, u32 vtx_count, u32 instance_count, u32 first_vertex,
-                                           u32 first_instance)
+void render::rhi::d3d12_cmd_draw_instanced(command_buffer cmd, const u32 vtx_count, const u32 instance_count,
+                                           const u32 first_vertex, const u32 first_instance)
 {
     ZoneScoped;
+    const auto* d3d12_cmd = cast_from_handle<render::d3d12_command_list>(cmd);
+    if (!d3d12_cmd)
+    {
+        return;
+    }
+
+    if (const auto gfx_command_list = d3d12_rhi_get_gfx_command_list(d3d12_cmd))
+    {
+        gfx_command_list->DrawInstanced(vtx_count, instance_count, first_vertex, first_instance);
+    }
 }

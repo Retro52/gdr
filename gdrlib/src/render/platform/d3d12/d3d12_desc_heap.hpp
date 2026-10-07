@@ -5,6 +5,7 @@
 #include <result.hpp>
 
 #include <array>
+#include <type_traits>
 
 namespace render
 {
@@ -18,18 +19,21 @@ namespace render
     template<u64 N>
     struct d3d12_tracked_heap
     {
-        constexpr static u32 kEnd      = N;
-        constexpr static u32 kOccupied = ~0U;
+        static_assert(N > 0 && N < 0xFFFF, "descriptor heap too large for an inline free list");
+        using index_t = std::conditional_t<N < 0xFF, u8, u16>;
+
+        constexpr static index_t kEnd      = N;
+        constexpr static index_t kOccupied = ~static_cast<index_t>(0);
 
         d3d12_desc_heap heap;
 
-        u32 next_free           = 0;
-        std::array<u32, N> list = []
+        index_t next_free           = 0;
+        std::array<index_t, N> list = []
         {
-            std::array<u32, N> result;
+            std::array<index_t, N> result;
 
-            result[N - 1] = 0;
-            for (u32 i = 0; i < N - 1; i++)
+            result[N - 1] = kEnd;
+            for (index_t i = 0; i < N - 1; ++i)
             {
                 result[i] = i + 1;
             }
@@ -39,7 +43,7 @@ namespace render
 
         D3D12_CPU_DESCRIPTOR_HANDLE alloc()
         {
-            u32 result = next_free;
+            index_t result = next_free;
             assert2(result != kEnd);
 
             next_free    = list[next_free];
@@ -50,11 +54,14 @@ namespace render
         void free(const D3D12_CPU_DESCRIPTOR_HANDLE handle)
         {
             assert2(handle.ptr >= heap.cpu_handle.ptr);
-            assert2((handle.ptr - heap.cpu_handle.ptr) % heap.cpu_increment_size == 0);
 
-            u32 index = (handle.ptr - heap.cpu_handle.ptr) / heap.cpu_increment_size;
+            const u64 offset = handle.ptr - heap.cpu_handle.ptr;
 
-            assert2(index < N);
+            assert2(offset / heap.cpu_increment_size < N);
+            assert2(offset % heap.cpu_increment_size == 0);
+
+            index_t index = offset / heap.cpu_increment_size;
+
             assert2(list[index] == kOccupied);
 
             list[index] = next_free;
