@@ -4,7 +4,7 @@
 
 #include <utility>
 
-namespace render::rhi
+namespace rhi
 {
     template<typename H, typename T>
     [[nodiscard]] H create_handle(T&& handle)

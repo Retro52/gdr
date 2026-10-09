@@ -4,7 +4,7 @@
 
 #include <pod_types.hpp>
 
-namespace render
+namespace platform
 {
     u32 d3d12_format_from_vk(VkFormat vk_format);
 }

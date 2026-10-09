@@ -8,7 +8,7 @@
 #include <render/rhi_pso_options.hpp>
 #include <result.hpp>
 
-namespace render
+namespace platform
 {
     struct vk_descriptor_info
     {
@@ -52,11 +52,11 @@ namespace render
     struct vk_descriptor_bindings
     {
         constexpr static u32 kMaxSetZeroBindings = 32;
-        render::vk_descriptor_info render_bindings[kMaxSetZeroBindings] {};
+        platform::vk_descriptor_info render_bindings[kMaxSetZeroBindings] {};
 
-        render::vk_descriptor_info* get() { return render_bindings; }
+        platform::vk_descriptor_info* get() { return render_bindings; }
 
-        auto& bind_at(const render::vk_descriptor_info& next, const u32 index)
+        auto& bind_at(const platform::vk_descriptor_info& next, const u32 index)
         {
             assert2(index < kMaxSetZeroBindings);
             render_bindings[index] = next;
@@ -108,7 +108,7 @@ namespace render
 
         static result<vk_pipeline> create_graphics(VkDevice device, const vk_shader* shaders, u32 shaders_count,
                                                    const vk_descriptor_set* desc_set = nullptr, u32 desc_set_count = 0,
-                                                   const render::rhi::pso_options& options = {});
+                                                   const rhi::pso_options& options = {});
 
         void bind(VkCommandBuffer command_buffer) const;
 

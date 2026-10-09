@@ -1,14 +1,14 @@
 #include <render/platform/vk/vk_descriptor_set.hpp>
 #include <render/platform/vk/vk_error.hpp>
 
-void render::vk_destroy_descriptor_set(VkDevice device, vk_descriptor_set& descriptor_pool)
+void platform::vk_destroy_descriptor_set(VkDevice device, vk_descriptor_set& descriptor_pool)
 {
     VK_DESTROY(descriptor_pool.descriptor_set_layout, vkDestroyDescriptorSetLayout, device);
     VK_DESTROY(descriptor_pool.descriptor_pool, vkDestroyDescriptorPool, device);
     descriptor_pool.descriptor_pool = VK_NULL_HANDLE;
 }
 
-result<render::vk_descriptor_set> render::vk_create_bindless_textures_set(VkDevice device, const u32 max_textures)
+result<platform::vk_descriptor_set> platform::vk_create_bindless_textures_set(VkDevice device, const u32 max_textures)
 {
     VkDescriptorPoolSize pool_sizes_bindless[] = {
         {.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = max_textures}
@@ -71,5 +71,5 @@ result<render::vk_descriptor_set> render::vk_create_bindless_textures_set(VkDevi
     VkDescriptorSet descriptor_set;
     VK_RETURN_ON_FAIL(vkAllocateDescriptorSets(device, &allocate_info, &descriptor_set));
 
-    return render::vk_descriptor_set(descriptor_set, descriptor_pool, descriptor_set_layout);
+    return platform::vk_descriptor_set(descriptor_set, descriptor_pool, descriptor_set_layout);
 }

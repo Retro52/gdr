@@ -30,7 +30,7 @@ namespace
         return cpp::stack_string::make_formatted("%.3lf%s", fraction, magnitudes_per_thousand[magnitude - 1]);
     }
 
-    // void draw_shared_buffer_stats(const char* label, const render::vk_shared_buffer& buffer)
+    // void draw_shared_buffer_stats(const char* label, const platform::vk_shared_buffer& buffer)
     // {
     //     ZoneScoped;
     //
@@ -43,7 +43,7 @@ namespace
     //     ImGui::ProgressBar(fraction, ImVec2(ImGui::GetContentRegionAvail().x, 0.0F), str.c_str());
     // }
     //
-    // void draw_scene_geometry_pool(const render::vk_scene_geometry_pool& buffer)
+    // void draw_scene_geometry_pool(const platform::vk_scene_geometry_pool& buffer)
     // {
     //     ZoneScoped;
     //     const u64 acc_size = buffer.primitives.size + buffer.meshlets.size + buffer.meshlets_payload.size

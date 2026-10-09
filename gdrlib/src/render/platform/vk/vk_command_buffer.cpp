@@ -2,7 +2,7 @@
 #include <render/platform/vk/vk_error.hpp>
 #include <tracy/Tracy.hpp>
 
-result<render::vk_command_buffer> render::vk_create_command_buffer(VkDevice device, u32 queue_family,
+result<platform::vk_command_buffer> platform::vk_create_command_buffer(VkDevice device, u32 queue_family,
                                                                    VkCommandPoolCreateFlags extra_flags)
 {
     ZoneScoped;
@@ -26,7 +26,7 @@ result<render::vk_command_buffer> render::vk_create_command_buffer(VkDevice devi
     return buffer;
 }
 
-void render::vk_destroy_command_buffer(VkDevice device, const vk_command_buffer& cmd_buffer)
+void platform::vk_destroy_command_buffer(VkDevice device, const vk_command_buffer& cmd_buffer)
 {
     ZoneScoped;
     vkFreeCommandBuffers(device, cmd_buffer.cmd_pool, 1, &cmd_buffer.cmd_buffer);

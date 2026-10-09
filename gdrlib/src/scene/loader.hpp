@@ -1,9 +1,12 @@
 #pragma once
 
+#include <bytes.hpp>
 #include <cpp/containers/heap_array.hpp>
 #include <fs/fs.hpp>
 #include <shaders/constants.h>
 #include <shaders/types.h>
+
+#include <array>
 
 class scene;
 struct cgltf_primitive;
@@ -24,12 +27,22 @@ namespace loader
     using material  = shader_types::MeshMaterial;
     using instance  = shader_types::MeshInstance;
 
-    struct scene_info
+    struct texture_desc
     {
-        u64 meshes     = 0;
-        u64 meshlets   = 0;
-        u64 triangles  = 0;
-        u64 primitives = 0;
+        uvec3 dimensions         = uvec3(0);
+        u32 mips_count           = 0;
+        u32 arrays_count         = 0;
+        u32 block_size           = 0;
+        u32 bits_per_block       = 0;
+        rhi::image_format format = rhi::image_format::none;
+        bytes pdata;
+    };
+
+    struct scene_counters
+    {
+        u64 meshlets  = 0;
+        u64 triangles = 0;
+        u64 instances = 0;
         std::array<u32, shader_constants::kMatClassCount> mat_offset_table {};
     };
 
@@ -59,7 +72,7 @@ namespace loader
         const cgltf_primitive* ptr;
     };
 
-    struct meshes_context
+    struct meshes_data
     {
         cpp::heap_array<mesh_info> meshes;
         cpp::heap_array<mesh::raw_mesh> primitives;
@@ -67,6 +80,8 @@ namespace loader
 
     struct scene_data
     {
+        scene_counters counters;
+
         cpp::heap_array<loader::vertex> vertices;
 
         cpp::heap_array<loader::meshlet> meshlets;
@@ -75,30 +90,18 @@ namespace loader
         cpp::heap_array<loader::instance> instances;
         cpp::heap_array<loader::material> materials;
         cpp::heap_array<loader::primitive> primitives;
+        cpp::heap_array<loader::texture_desc> textures;
     };
-
-    // struct scene_geometry_pool
-    // {
-    //     shared_buffer vertex;
-    //     shared_buffer meshlets;
-    //     shared_buffer primitives;
-    //     shared_buffer instances;
-    //     shared_buffer materials;
-    //     shared_buffer meshlets_payload;
-    //
-    //     buffer_transfer transfer;
-    // };
 
     u32 get_max_lod_tris(const mesh::raw_mesh& mesh);
 
     u32 get_max_lod_meshlets(const loader::primitive& prim);
 
-    // result<render::vk_image> load_texture(const fs::path& path, const render::vk_renderer& renderer,
-    //                                       const render::vk_buffer_transfer& scratch);
+    result<meshes_data> load_meshes(const fs::path& path);
 
-    scene_data load_scene(const fs::path& path, scene& scene);
+    result<texture_desc> load_texture(const fs::path& path);
 
-    result<meshes_context> load_meshes(const fs::path& path);
+    result<scene_data> load_scene(const fs::path& path, scene& scene);
 
     void encode_raw_mesh(scene_data& ctx, const mesh::raw_mesh& primitive, const prim_layout& layout);
 }

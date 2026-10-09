@@ -6,7 +6,7 @@
     using NAME                 = handle<struct _hidden_##NAME##_tag>; \
     constexpr auto null_##NAME = null<struct _hidden_##NAME##_tag>;
 
-namespace render::rhi
+namespace rhi
 {
     template<typename>
     struct handle
@@ -40,3 +40,5 @@ namespace render::rhi
     RHI_REGISTER_HANDLE(bindless_set);
     RHI_REGISTER_HANDLE(command_buffer);
 }
+
+#undef RHI_REGISTER_HANDLE

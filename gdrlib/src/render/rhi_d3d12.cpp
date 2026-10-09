@@ -18,18 +18,18 @@ static T* d3d12_rhi_object_from_handle(H handle)
     return reinterpret_cast<T*>(handle.id);
 }
 
-static D3D12_RESOURCE_STATES d3d12_rhi_prase_image_layout(const render::rhi::image_layout layout)
+static D3D12_RESOURCE_STATES d3d12_rhi_prase_image_layout(const rhi::image_layout layout)
 {
     ZoneScoped;
     switch (layout)
     {
-    case render::rhi::image_layout::present :
+    case rhi::image_layout::present :
         return D3D12_RESOURCE_STATE_PRESENT;
-    case render::rhi::image_layout::render_target_color :
-    case render::rhi::image_layout::render_target_depth_stencil :
+    case rhi::image_layout::render_target_color :
+    case rhi::image_layout::render_target_depth_stencil :
         return D3D12_RESOURCE_STATE_RENDER_TARGET;
     default :
-    case render::rhi::image_layout::common :
+    case rhi::image_layout::common :
         return D3D12_RESOURCE_STATE_COMMON;
     }
 }
@@ -43,7 +43,7 @@ static render::com_ptr<ID3D12GraphicsCommandList> d3d12_rhi_get_gfx_command_list
     return gfx_command_list;
 }
 
-auto render::rhi::d3d12_create_context(const window& window, const instance_desc& desc) -> result<context>
+auto rhi::d3d12_create_context(const window& window, const instance_desc& desc) -> result<context>
 {
     ZoneScoped;
     auto d3d12_ctx = render::d3d12_create_context(window, desc);
@@ -52,7 +52,7 @@ auto render::rhi::d3d12_create_context(const window& window, const instance_desc
     return create_handle<context>(*d3d12_ctx);
 }
 
-void render::rhi::d3d12_destroy_context(context& context)
+void rhi::d3d12_destroy_context(context& context)
 {
     ZoneScoped;
     if (auto* d3d12_ctx = cast_from_handle<render::d3d12_context>(context))
@@ -62,7 +62,7 @@ void render::rhi::d3d12_destroy_context(context& context)
     }
 }
 
-auto render::rhi::d3d12_create_swapchain(context context, const create_swapchain_info& desc) -> result<swapchain>
+auto rhi::d3d12_create_swapchain(context context, const create_swapchain_info& desc) -> result<swapchain>
 {
     ZoneScoped;
     auto* d3d12_ctx = cast_from_handle<render::d3d12_context>(context);
@@ -81,8 +81,8 @@ auto render::rhi::d3d12_create_swapchain(context context, const create_swapchain
     return create_handle<swapchain>(*sc);
 }
 
-auto render::rhi::d3d12_resize_swapchain(context context, swapchain swapchain, const create_swapchain_info& desc)
-    -> result<render::rhi::swapchain>
+auto rhi::d3d12_resize_swapchain(context context, swapchain swapchain, const create_swapchain_info& desc)
+    -> result<rhi::swapchain>
 {
     ZoneScoped;
     auto* d3d12_ctx = cast_from_handle<render::d3d12_context>(context);
@@ -114,10 +114,10 @@ auto render::rhi::d3d12_resize_swapchain(context context, swapchain swapchain, c
     d3d12_sc->flags =
         desc.vsync ? d3d12_sc->flags | swapchain_flag::eVsync : (d3d12_sc->flags & ~swapchain_flag::eVsync);
     d3d12_sc->back_buffers = std::move(*new_buffers);
-    return reference_handle<render::rhi::swapchain>(d3d12_sc);
+    return reference_handle<rhi::swapchain>(d3d12_sc);
 }
 
-void render::rhi::d3d12_destroy_swapchain(context context, swapchain& swapchain)
+void rhi::d3d12_destroy_swapchain(context context, swapchain& swapchain)
 {
     ZoneScoped;
     auto* d3d12_sc  = cast_from_handle<render::d3d12_swapchain>(swapchain);
@@ -130,7 +130,7 @@ void render::rhi::d3d12_destroy_swapchain(context context, swapchain& swapchain)
     }
 }
 
-auto render::rhi::d3d12_create_command_buffer(context context, const queue_kind queue_kind) -> result<command_buffer>
+auto rhi::d3d12_create_command_buffer(context context, const queue_kind queue_kind) -> result<command_buffer>
 {
     ZoneScoped;
     auto* d3d12_ctx = cast_from_handle<render::d3d12_context>(context);
@@ -161,7 +161,7 @@ auto render::rhi::d3d12_create_command_buffer(context context, const queue_kind 
     return create_handle<command_buffer>(*command_list);
 }
 
-void render::rhi::d3d12_destroy_command_buffer(context context, command_buffer& cmd)
+void rhi::d3d12_destroy_command_buffer(context context, command_buffer& cmd)
 {
     ZoneScoped;
     auto* d3d12_cmd       = cast_from_handle<render::d3d12_command_list>(cmd);
@@ -174,18 +174,18 @@ void render::rhi::d3d12_destroy_command_buffer(context context, command_buffer& 
     }
 }
 
-auto render::rhi::d3d12_create_bindless_set(context context, u32 resource_count) -> result<bindless_set>
+auto rhi::d3d12_create_bindless_set(context context, u32 resource_count) -> result<bindless_set>
 {
     ZoneScoped;
     return null_bindless_set;
 }
 
-void render::rhi::d3d12_destroy_bindless_set(context context, bindless_set& set)
+void rhi::d3d12_destroy_bindless_set(context context, bindless_set& set)
 {
     ZoneScoped;
 }
 
-auto render::rhi::d3d12_create_shader(context /* context */, const fs::path& path) -> result<shader>
+auto rhi::d3d12_create_shader(context /* context */, const fs::path& path) -> result<shader>
 {
     ZoneScoped;
 
@@ -195,7 +195,7 @@ auto render::rhi::d3d12_create_shader(context /* context */, const fs::path& pat
     return create_handle<shader>(*d3d12_shader);
 }
 
-void render::rhi::d3d12_destroy_shader(context /* context */, shader& shader)
+void rhi::d3d12_destroy_shader(context /* context */, shader& shader)
 {
     ZoneScoped;
     if (const auto d3d12_shader = cast_from_handle<render::d3d12_shader>(shader))
@@ -204,25 +204,25 @@ void render::rhi::d3d12_destroy_shader(context /* context */, shader& shader)
     }
 }
 
-auto render::rhi::d3d12_create_buffer(context context, const create_buffer_info& buffer_info) -> result<buffer>
+auto rhi::d3d12_create_buffer(context context, const create_buffer_info& buffer_info) -> result<buffer>
 {
     ZoneScoped;
     return null_buffer;
 }
 
-void render::rhi::d3d12_destroy_buffer(context context, buffer& buffer)
+void rhi::d3d12_destroy_buffer(context context, buffer& buffer)
 {
     ZoneScoped;
 }
 
-auto render::rhi::d3d12_create_compute_pso(context context, shader shader, std::span<const bindless_set> sets)
+auto rhi::d3d12_create_compute_pso(context context, shader shader, std::span<const bindless_set> sets)
     -> result<pipeline>
 {
     ZoneScoped;
     return null_pipeline;
 }
 
-auto render::rhi::d3d12_create_graphics_pso(context context, std::span<const shader> shaders,
+auto rhi::d3d12_create_graphics_pso(context context, std::span<const shader> shaders,
                                             std::span<const bindless_set> sets, const pso_options& options)
     -> result<pipeline>
 {
@@ -255,7 +255,7 @@ auto render::rhi::d3d12_create_graphics_pso(context context, std::span<const sha
     return create_handle<pipeline>(*d3d12_pso);
 }
 
-void render::rhi::d3d12_destroy_pso(context context, pipeline& pso)
+void rhi::d3d12_destroy_pso(context context, pipeline& pso)
 {
     ZoneScoped;
     if (auto* d3d12_pso = cast_from_handle<render::d3d12_pipeline>(pso))
@@ -265,7 +265,7 @@ void render::rhi::d3d12_destroy_pso(context context, pipeline& pso)
     }
 }
 
-result<VkShaderStageFlagBits> render::rhi::d3d12_query_shader_stage(shader shader)
+result<VkShaderStageFlagBits> rhi::d3d12_query_shader_stage(shader shader)
 {
     ZoneScoped;
     if (const auto d3d12_shader = cast_from_handle<render::d3d12_shader>(shader))
@@ -276,7 +276,7 @@ result<VkShaderStageFlagBits> render::rhi::d3d12_query_shader_stage(shader shade
     return error("Failed to query shader stage");
 }
 
-result<u32> render::rhi::d3d12_query_swapchain_images_count(swapchain swapchain)
+result<u32> rhi::d3d12_query_swapchain_images_count(swapchain swapchain)
 {
     ZoneScoped;
     const auto* d3d12_sc = cast_from_handle<render::d3d12_swapchain>(swapchain);
@@ -288,7 +288,7 @@ result<u32> render::rhi::d3d12_query_swapchain_images_count(swapchain swapchain)
     return d3d12_sc->back_buffers.size();
 }
 
-result<u32> render::rhi::d3d12_query_current_frame_index(swapchain swapchain)
+result<u32> rhi::d3d12_query_current_frame_index(swapchain swapchain)
 {
     ZoneScoped;
     const auto* d3d12_sc = cast_from_handle<render::d3d12_swapchain>(swapchain);
@@ -300,7 +300,7 @@ result<u32> render::rhi::d3d12_query_current_frame_index(swapchain swapchain)
     return d3d12_sc->swapchain->GetCurrentBackBufferIndex();
 }
 
-result<VkFormat> render::rhi::d3d12_query_swapchain_color_format(swapchain swapchain)
+result<VkFormat> rhi::d3d12_query_swapchain_color_format(swapchain swapchain)
 {
     if (const auto* d3d12_sc = cast_from_handle<render::d3d12_swapchain>(swapchain))
     {
@@ -313,7 +313,7 @@ result<VkFormat> render::rhi::d3d12_query_swapchain_color_format(swapchain swapc
     return error("Failed to access swapchain");
 }
 
-auto render::rhi::d3d12_query_queue(context context, const queue_kind kind) -> result<queue>
+auto rhi::d3d12_query_queue(context context, const queue_kind kind) -> result<queue>
 {
     ZoneScoped;
     const auto* d3d12_ctx = cast_from_handle<render::d3d12_context>(context);
@@ -341,7 +341,7 @@ auto render::rhi::d3d12_query_queue(context context, const queue_kind kind) -> r
     return queue {.id = reinterpret_cast<u64>(d3d12_ctx->queues[idx].Get())};
 }
 
-auto render::rhi::d3d12_query_device(context context) -> result<device>
+auto rhi::d3d12_query_device(context context) -> result<device>
 {
     ZoneScoped;
     const auto* d3d12_ctx = cast_from_handle<render::d3d12_context>(context);
@@ -353,7 +353,7 @@ auto render::rhi::d3d12_query_device(context context) -> result<device>
     return device {.id = reinterpret_cast<u64>(d3d12_ctx->device.Get())};
 }
 
-auto render::rhi::d3d12_query_physical_device(context context) -> result<physical_device>
+auto rhi::d3d12_query_physical_device(context context) -> result<physical_device>
 {
     ZoneScoped;
     const auto* d3d12_ctx = cast_from_handle<render::d3d12_context>(context);
@@ -365,7 +365,7 @@ auto render::rhi::d3d12_query_physical_device(context context) -> result<physica
     return physical_device {.id = reinterpret_cast<u64>(d3d12_ctx->adapter.Get())};
 }
 
-void render::rhi::d3d12_queue_wait_idle(const queue queue)
+void rhi::d3d12_queue_wait_idle(const queue queue)
 {
     ZoneScoped;
     auto* d3d12_queue = d3d12_rhi_object_from_handle<ID3D12CommandQueue>(queue);
@@ -385,7 +385,7 @@ void render::rhi::d3d12_queue_wait_idle(const queue queue)
     }
 }
 
-void render::rhi::d3d12_device_wait_idle(context context)
+void rhi::d3d12_device_wait_idle(context context)
 {
     ZoneScoped;
     const auto* d3d12_ctx = cast_from_handle<render::d3d12_context>(context);
@@ -409,7 +409,7 @@ void render::rhi::d3d12_device_wait_idle(context context)
     d3d12_destroy_fence(*fence);
 }
 
-auto render::rhi::d3d12_acquire_next_swapchain_image(context context, swapchain swapchain) -> result<image>
+auto rhi::d3d12_acquire_next_swapchain_image(context context, swapchain swapchain) -> result<image>
 {
     ZoneScoped;
     const auto* d3d12_ctx = cast_from_handle<render::d3d12_context>(context);
@@ -426,7 +426,7 @@ auto render::rhi::d3d12_acquire_next_swapchain_image(context context, swapchain 
     return reference_handle<image>(&back_buffer.image);
 }
 
-void render::rhi::d3d12_cmd_begin_recording(command_buffer cmd)
+void rhi::d3d12_cmd_begin_recording(command_buffer cmd)
 {
     ZoneScoped;
     const auto* d3d12_cmd = cast_from_handle<render::d3d12_command_list>(cmd);
@@ -442,7 +442,7 @@ void render::rhi::d3d12_cmd_begin_recording(command_buffer cmd)
     }
 }
 
-void render::rhi::d3d12_cmd_end_recording(command_buffer cmd)
+void rhi::d3d12_cmd_end_recording(command_buffer cmd)
 {
     ZoneScoped;
     auto* d3d12_cmd = cast_from_handle<render::d3d12_command_list>(cmd);
@@ -457,7 +457,7 @@ void render::rhi::d3d12_cmd_end_recording(command_buffer cmd)
     }
 }
 
-void render::rhi::d3d12_cmd_transition_image(command_buffer cmd, image dst, const image_layout dst_layout)
+void rhi::d3d12_cmd_transition_image(command_buffer cmd, image dst, const image_layout dst_layout)
 {
     ZoneScoped;
     auto* d3d12_img       = cast_from_handle<render::d3d12_image>(dst);
@@ -482,7 +482,7 @@ void render::rhi::d3d12_cmd_transition_image(command_buffer cmd, image dst, cons
     }
 }
 
-void render::rhi::d3d12_cmd_present_image(command_buffer cmd, swapchain swapchain, queue submit, queue present)
+void rhi::d3d12_cmd_present_image(command_buffer cmd, swapchain swapchain, queue submit, queue present)
 {
     ZoneScoped;
     auto* d3d12_sc        = cast_from_handle<render::d3d12_swapchain>(swapchain);
@@ -508,7 +508,7 @@ void render::rhi::d3d12_cmd_present_image(command_buffer cmd, swapchain swapchai
     d3d12_sc->back_buffers[bb_index].wait_value = d3d12_sc->frame_counter;
 }
 
-void render::rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const attachment_state_info> color_attachments,
+void rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const attachment_state_info> color_attachments,
                                            attachment_state_info depth_attachment, uvec4 viewport)
 {
     ZoneScoped;
@@ -602,12 +602,12 @@ void render::rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const a
     gfx_command_list->OMSetRenderTargets(color_attachments.size(), color_handles, FALSE, depth_stencil);
 }
 
-void render::rhi::d3d12_cmd_clear_draw_state(command_buffer cmd)
+void rhi::d3d12_cmd_clear_draw_state(command_buffer cmd)
 {
     ZoneScoped;
 }
 
-void render::rhi::d3d12_cmd_bind_pso(command_buffer cmd, pipeline pso)
+void rhi::d3d12_cmd_bind_pso(command_buffer cmd, pipeline pso)
 {
     ZoneScoped;
 
@@ -627,7 +627,7 @@ void render::rhi::d3d12_cmd_bind_pso(command_buffer cmd, pipeline pso)
     }
 }
 
-void render::rhi::d3d12_cmd_draw_instanced(command_buffer cmd, const u32 vtx_count, const u32 instance_count,
+void rhi::d3d12_cmd_draw_instanced(command_buffer cmd, const u32 vtx_count, const u32 instance_count,
                                            const u32 first_vertex, const u32 first_instance)
 {
     ZoneScoped;

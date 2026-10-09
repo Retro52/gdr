@@ -2,7 +2,7 @@
 #include <render/platform/d3d12/d3d12_device.hpp>
 #include <render/platform/d3d12/d3d12_error.hpp>
 
-auto render::d3d12_create_desc_heap(ID3D12Device* device, const D3D12_DESCRIPTOR_HEAP_TYPE type,
+auto platform::d3d12_create_desc_heap(ID3D12Device* device, const D3D12_DESCRIPTOR_HEAP_TYPE type,
                                     const u32 num_descriptors) -> result<d3d12_desc_heap>
 {
     ZoneScoped;
@@ -19,7 +19,7 @@ auto render::d3d12_create_desc_heap(ID3D12Device* device, const D3D12_DESCRIPTOR
     return result;
 }
 
-void render::d3d12_destroy_desc_heap(d3d12_desc_heap& heap)
+void platform::d3d12_destroy_desc_heap(d3d12_desc_heap& heap)
 {
     heap.heap.Reset();
 }

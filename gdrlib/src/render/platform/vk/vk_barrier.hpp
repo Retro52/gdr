@@ -2,7 +2,7 @@
 
 #include <volk.h>
 
-namespace render
+namespace platform
 {
     void vk_stage_barrier_rw(VkCommandBuffer cmd, VkPipelineStageFlags2 joint_stage_mask);
 

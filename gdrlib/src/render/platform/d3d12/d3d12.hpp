@@ -17,7 +17,7 @@
 
 #include <wrl/client.h>
 
-namespace render
+namespace platform
 {
     template<typename T>
     using com_ptr = Microsoft::WRL::ComPtr<T>;

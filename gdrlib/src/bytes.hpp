@@ -1,7 +1,6 @@
 #pragma once
 
 #include <assert2.hpp>
-#include <cpp/alg_constexpr.hpp>
 #include <pod_types.hpp>
 #include <tracy/Tracy.hpp>
 
@@ -9,7 +8,7 @@ struct bytes
 {
     bytes() = default;
 
-    bytes(const u64 size)
+    explicit bytes(const u64 size)
         : m_size(size)
         , m_memory(new u8[size])
     {
@@ -19,7 +18,7 @@ struct bytes
         : bytes(size)
     {
         ZoneScoped;
-        cpp::cx_copy_n(m_memory, static_cast<const u8*>(data), size);
+        std::memcpy(m_memory, data, size);
     }
 
     ~bytes() { delete[] m_memory; }
@@ -28,7 +27,7 @@ struct bytes
         : bytes(other.size())
     {
         ZoneScoped;
-        cpp::cx_copy_n(m_memory, other.get<u8>(), other.size());
+        std::memcpy(m_memory, other.data(), other.size());
     }
 
     bytes(bytes&& other) noexcept
@@ -81,7 +80,7 @@ struct bytes
 
         m_size   = other.m_size;
         m_memory = new u8[m_size];
-        cpp::cx_copy_n(m_memory, other.get<u8>(), other.size());
+        std::memcpy(m_memory, other.data(), other.size());
 
         return *this;
     }

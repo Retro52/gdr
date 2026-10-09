@@ -2,7 +2,7 @@
 #include <render/platform/d3d12/d3d12_queue.hpp>
 #include <tracy/Tracy.hpp>
 
-auto render::d3d12_create_queue(ID3D12Device* device, const D3D12_COMMAND_LIST_TYPE type) -> result<d3d12_queue>
+auto platform::d3d12_create_queue(ID3D12Device* device, const D3D12_COMMAND_LIST_TYPE type) -> result<d3d12_queue>
 {
     ZoneScoped;
 
@@ -18,7 +18,7 @@ auto render::d3d12_create_queue(ID3D12Device* device, const D3D12_COMMAND_LIST_T
     return queue;
 }
 
-void render::d3d12_destroy_queue(d3d12_queue& queue)
+void platform::d3d12_destroy_queue(d3d12_queue& queue)
 {
     queue.Reset();
 }

@@ -2,7 +2,7 @@
 
 #include <render/rhi.hpp>
 
-namespace render::rhi
+namespace rhi
 {
     result<context> d3d12_create_context(const window& window, const instance_desc& desc);
     void d3d12_destroy_context(context& context);

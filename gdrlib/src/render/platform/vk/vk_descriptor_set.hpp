@@ -5,7 +5,7 @@
 #include <result.hpp>
 #include <pod_types.hpp>
 
-namespace render
+namespace platform
 {
     struct vk_descriptor_set
     {

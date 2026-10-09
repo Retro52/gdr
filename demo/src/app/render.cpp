@@ -4,19 +4,18 @@
 
 #include <cmath>
 
-void app::begin_rendering(const render::rhi::rhi& rhi, render::rhi::command_buffer cmd, render::rhi::attachment color,
-                          render::rhi::attachment depth, render::rhi::resource_load_op load_op,
-                          render::rhi::resource_store_op store_op, uvec4 viewport)
+void app::begin_rendering(const rhi::impl& rhi, rhi::command_buffer cmd, rhi::attachment color, rhi::attachment depth,
+                          rhi::resource_load_op load_op, rhi::resource_store_op store_op, uvec4 viewport)
 {
     ZoneScoped;
 
-    render::rhi::attachment_state_info color_attachment_state {
+    rhi::attachment_state_info color_attachment_state {
         .attachment = color,
         .load_op    = load_op,
         .store_op   = store_op,
     };
 
-    render::rhi::attachment_state_info depth_attachment_state {
+    rhi::attachment_state_info depth_attachment_state {
         .attachment = depth,
         .load_op    = load_op,
         .store_op   = store_op,
@@ -25,65 +24,62 @@ void app::begin_rendering(const render::rhi::rhi& rhi, render::rhi::command_buff
     rhi.cmd_set_draw_state(cmd, {&color_attachment_state, 1}, depth_attachment_state, viewport);
 }
 
-void app::zero_buffer(const render::rhi::rhi& rhi, const render::rhi::command_buffer cmd,
-                      const render::rhi::buffer& draw_count_buffer, const u64 offset, const u64 size)
+void app::zero_buffer(const rhi::impl& rhi, const rhi::command_buffer cmd, const rhi::buffer& draw_count_buffer,
+                      const u64 offset, const u64 size)
 {
     ZoneScoped;
 
 #ifdef __APPLE__
-    constexpr auto stage_bits = render::rhi::barrier_stage::indirect | render::rhi::barrier_stage::compute_shader;
+    constexpr auto stage_bits = rhi::barrier_stage::indirect | rhi::barrier_stage::compute_shader;
 #else
-    constexpr auto stage_bits = render::rhi::barrier_stage::indirect | render::rhi::barrier_stage::task_shader
-                              | render::rhi::barrier_stage::mesh_shader | render::rhi::barrier_stage::compute_shader;
+    constexpr auto stage_bits = rhi::barrier_stage::indirect | rhi::barrier_stage::task_shader
+                              | rhi::barrier_stage::mesh_shader | rhi::barrier_stage::compute_shader;
 #endif
 
-    const render::rhi::buffer_barrier pre_barrier = {
+    const rhi::buffer_barrier pre_barrier = {
         .buffer = draw_count_buffer,
         .before = {.stages = stage_bits,
-                   .access = render::rhi::barrier_access::indirect_read | render::rhi::barrier_access::storage_read
-                           | render::rhi::barrier_access::storage_write               },
-        .after  = {.stages = static_cast<u32>(render::rhi::barrier_stage::copy),
-                   .access = static_cast<u32>(render::rhi::barrier_access::copy_write)}
+                   .access = rhi::barrier_access::indirect_read | rhi::barrier_access::storage_read
+                           | rhi::barrier_access::storage_write                                 },
+        .after  = {.stages = rhi::barrier_stage::copy, .access = rhi::barrier_access::copy_write}
     };
 
-    const render::rhi::buffer_barrier pre_barriers[] = {pre_barrier};
+    const rhi::buffer_barrier pre_barriers[] = {pre_barrier};
     rhi.cmd_barriers(cmd, {.buffers = pre_barriers});
-    rhi.cmd_clear_buffer(cmd, draw_count_buffer, u64vec2(offset, size ? size : render::rhi::kBufferAll), 0);
+    rhi.cmd_clear_buffer(cmd, draw_count_buffer, u64vec2(offset, size ? size : rhi::kBufferAll), 0);
 
-    const render::rhi::buffer_barrier post_barrier = {
+    const rhi::buffer_barrier post_barrier = {
         .buffer = draw_count_buffer,
         .before = pre_barrier.after,
-        .after  = {.stages = render::rhi::barrier_stage::compute_shader | render::rhi::barrier_stage::indirect,
-                   .access = render::rhi::barrier_access::indirect_read | render::rhi::barrier_access::storage_read
-                           | render::rhi::barrier_access::storage_write}
+        .after  = {.stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::indirect,
+                   .access = rhi::barrier_access::indirect_read | rhi::barrier_access::storage_read
+                           | rhi::barrier_access::storage_write}
     };
 
-    const render::rhi::buffer_barrier post_barriers[] = {post_barrier};
+    const rhi::buffer_barrier post_barriers[] = {post_barrier};
     rhi.cmd_barriers(cmd, {.buffers = post_barriers});
 }
 
-void app::reset_draw_count_buffer(const render::rhi::rhi& rhi, render::rhi::command_buffer cmd,
-                                  const render::rhi::buffer& draw_count_buffer)
+void app::reset_draw_count_buffer(const rhi::impl& rhi, rhi::command_buffer cmd, const rhi::buffer& draw_count_buffer)
 {
     ZoneScoped;
 
 #ifdef __APPLE__
-    constexpr auto stage_bits = render::rhi::barrier_stage::indirect | render::rhi::barrier_stage::compute_shader;
+    constexpr auto stage_bits = rhi::barrier_stage::indirect | rhi::barrier_stage::compute_shader;
 #else
-    constexpr auto stage_bits = render::rhi::barrier_stage::indirect | render::rhi::barrier_stage::task_shader
-                              | render::rhi::barrier_stage::mesh_shader | render::rhi::barrier_stage::compute_shader;
+    constexpr auto stage_bits = rhi::barrier_stage::indirect | rhi::barrier_stage::task_shader
+                              | rhi::barrier_stage::mesh_shader | rhi::barrier_stage::compute_shader;
 #endif
 
-    const render::rhi::buffer_barrier pre_barrier = {
+    const rhi::buffer_barrier pre_barrier = {
         .buffer = draw_count_buffer,
         .before = {.stages = stage_bits,
-                   .access = render::rhi::barrier_access::indirect_read | render::rhi::barrier_access::storage_read
-                           | render::rhi::barrier_access::storage_write               },
-        .after  = {.stages = static_cast<u32>(render::rhi::barrier_stage::copy),
-                   .access = static_cast<u32>(render::rhi::barrier_access::copy_write)}
+                   .access = rhi::barrier_access::indirect_read | rhi::barrier_access::storage_read
+                           | rhi::barrier_access::storage_write                                 },
+        .after  = {.stages = rhi::barrier_stage::copy, .access = rhi::barrier_access::copy_write}
     };
 
-    const render::rhi::buffer_barrier pre_barriers[] = {pre_barrier};
+    const rhi::buffer_barrier pre_barriers[] = {pre_barrier};
     rhi.cmd_barriers(cmd, {.buffers = pre_barriers});
 
     u32 counts[shader_constants::kMatClassCount * 3];
@@ -95,48 +91,46 @@ void app::reset_draw_count_buffer(const render::rhi::rhi& rhi, render::rhi::comm
     }
 
     rhi.cmd_update_buffer(cmd, draw_count_buffer, u64vec2(0, sizeof(u32) * COUNT_OF(counts)), counts);
-    const render::rhi::buffer_barrier post_barrier = {
+    const rhi::buffer_barrier post_barrier = {
         .buffer = draw_count_buffer,
         .before = pre_barrier.after,
-        .after  = {.stages = render::rhi::barrier_stage::compute_shader | render::rhi::barrier_stage::indirect,
-                   .access = render::rhi::barrier_access::indirect_read | render::rhi::barrier_access::storage_read
-                           | render::rhi::barrier_access::storage_write}
+        .after  = {.stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::indirect,
+                   .access = rhi::barrier_access::indirect_read | rhi::barrier_access::storage_read
+                           | rhi::barrier_access::storage_write}
     };
 
-    const render::rhi::buffer_barrier post_barriers[] = {post_barrier};
+    const rhi::buffer_barrier post_barriers[] = {post_barrier};
     rhi.cmd_barriers(cmd, {.buffers = post_barriers});
 }
 
-render::rhi::image app::create_color_image(const render::rhi::rhi& rhi, const ivec2& size,
-                                           const render::rhi::image_format format, const render::rhi::context ctx)
+rhi::image app::create_color_image(const rhi::impl& rhi, const ivec2& size, const rhi::image_format format,
+                                   const rhi::context ctx)
 {
     ZoneScoped;
-    const render::rhi::create_image_info info {
+    const rhi::create_image_info info {
         .format      = format,
         .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
-        .usage_flags = render::rhi::image_usage::sampled | render::rhi::image_usage::storage,
+        .usage_flags = rhi::image_usage::sampled | rhi::image_usage::storage,
     };
 
     return *rhi.create_image(ctx, info);
 }
 
-render::rhi::image app::create_depth_image(const render::rhi::rhi& rhi, const ivec2& size,
-                                           const render::rhi::image_format format, const render::rhi::context ctx)
+rhi::image app::create_depth_image(const rhi::impl& rhi, const ivec2& size, const rhi::image_format format,
+                                   const rhi::context ctx)
 {
     ZoneScoped;
 
-    const render::rhi::create_image_info info {
+    const rhi::create_image_info info {
         .format      = format,
         .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
-        .usage_flags = render::rhi::image_usage::sampled | render::rhi::image_usage::transfer_dst
-                     | render::rhi::image_usage::attachment_ds,
+        .usage_flags = rhi::image_usage::sampled | rhi::image_usage::transfer_dst | rhi::image_usage::attachment_ds,
     };
 
     return *rhi.create_image(ctx, info);
 }
 
-void app::destroy_depth_pyramid(const render::rhi::rhi& rhi, depth_pyramid_data& pyramid,
-                                const render::rhi::context ctx)
+void app::destroy_depth_pyramid(const rhi::impl& rhi, depth_pyramid_data& pyramid, const rhi::context ctx)
 {
     ZoneScoped;
     for (u32 i = 0; i < pyramid.pyramid_count; ++i)
@@ -149,24 +143,21 @@ void app::destroy_depth_pyramid(const render::rhi::rhi& rhi, depth_pyramid_data&
     rhi.destroy_sampler(ctx, pyramid.sampler);
 }
 
-render::rhi::image app::create_vis_buffer_image(const render::rhi::rhi& rhi, const ivec2& size,
-                                                const render::rhi::context ctx)
+rhi::image app::create_vis_buffer_image(const rhi::impl& rhi, const ivec2& size, const rhi::context ctx)
 {
     ZoneScoped;
-    const render::rhi::create_image_info info {
-        .format      = render::rhi::image_format::r32g32ui,
+    const rhi::create_image_info info {
+        .format      = rhi::image_format::r32g32ui,
         .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
-        .usage_flags = render::rhi::image_usage::sampled | render::rhi::image_usage::transfer_src
-                     | render::rhi::image_usage::transfer_dst | render::rhi::image_usage::attachment_color
-                     | render::rhi::image_usage::storage,
+        .usage_flags = rhi::image_usage::sampled | rhi::image_usage::transfer_src | rhi::image_usage::transfer_dst
+                     | rhi::image_usage::attachment_color | rhi::image_usage::storage,
     };
 
     return *rhi.create_image(ctx, info);
 }
 
-app::depth_pyramid_data app::create_depth_pyramid(const render::rhi::rhi& rhi, const ivec2& size,
-                                                  const render::rhi::image_format format,
-                                                  const render::rhi::context ctx)
+app::depth_pyramid_data app::create_depth_pyramid(const rhi::impl& rhi, const ivec2& size,
+                                                  const rhi::image_format format, const rhi::context ctx)
 {
     ZoneScoped;
     depth_pyramid_data depth_pyramid {
@@ -184,20 +175,19 @@ app::depth_pyramid_data app::create_depth_pyramid(const render::rhi::rhi& rhi, c
     depth_pyramid.pyramid_count =
         std::min(depth_pyramid.pyramid_count, static_cast<u32>(COUNT_OF(depth_pyramid.views)));
 
-    const render::rhi::create_image_info img_info {
+    const rhi::create_image_info img_info {
         .format      = format,
         .mips_count  = depth_pyramid.pyramid_count,
         .dimensions  = {depth_pyramid.base_size.x, depth_pyramid.base_size.y, 1},
-        .usage_flags = render::rhi::image_usage::sampled | render::rhi::image_usage::transfer_src
-                     | render::rhi::image_usage::storage,
+        .usage_flags = rhi::image_usage::sampled | rhi::image_usage::transfer_src | rhi::image_usage::storage,
     };
 
-    constexpr render::rhi::create_sampler_info sampler_info {
+    constexpr rhi::create_sampler_info sampler_info {
 #ifndef __APPLE__
-        .reduction = render::rhi::sampler_reduction::min,
+        .reduction = rhi::sampler_reduction::min,
 #endif
-        .mipmap_mode  = render::rhi::sampler_mipmap_mode::nearest,
-        .address_mode = render::rhi::sampler_address_mode::clamp_to_edge,
+        .mipmap_mode  = rhi::sampler_mipmap_mode::nearest,
+        .address_mode = rhi::sampler_address_mode::clamp_to_edge,
     };
 
     depth_pyramid.image   = *rhi.create_image(ctx, img_info);
@@ -205,7 +195,7 @@ app::depth_pyramid_data app::create_depth_pyramid(const render::rhi::rhi& rhi, c
 
     for (u32 i = 0; i < depth_pyramid.pyramid_count; ++i)
     {
-        const render::rhi::create_image_view_info view_info {
+        const rhi::create_image_view_info view_info {
             .range  = {.mips_range = {i, 1}},
             .format = format,
         };
@@ -216,37 +206,33 @@ app::depth_pyramid_data app::create_depth_pyramid(const render::rhi::rhi& rhi, c
     return depth_pyramid;
 }
 
-render::rhi::image_barrier app::make_image_barrier(const render::rhi::image image,
-                                                   const render::rhi::image_layout new_layout,
-                                                   const render::rhi::image_aspects aspect)
+rhi::image_barrier app::make_image_barrier(const rhi::image image, const rhi::image_layout new_layout,
+                                           const rhi::image_aspect_bits aspect)
 {
     ZoneScoped;
-    constexpr u32 kOverkillWriteAccess =
-        render::rhi::barrier_access::copy_write | render::rhi::barrier_access::color_attachment_write
-        | render::rhi::barrier_access::storage_write | render::rhi::barrier_access::depth_stencil_write;
-    constexpr u32 kOverkillReadAccess =
-        render::rhi::barrier_access::copy_read | render::rhi::barrier_access::sampled_read
-        | render::rhi::barrier_access::color_attachment_read | render::rhi::barrier_access::storage_read
-        | render::rhi::barrier_access::depth_stencil_read;
+    constexpr auto kOverkillWriteAccess = rhi::barrier_access::copy_write | rhi::barrier_access::color_attachment_write
+                                        | rhi::barrier_access::storage_write | rhi::barrier_access::depth_stencil_write;
+    constexpr auto kOverkillReadAccess = rhi::barrier_access::copy_read | rhi::barrier_access::sampled_read
+                                       | rhi::barrier_access::color_attachment_read | rhi::barrier_access::storage_read
+                                       | rhi::barrier_access::depth_stencil_read;
 
     return make_image_barrier(image,
-                              render::rhi::image_layout::current,
+                              rhi::image_layout::current,
                               new_layout,
-                              static_cast<u32>(render::rhi::barrier_stage::all_commands),
+                              rhi::barrier_stage::all_commands,
+                              rhi::barrier_stage::all_commands,
                               kOverkillWriteAccess,
-                              static_cast<u32>(render::rhi::barrier_stage::all_commands),
                               kOverkillWriteAccess | kOverkillReadAccess,
                               aspect);
 }
 
-render::rhi::image_barrier app::make_image_barrier(
-    const render::rhi::image image, const render::rhi::image_layout old_layout,
-    const render::rhi::image_layout new_layout, const render::rhi::barrier_stages src_stages,
-    const render::rhi::barrier_stages dst_stages, const render::rhi::barrier_accesses src_access,
-    const render::rhi::barrier_accesses dst_access, const render::rhi::image_aspects aspect)
+rhi::image_barrier app::make_image_barrier(const rhi::image image, const rhi::image_layout old_layout,
+                                           const rhi::image_layout new_layout, const rhi::barrier_stage_bits src_stages,
+                                           const rhi::barrier_stage_bits dst_stages, const rhi::barrier_access_bits src_access,
+                                           const rhi::barrier_access_bits dst_access, const rhi::image_aspect_bits aspect)
 {
     ZoneScoped;
-    return render::rhi::image_barrier {
+    return rhi::image_barrier {
         .image         = image,
         .before        = {.stages = src_stages, .access = src_access},
         .after         = {.stages = dst_stages, .access = dst_access},

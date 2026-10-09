@@ -105,18 +105,18 @@ static const char* debug_message_category_to_str(const D3D12_MESSAGE_CATEGORY ca
 
 static void log_device_features_table(const char* name, const D3D_FEATURE_LEVEL feature_level,
                                       const D3D_SHADER_MODEL shader_model,
-                                      const render::rhi::rendering_features_table& feat_table)
+                                      const rhi::rendering_features_table& feat_table)
 {
     ZoneScoped;
     LOG_DEBUG("{} features report:", name);
     LOG_DEBUG("Shader model: {}", shader_model_ver_to_str(shader_model));
     LOG_DEBUG("Feature level: {}", feature_level_ver_to_str(feature_level));
-    for (u32 i = 0; i < reflection::get_enum_values_count<render::rhi::feature_flag>() - 1; ++i)
+    for (u32 i = 0; i < reflection::get_enum_values_count<rhi::feature_flag>() - 1; ++i)
     {
-        const auto flag = reflection::get_enum_value_at<render::rhi::feature_flag>(i);
+        const auto flag = reflection::get_enum_value_at<rhi::feature_flag>(i);
 
         // validation is an instance-level flag tbh
-        if (flag == render::rhi::feature_flag::validation)
+        if (flag == rhi::feature_flag::validation)
         {
             continue;
         }
@@ -127,13 +127,13 @@ static void log_device_features_table(const char* name, const D3D_FEATURE_LEVEL 
         if (supported || !wanted)
         {
             LOG_DEBUG("{}: {}",
-                      reflection::get_enum_name_at<render::rhi::feature_flag>(i),
+                      reflection::get_enum_name_at<rhi::feature_flag>(i),
                       supported ? "supported" : "unsupported");
         }
         else if (wanted)
         {
             LOG_WARNING("{}: feature requested but unsupported",
-                        reflection::get_enum_name_at<render::rhi::feature_flag>(i));
+                        reflection::get_enum_name_at<rhi::feature_flag>(i));
         }
     }
 }
@@ -142,7 +142,7 @@ static void enable_debug_layer()
 {
     ZoneScoped;
 
-    render::com_ptr<ID3D12Debug> debug_interface;
+    platform::com_ptr<ID3D12Debug> debug_interface;
     D3D12_ASSERT_ON_FAIL(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_interface)));
     debug_interface->EnableDebugLayer();
 }
@@ -175,7 +175,7 @@ static void message_callback(D3D12_MESSAGE_CATEGORY category, D3D12_MESSAGE_SEVE
     }
 }
 
-static void create_debug_layer(render::d3d12_context& context)
+static void create_debug_layer(platform::d3d12_context& context)
 {
     ZoneScoped;
 
@@ -234,7 +234,7 @@ static D3D_FEATURE_LEVEL query_feature_level(ID3D12Device* device)
 }
 
 static bool check_device_features(ID3D12Device* device, const D3D_SHADER_MODEL device_shader_model,
-                                  render::rhi::rendering_features_table& wanted_features)
+                                  rhi::rendering_features_table& wanted_features)
 {
     ZoneScoped;
     D3D12_FEATURE_DATA_D3D12_OPTIONS d3d12_options0 {};
@@ -256,41 +256,41 @@ static bool check_device_features(ID3D12Device* device, const D3D_SHADER_MODEL d
 
     // shading-level feature anyway, so I just need to make sure to request proper SM
     // FIXME: I think DirectX doesn't support some draw parameters, need to check
-    wanted_features.set_supported(render::rhi::feature_flag::draw_indirect, true);
-    wanted_features.set_supported(render::rhi::feature_flag::dynamic_render, true);
-    wanted_features.set_supported(render::rhi::feature_flag::sampler_min_max, true);
-    wanted_features.set_supported(render::rhi::feature_flag::pipeline_stats, true);
-    wanted_features.set_supported(render::rhi::feature_flag::portability_subset, false);
+    wanted_features.set_supported(rhi::feature_flag::draw_indirect, true);
+    wanted_features.set_supported(rhi::feature_flag::dynamic_render, true);
+    wanted_features.set_supported(rhi::feature_flag::sampler_min_max, true);
+    wanted_features.set_supported(rhi::feature_flag::pipeline_stats, true);
+    wanted_features.set_supported(rhi::feature_flag::portability_subset, false);
 
     // not directly portable afaik
-    wanted_features.set_supported(render::rhi::feature_flag::types_int8, false);
-    wanted_features.set_supported(render::rhi::feature_flag::scalar_block_layout, true);
+    wanted_features.set_supported(rhi::feature_flag::types_int8, false);
+    wanted_features.set_supported(rhi::feature_flag::scalar_block_layout, true);
 
-    wanted_features.set_supported(render::rhi::feature_flag::mesh_shading,
+    wanted_features.set_supported(rhi::feature_flag::mesh_shading,
                                   device_shader_model >= D3D_SHADER_MODEL_6_5
                                       && d3d12_options7.MeshShaderTier > D3D12_MESH_SHADER_TIER_NOT_SUPPORTED);
 
-    wanted_features.set_supported(render::rhi::feature_flag::synchronization2,
+    wanted_features.set_supported(rhi::feature_flag::synchronization2,
                                   d3d12_options12.EnhancedBarriersSupported);
 
-    wanted_features.set_supported(render::rhi::feature_flag::types_16bit,
+    wanted_features.set_supported(rhi::feature_flag::types_16bit,
                                   device_shader_model >= D3D_SHADER_MODEL_6_2
                                       && d3d12_options4.Native16BitShaderOpsSupported);
 
-    wanted_features.set_supported(render::rhi::feature_flag::bindless_textures,
+    wanted_features.set_supported(rhi::feature_flag::bindless_textures,
                                   device_shader_model >= D3D_SHADER_MODEL_6_6
                                       && d3d12_options0.ResourceBindingTier >= D3D12_RESOURCE_BINDING_TIER_3);
 
     return wanted_features.all_required_supported();
 }
 
-static HRESULT pick_and_create_device(render::d3d12_context& ctx,
-                                      const render::rhi::rendering_features_table& wanted_features,
+static HRESULT pick_and_create_device(platform::d3d12_context& ctx,
+                                      const rhi::rendering_features_table& wanted_features,
                                       const u32 device_hint_id)
 {
     ZoneScoped;
 
-    render::com_ptr<IDXGIAdapter4> adapter;
+    platform::com_ptr<IDXGIAdapter4> adapter;
     for (UINT i = 0; SUCCEEDED(
              ctx.factory->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter)));
          ++i)
@@ -311,7 +311,7 @@ static HRESULT pick_and_create_device(render::d3d12_context& ctx,
                   name.c_str(),
                   format_bytes_number(desc.DedicatedVideoMemory).c_str());
 
-        render::com_ptr<ID3D12Device10> device;
+        platform::com_ptr<ID3D12Device10> device;
         {
             ZoneScopedN("D3D12CreateDevice");
             if (FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&device))))
@@ -356,7 +356,7 @@ static HRESULT pick_and_create_device(render::d3d12_context& ctx,
         LOG_INFO("Selected device: {}", name.c_str());
         log_device_features_table(name.c_str(), ctx.feature_level, ctx.shader_model, ctx.enabled_device_features);
 
-        if (ctx.enabled_device_features.requested(render::rhi::feature_flag::validation))
+        if (ctx.enabled_device_features.requested(rhi::feature_flag::validation))
         {
             create_debug_layer(ctx);
         }
@@ -365,7 +365,7 @@ static HRESULT pick_and_create_device(render::d3d12_context& ctx,
     return ctx.device != nullptr ? NO_ERROR : DXGI_ERROR_INVALID_CALL;
 }
 
-void render::d3d12_destroy_context(d3d12_context& ctx)
+void platform::d3d12_destroy_context(d3d12_context& ctx)
 {
     ZoneScoped;
 
@@ -389,7 +389,7 @@ void render::d3d12_destroy_context(d3d12_context& ctx)
 
     ctx.window_handle = nullptr;
 
-    if (ctx.enabled_device_features.requested(render::rhi::feature_flag::validation))
+    if (ctx.enabled_device_features.requested(rhi::feature_flag::validation))
     {
         com_ptr<IDXGIDebug1> dxgi_debug;
         if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgi_debug))))
@@ -401,12 +401,12 @@ void render::d3d12_destroy_context(d3d12_context& ctx)
     }
 }
 
-auto render::d3d12_create_context(const window& window, const rhi::instance_desc& desc) -> result<d3d12_context>
+auto platform::d3d12_create_context(const window& window, const rhi::instance_desc& desc) -> result<d3d12_context>
 {
     ZoneScoped;
     d3d12_context context;
 
-    const bool enable_validation = desc.device_features.requested(render::rhi::feature_flag::validation);
+    const bool enable_validation = desc.device_features.requested(rhi::feature_flag::validation);
     if (enable_validation)
     {
         enable_debug_layer();
@@ -446,11 +446,11 @@ auto render::d3d12_create_context(const window& window, const rhi::instance_desc
     return context;
 }
 
-auto render::d3d12_update_back_buffers(render::d3d12_context& d3d12_context, IDXGISwapChain4* swapchain,
+auto platform::d3d12_update_back_buffers(platform::d3d12_context& d3d12_context, IDXGISwapChain4* swapchain,
                                        const u32 count) -> result<cpp::heap_array<d3d12_sc_back_buffer>>
 {
     ZoneScoped;
-    cpp::heap_array<render::d3d12_sc_back_buffer> result(count);
+    cpp::heap_array<platform::d3d12_sc_back_buffer> result(count);
     for (u32 i = 0; i < count; ++i)
     {
         auto& pfd = result[i];
@@ -465,7 +465,7 @@ auto render::d3d12_update_back_buffers(render::d3d12_context& d3d12_context, IDX
     return result;
 }
 
-void render::d3d12_destroy_swapchain(d3d12_context& d3d12_context, d3d12_swapchain& swapchain)
+void platform::d3d12_destroy_swapchain(d3d12_context& d3d12_context, d3d12_swapchain& swapchain)
 {
     ZoneScoped;
     for (auto& back_buffer : swapchain.back_buffers)
@@ -478,7 +478,7 @@ void render::d3d12_destroy_swapchain(d3d12_context& d3d12_context, d3d12_swapcha
     d3d12_destroy_fence(swapchain.sc_sync_fence);
 }
 
-auto render::d3d12_create_swapchain(d3d12_context& d3d12_context, const u32 format, const ivec2 size,
+auto platform::d3d12_create_swapchain(d3d12_context& d3d12_context, const u32 format, const ivec2 size,
                                     const u32 frames_in_flight, const bool vsync) -> result<d3d12_swapchain>
 {
     ZoneScoped;
@@ -518,7 +518,7 @@ auto render::d3d12_create_swapchain(d3d12_context& d3d12_context, const u32 form
     D3D12_ASSERT_ON_FAIL(
         d3d12_context.factory->MakeWindowAssociation(d3d12_context.window_handle, DXGI_MWA_NO_ALT_ENTER));
 
-    auto fence = render::d3d12_create_fence(d3d12_context.device.Get(), 0);
+    auto fence = platform::d3d12_create_fence(d3d12_context.device.Get(), 0);
     RESULT_FORWARD_IF_FAILED(fence);
 
     result.sc_sync_fence = std::move(*fence);

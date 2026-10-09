@@ -7,7 +7,7 @@
 #include <render/platform/vk/vk_renderer.hpp>
 #include <result.hpp>
 
-namespace render
+namespace platform
 {
     struct vk_buffer_transfer
     {
@@ -25,11 +25,11 @@ namespace render
 
         vk_shared_buffer() = default;
 
-        explicit vk_shared_buffer(const render::vk_renderer& renderer, const u64 size, VkBufferUsageFlags usage)
+        explicit vk_shared_buffer(const platform::vk_renderer& renderer, const u64 size, VkBufferUsageFlags usage)
             : size(size)
             , offset(0)
         {
-            buffer = *render::vk_create_buffer(
+            buffer = *platform::vk_create_buffer(
                 size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, renderer.get_context().allocator, 0);
         }
     };
@@ -58,11 +58,11 @@ namespace render
     }
 
     template<typename T>
-    void vk_upload_data(const render::vk_buffer_transfer& transfer, render::vk_shared_buffer& dst_buffer, const T* data,
+    void vk_upload_data(const platform::vk_buffer_transfer& transfer, platform::vk_shared_buffer& dst_buffer, const T* data,
                         const u64 count)
     {
         ZoneScoped;
-        render::vk_upload_data(
+        platform::vk_upload_data(
             transfer,
             dst_buffer.buffer,
             reinterpret_cast<const u8*>(data),

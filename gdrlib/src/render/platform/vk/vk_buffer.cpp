@@ -2,7 +2,7 @@
 #include <render/platform/vk/vk_error.hpp>
 #include <tracy/Tracy.hpp>
 
-void render::vk_destroy_buffer(VmaAllocator allocator, vk_buffer& buffer)
+void platform::vk_destroy_buffer(VmaAllocator allocator, vk_buffer& buffer)
 {
     ZoneScoped;
     buffer.size = 0;
@@ -15,7 +15,7 @@ void render::vk_destroy_buffer(VmaAllocator allocator, vk_buffer& buffer)
     vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
 }
 
-result<render::vk_buffer> render::vk_create_buffer(u64 size, VkBufferUsageFlags usage, VmaAllocator allocator,
+result<platform::vk_buffer> platform::vk_create_buffer(u64 size, VkBufferUsageFlags usage, VmaAllocator allocator,
                                                    VmaAllocationCreateFlags allocation_flags)
 {
     ZoneScoped;
@@ -26,10 +26,10 @@ result<render::vk_buffer> render::vk_create_buffer(u64 size, VkBufferUsageFlags 
         .usage = usage,
     };
 
-    return render::vk_create_buffer(buffer_info, allocator, allocation_flags);
+    return platform::vk_create_buffer(buffer_info, allocator, allocation_flags);
 }
 
-result<render::vk_buffer> render::vk_create_buffer(const VkBufferCreateInfo& buffer_create_info, VmaAllocator allocator,
+result<platform::vk_buffer> platform::vk_create_buffer(const VkBufferCreateInfo& buffer_create_info, VmaAllocator allocator,
                                                    VmaAllocationCreateFlags allocation_flags)
 {
     ZoneScoped;
@@ -48,7 +48,7 @@ result<render::vk_buffer> render::vk_create_buffer(const VkBufferCreateInfo& buf
     return result;
 }
 
-result<VkBufferView> render::vk_create_buffer_view(VkDevice device, VkBuffer buffer, VkFormat format, u64 offset,
+result<VkBufferView> platform::vk_create_buffer_view(VkDevice device, VkBuffer buffer, VkFormat format, u64 offset,
                                                    u64 range)
 {
     ZoneScoped;

@@ -6,7 +6,7 @@
 
 #include <cmath>
 
-imgui_layer::imgui_layer(const window& window, const render::vk_renderer& renderer, app::pso_data& pipelines)
+imgui_layer::imgui_layer(const window& window, const platform::vk_renderer& renderer, app::pso_data& pipelines)
     : m_pipelines(pipelines)
     , m_renderer(renderer)
 {
@@ -30,8 +30,8 @@ imgui_layer::imgui_layer(const window& window, const render::vk_renderer& render
     init_info.Instance            = context.instance;
     init_info.PhysicalDevice      = context.physical_device;
     init_info.Device              = context.device;
-    init_info.QueueFamily         = context.queues[static_cast<u32>(render::rhi::queue_kind::gfx)].family;
-    init_info.Queue               = context.queues[static_cast<u32>(render::rhi::queue_kind::gfx)].queue;
+    init_info.QueueFamily         = context.queues[static_cast<u32>(rhi::queue_kind::gfx)].family;
+    init_info.Queue               = context.queues[static_cast<u32>(rhi::queue_kind::gfx)].queue;
     init_info.PipelineCache       = VK_NULL_HANDLE;
     init_info.UseDynamicRendering = true;
     init_info.MinAllocationSize   = 1024 * 1024;
@@ -62,10 +62,10 @@ imgui_layer::imgui_layer(const window& window, const render::vk_renderer& render
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    m_atlas_data.atlas_image = *render::vk_create_image(
+    m_atlas_data.atlas_image = *platform::vk_create_image(
         renderer.get_context().device, image_info, VK_IMAGE_ASPECT_COLOR_BIT, renderer.get_context().allocator);
 
-    m_atlas_data.sampler = *render::vk_create_sampler(renderer.get_context().device,
+    m_atlas_data.sampler = *platform::vk_create_sampler(renderer.get_context().device,
                                                       VK_FILTER_NEAREST,
                                                       VK_SAMPLER_MIPMAP_MODE_NEAREST,
                                                       VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
@@ -81,7 +81,7 @@ imgui_layer::~imgui_layer()
     ImGui_ImplVulkan_RemoveTexture(m_atlas_data.imgui_descriptor);
     vkDestroySampler(context.device, m_atlas_data.sampler, nullptr);
 
-    render::vk_destroy_image(context.device, context.allocator, m_atlas_data.atlas_image);
+    platform::vk_destroy_image(context.device, context.allocator, m_atlas_data.atlas_image);
 
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplSDL3_Shutdown();
@@ -98,7 +98,7 @@ void imgui_layer::begin_frame()
     ImGuizmo::BeginFrame();
 }
 
-void imgui_layer::end_frame(const render::vk_renderer& renderer)
+void imgui_layer::end_frame(const platform::vk_renderer& renderer)
 {
     VkRenderingAttachmentInfo color_attachment_info {
         .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -270,7 +270,7 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
     };
     vkCmdPipelineBarrier2(cmd, &dep);
 
-    render::vk_transition_image(
+    platform::vk_transition_image(
         cmd, m_atlas_data.atlas_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     VkRenderingAttachmentInfo color_attachment {.sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -312,7 +312,7 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
 
         // pipeline.push_constant(cmd, req.push_constant);
 
-        const render::vk_descriptor_info bindings[] {
+        const platform::vk_descriptor_info bindings[] {
             {m_atlas_data.sampler, req.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}
         };
         // pipeline.push_descriptor_set(cmd, bindings);
@@ -344,7 +344,7 @@ void imgui_layer::flush_pending(const VkCommandBuffer cmd)
     vkCmdPipelineBarrier2(cmd, &dep);
 
     m_pending_uploads.clear();
-    render::vk_transition_image(cmd,
+    platform::vk_transition_image(cmd,
                                 m_atlas_data.atlas_image.image,
                                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);

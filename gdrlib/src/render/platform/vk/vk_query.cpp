@@ -2,12 +2,12 @@
 #include <render/platform/vk/vk_query.hpp>
 #include <tracy/Tracy.hpp>
 
-void render::vk_query::end_and_advance(VkCommandBuffer cmd)
+void platform::vk_query::end_and_advance(VkCommandBuffer cmd)
 {
     end(cmd, ++index);
 }
 
-void render::vk_query::end(VkCommandBuffer cmd, u32 query) const
+void platform::vk_query::end(VkCommandBuffer cmd, u32 query) const
 {
     ZoneScoped;
     if (handle)
@@ -16,7 +16,7 @@ void render::vk_query::end(VkCommandBuffer cmd, u32 query) const
     }
 }
 
-void render::vk_query::reset(VkCommandBuffer cmd, const u32 first, const u32 count)
+void platform::vk_query::reset(VkCommandBuffer cmd, const u32 first, const u32 count)
 {
     ZoneScoped;
     if (handle)
@@ -26,7 +26,7 @@ void render::vk_query::reset(VkCommandBuffer cmd, const u32 first, const u32 cou
     }
 }
 
-void render::vk_query::begin(VkCommandBuffer cmd, const u32 query, const u32 flags) const
+void platform::vk_query::begin(VkCommandBuffer cmd, const u32 query, const u32 flags) const
 {
     ZoneScoped;
     if (handle)
@@ -35,12 +35,12 @@ void render::vk_query::begin(VkCommandBuffer cmd, const u32 query, const u32 fla
     }
 }
 
-void render::vk_query::begin_next(VkCommandBuffer cmd, const u32 flags) const
+void platform::vk_query::begin_next(VkCommandBuffer cmd, const u32 flags) const
 {
     begin(cmd, index + 1, flags);
 }
 
-result<render::vk_query> render::vk_create_query_pool(VkDevice device, u32 queries, VkQueryType type)
+result<platform::vk_query> platform::vk_create_query_pool(VkDevice device, u32 queries, VkQueryType type)
 {
     ZoneScoped;
     assert2(type != VK_QUERY_TYPE_PIPELINE_STATISTICS);
@@ -57,7 +57,7 @@ result<render::vk_query> render::vk_create_query_pool(VkDevice device, u32 queri
     return vk_query {.handle = pool};
 }
 
-result<render::vk_query> render::vk_create_pipeline_stat_query_pool(VkDevice device, u32 queries,
+result<platform::vk_query> platform::vk_create_pipeline_stat_query_pool(VkDevice device, u32 queries,
                                                                     VkQueryPipelineStatisticFlags flags)
 {
     ZoneScoped;
@@ -74,7 +74,7 @@ result<render::vk_query> render::vk_create_pipeline_stat_query_pool(VkDevice dev
     return vk_query {.handle = pool};
 }
 
-void render::vk_destroy_query_pool(VkDevice device, vk_query& query)
+void platform::vk_destroy_query_pool(VkDevice device, vk_query& query)
 {
     ZoneScoped;
     VK_DESTROY(query.handle, vkDestroyQueryPool, device);

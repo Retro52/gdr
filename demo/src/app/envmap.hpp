@@ -24,34 +24,33 @@ namespace app
         i32 prefilter_resolution;
         i32 irradiance_resolution;
 
-        render::rhi::sampler sampler;
-        render::rhi::sampler brdf_sampler;
+        rhi::sampler sampler;
+        rhi::sampler brdf_sampler;
 
-        render::rhi::image_view conv_view;
-        render::rhi::image convolution;
+        rhi::image_view conv_view;
+        rhi::image convolution;
 
-        render::rhi::image_view pref_view;
-        render::rhi::image_view pref_mips[shader_constants::kEnvPrefilterMips];
-        render::rhi::image prefiltered;
+        rhi::image_view pref_view;
+        rhi::image_view pref_mips[shader_constants::kEnvPrefilterMips];
+        rhi::image prefiltered;
 
-        render::rhi::image_view cube_view;
-        render::rhi::image cubemap;
+        rhi::image_view cube_view;
+        rhi::image cubemap;
 
-        render::rhi::image brdf_lut;
+        rhi::image brdf_lut;
 
-        envmap(const render::rhi::rhi& rhi, render::rhi::context ctx, render::rhi::image_format format,
-               const envmap_config& cfg);
+        envmap(const rhi::impl& impl, rhi::context ctx, rhi::image_format format, const envmap_config& cfg);
 
-        void shutdown(const render::rhi::rhi& rhi, render::rhi::context ctx);
+        void shutdown(const rhi::impl& impl, rhi::context ctx);
 
-        [[nodiscard]] render::rhi::binding get_lut_descriptor_info() const;
-        [[nodiscard]] render::rhi::binding get_cube_descriptor_info() const;
-        [[nodiscard]] render::rhi::binding get_conv_descriptor_info() const;
-        [[nodiscard]] render::rhi::binding get_pref_descriptor_info() const;
+        [[nodiscard]] rhi::binding get_lut_descriptor_info() const;
+        [[nodiscard]] rhi::binding get_cube_descriptor_info() const;
+        [[nodiscard]] rhi::binding get_conv_descriptor_info() const;
+        [[nodiscard]] rhi::binding get_pref_descriptor_info() const;
 
-        void init(const render::rhi::rhi& rhi, render::rhi::command_buffer cmd, app::pso_data& pso);
+        void init(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_data& pso);
 
-        void load(const fs::path& path, app::pso_data& pso, const render::rhi::rhi& rhi, render::rhi::context ctx,
-                  const app::gpu_upload_mgr& upload_mgr);
+        void load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_data& pso,
+                  const app::gpu_upload_mgr& upload_mgr, const fs::path& path);
     };
 }

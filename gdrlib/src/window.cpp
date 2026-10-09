@@ -8,7 +8,7 @@ window::window(const char* title, const create_window_info& create_info)
     ZoneScoped;
 
     SDL_Init(SDL_INIT_VIDEO);
-    auto props = SDL_CreateProperties();
+    const auto props = SDL_CreateProperties();
 
     SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, title);
 
@@ -20,8 +20,11 @@ window::window(const char* title, const create_window_info& create_info)
 
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, create_info.fullscreen);
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_BORDERLESS_BOOLEAN, create_info.borderless);
+    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, create_info.resizable);
 
     m_window = SDL_CreateWindowWithProperties(props);
+
+    SDL_DestroyProperties(props);
 
 #if defined(SDL_PLATFORM_APPLE)
     m_metal_view = SDL_Metal_CreateView(m_window);

@@ -25,18 +25,18 @@ namespace app
         f32 max_range;
         f32 split_lambda;
 
-        render::rhi::sampler sampler  = render::rhi::null_sampler;
-        render::rhi::image shadow_map = render::rhi::null_image;
-        cpp::local_array<render::rhi::image_view, 12> cascade_views;
+        rhi::sampler sampler  = rhi::null_sampler;
+        rhi::image shadow_map = rhi::null_image;
+        cpp::local_array<rhi::image_view, 12> cascade_views;
 
-        csm(const render::rhi::rhi& rhi, render::rhi::context ctx, render::rhi::image_format format,
+        csm(const rhi::impl& rhi, rhi::context ctx, rhi::image_format format,
             const csm_config& cfg);
 
-        void init(const render::rhi::rhi& rhi, render::rhi::command_buffer cmd);
+        void init(const rhi::impl& rhi, rhi::command_buffer cmd);
 
-        void shutdown(const render::rhi::rhi& rhi, render::rhi::context ctx);
+        void shutdown(const rhi::impl& rhi, rhi::context ctx);
 
-        [[nodiscard]] render::rhi::binding get_descriptor_info() const;
+        [[nodiscard]] rhi::binding get_descriptor_info() const;
 
         [[nodiscard]] f32 get_cascade_range(f32 near, u32 index) const;
 

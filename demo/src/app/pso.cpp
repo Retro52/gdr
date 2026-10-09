@@ -60,9 +60,9 @@ namespace
         return false;
     }
 
-    void parse_pipeline_options(render::rhi::pso_options& options, const nlohmann::json& json_options)
+    void parse_pipeline_options(rhi::pso_options& options, const nlohmann::json& json_options)
     {
-        opt_get_enum<render::rhi::image_format>(json_options, "depth_format", options.depth_format);
+        opt_get_enum<rhi::image_format>(json_options, "depth_format", options.depth_format);
 
         opt_get_enum(json_options, "topology", options.topology);
         options.depth_bias_enable  = opt_get_bit(json_options, "depth_bias", options.depth_bias_enable);
@@ -74,16 +74,16 @@ namespace
             for (auto& item : json_options["color_formats"].items())
             {
                 auto format =
-                    reflection::enum_from_string<render::rhi::image_format>(item.value().get<std::string>().c_str());
+                    reflection::enum_from_string<rhi::image_format>(item.value().get<std::string>().c_str());
 
-                options.add_color_attachment(static_cast<render::rhi::image_format>(format));
+                options.add_color_attachment(static_cast<rhi::image_format>(format));
             }
         }
     }
 }
 
-void app::pso_data::load(const render::rhi::rhi& rhi, const render::rhi::context context,
-                         const render::rhi::swapchain swapchain, render::rhi::bindless_set textures_set)
+void app::pso_data::load(const rhi::impl& rhi, const rhi::context context,
+                         const rhi::swapchain swapchain, rhi::bindless_set textures_set)
 {
     ZoneScoped;
     auto data = fs::read_file("../shaders/pipelines.json");
@@ -103,8 +103,8 @@ void app::pso_data::load(const render::rhi::rhi& rhi, const render::rhi::context
 
     nlohmann::json info = nlohmann::json::parse(data->get<char>(), data->get<char>() + data->size());
 
-    std::unordered_map<u32, render::rhi::shader> cache;
-    cpp::heap_array<render::rhi::shader> compiled_shaders;
+    std::unordered_map<u32, rhi::shader> cache;
+    cpp::heap_array<rhi::shader> compiled_shaders;
 
     auto process = [&](const u32 key, const nlohmann::json& pipeline_info)
     {
@@ -122,7 +122,7 @@ void app::pso_data::load(const render::rhi::rhi& rhi, const render::rhi::context
             for (auto it = capabilities.begin(); it != capabilities.end(); ++it)
             {
                 if (it.value() == "mesh_ext"
-                    && !*rhi.query_feature_support(context, render::rhi::feature_flag::mesh_shading))
+                    && !*rhi.query_feature_support(context, rhi::feature_flag::mesh_shading))
                 {
                     LOG_WARNING("pipeline is skipped because mesh shaders are unsupported on this platform");
                     return;
@@ -160,7 +160,7 @@ void app::pso_data::load(const render::rhi::rhi& rhi, const render::rhi::context
                  "some shaders failed to compile?");
         if (compiled_shaders.size() == shaders.size())
         {
-            auto options = render::rhi::pso_options().add_color_attachment(*sc_format);
+            auto options = rhi::pso_options().add_color_attachment(*sc_format);
             if (pipeline_info.contains("options"))
             {
                 parse_pipeline_options(options, pipeline_info["options"]);
@@ -168,7 +168,7 @@ void app::pso_data::load(const render::rhi::rhi& rhi, const render::rhi::context
 
             auto pso = (shaders.size() == 1
                         && (*RHI_SAFE_CALL(rhi.query_shader_stage, compiled_shaders.front())
-                            == render::rhi::shader_stage::compute))
+                            == rhi::shader_stage::compute))
                          ? RHI_SAFE_CALL(rhi.create_compute_pso, context, compiled_shaders[0], {&textures_set, 1})
                          : RHI_SAFE_CALL(rhi.create_graphics_pso,
                                          context,
@@ -202,13 +202,13 @@ void app::pso_data::load(const render::rhi::rhi& rhi, const render::rhi::context
     }
 }
 
-void app::pso_data::destroy(const render::rhi::rhi& rhi, const render::rhi::context context, const pso_id id)
+void app::pso_data::destroy(const rhi::impl& rhi, const rhi::context context, const pso_id id)
 {
     ZoneScoped;
     RHI_SAFE_CALL(rhi.destroy_pso, context, this->operator[](id));
 }
 
-void app::pso_data::shutdown(const render::rhi::rhi& rhi, const render::rhi::context context)
+void app::pso_data::shutdown(const rhi::impl& rhi, const rhi::context context)
 {
     ZoneScoped;
     for (auto& [_, pso] : m_pipelines)
@@ -217,8 +217,8 @@ void app::pso_data::shutdown(const render::rhi::rhi& rhi, const render::rhi::con
     }
 }
 
-app::pso_watcher::pso_watcher(pso_data& pipelines, render::rhi::rhi& rhi, const render::rhi::context context,
-                              const render::rhi::bindless_set textures_set)
+app::pso_watcher::pso_watcher(pso_data& pipelines, rhi::impl& rhi, const rhi::context context,
+                              const rhi::bindless_set textures_set)
     : m_pdata(pipelines)
     , m_context(context)
     , m_textures_set(textures_set)

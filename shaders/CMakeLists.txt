@@ -133,7 +133,6 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
         list(APPEND SHADER_DEF "-DPLATFORM_MVK")
     endif ()
 
-    set(SHADER_DXIL_COMMANDS "")
     add_custom_command(
             OUTPUT "${SHADER_BIN_OUTPUT}.spv"
             COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}

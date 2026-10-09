@@ -18,7 +18,7 @@ namespace app
         window m_window;
         app::argv_handler m_args;
 
-        render::rhi::rhi m_rhi;
+        rhi::impl m_rhi;
         events_queue m_events_queue;
     };
 }

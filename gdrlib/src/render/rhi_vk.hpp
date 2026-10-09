@@ -2,7 +2,7 @@
 
 #include <render/rhi.hpp>
 
-namespace render::rhi
+namespace rhi
 {
     result<context> vk_create_context(const window& window, const instance_desc& desc);
     void vk_destroy_context(context& context);
@@ -15,6 +15,7 @@ namespace render::rhi
     void vk_destroy_command_buffer(context context, command_buffer& cmd);
 
     result<bindless_set> vk_create_bindless_set(context context, u32 resource_count);
+    void vk_update_bindless_set(context context, bindless_set set, std::span<const bindless_set_write_info> info);
     void vk_destroy_bindless_set(context context, bindless_set& set);
 
     result<fence> vk_create_fence(context context, u64 initial_value);
@@ -61,10 +62,15 @@ namespace render::rhi
 
     void vk_cmd_reset(command_buffer cmd);
     void vk_cmd_barriers(command_buffer cmd, const barrier_batch& barriers);
+    void vk_cmd_image_blit(command_buffer cmd, image src, image dst, const blit_image_info& info);
     void vk_cmd_copy_buffer(command_buffer cmd, buffer src_buffer, u64vec2 src_range, buffer dst_buffer,
                             u64 dst_offset);
+
     void vk_cmd_clear_buffer(command_buffer cmd, buffer buffer, u64vec2 range, u32 value);
     void vk_cmd_update_buffer(command_buffer cmd, buffer buffer, u64vec2 range, const void* data);
+    void vk_cmd_copy_buffer_to_image(command_buffer cmd, buffer src, image dst, image_layout layout,
+                                     std::span<const copy_image_info> regions);
+
     void vk_cmd_clear_depth_attachment(command_buffer cmd, image image, ds_clear_value value);
     void vk_cmd_clear_color_attachment(command_buffer cmd, image image, color_clear_value value);
 
@@ -72,27 +78,29 @@ namespace render::rhi
                                attachment_state_info depth_attachment, uvec4 viewport);
     void vk_cmd_clear_draw_state(command_buffer cmd);
 
+    void vk_cmd_set_cull_mode(command_buffer cmd, cull_mode mode);
+    void vk_cmd_set_depth_bias(command_buffer cmd, f32 constant_factor, f32 slope_factor, f32 clamp);
+
     void vk_cmd_bind_pso(command_buffer cmd, pipeline pso);
     void vk_cmd_bind_index(command_buffer cmd, buffer index_buffer);
     void vk_cmd_push_constants(command_buffer cmd, pipeline pso, const void* data, u32 size, u32 offset);
     void vk_cmd_push_bindings(command_buffer cmd, pipeline pso, std::span<const binding> bindings);
     void vk_cmd_push_bindless_set(command_buffer cmd, pipeline pso, bindless_set set, u32 binding);
 
-    void vk_cmd_dispatch(command_buffer cmd, uvec3 threads);
+    void vk_cmd_dispatch(command_buffer cmd, pipeline pso, uvec3 threads);
     void vk_cmd_dispatch_indirect(command_buffer cmd, buffer count_buffer, u32 buffer_offset);
 
     void vk_cmd_draw(command_buffer cmd, u32 vtx_count, u32 instance_count, u32 first_vertex, u32 first_instance);
 
     void vk_cmd_draw_indexed_indirect(command_buffer cmd, buffer buffer, u64 offset, u32 count, u32 stride);
 
-    void vk_cmd_draw_indexed_indirect_count(command_buffer cmd, render::rhi::buffer buffer, u64 offset,
-                                            render::rhi::buffer count_buffer, u64 count_offset, u32 max_count,
-                                            u32 stride);
+    void vk_cmd_draw_indexed_indirect_count(command_buffer cmd, rhi::buffer buffer, u64 offset,
+                                            rhi::buffer count_buffer, u64 count_offset, u32 max_count, u32 stride);
 
     void vk_cmd_draw_mesh_indirect(command_buffer cmd, buffer buffer, u64 offset, u32 count, u32 stride);
 
-    void vk_cmd_draw_mesh_indirect_count(command_buffer cmd, render::rhi::buffer buffer, u64 offset,
-                                         render::rhi::buffer count_buffer, u64 count_offset, u32 max_count, u32 stride);
+    void vk_cmd_draw_mesh_indirect_count(command_buffer cmd, rhi::buffer buffer, u64 offset, rhi::buffer count_buffer,
+                                         u64 count_offset, u32 max_count, u32 stride);
 
     void vk_submit(context context, queue queue, const submit_info& info);
     void vk_present(command_buffer cmd, swapchain swapchain, queue submit, queue present);
