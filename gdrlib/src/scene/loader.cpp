@@ -38,20 +38,6 @@ namespace
         ddspp::Descriptor dds_descriptor;
     };
 
-    struct unified_tex_desc
-    {
-        u32 width                        = 0;
-        u32 height                       = 0;
-        u32 depth                        = 0;
-        u32 data_size                    = 0;
-        u32 mips_count                   = 0;
-        u32 arrays_count                 = 0;
-        u32 block_size                   = 0;
-        u32 bits_per_block               = 0;
-        render::rhi::image_format format = render::rhi::image_format::none;
-        const void* pdata                = nullptr;
-    };
-
     REGISTER_ENUM(texture_usage, unknown, albedo, normal, metalic_roughness)
 
     struct parsed_texture
@@ -97,37 +83,35 @@ namespace
         return texture_usage::unknown;
     }
 
-    unified_tex_desc desc_from_parse_result(const parsed_texture& parsed_texture)
+    template<typename Data>
+    loader::texture_desc desc_from_parse_result(Data&& parsed_texture)
     {
-        unified_tex_desc result;
+        loader::texture_desc result;
         std::visit(
             [&]<typename T>(T&& data)
             {
                 using desc_t = std::remove_cvref_t<T>;
                 if constexpr (std::is_same_v<desc_t, dds_data>)
                 {
-                    result.width          = data.dds_descriptor.width;
-                    result.height         = data.dds_descriptor.height;
-                    result.depth          = data.dds_descriptor.depth;
+                    result.dimensions =
+                        uvec3(data.dds_descriptor.width, data.dds_descriptor.height, data.dds_descriptor.depth);
                     result.mips_count     = data.dds_descriptor.numMips;
                     result.arrays_count   = data.dds_descriptor.arraySize;
                     result.block_size     = data.dds_descriptor.blockHeight;
                     result.bits_per_block = data.dds_descriptor.bitsPerPixelOrBlock;
                     result.format =
-                        static_cast<render::rhi::image_format>(render::vk_format_from_dxgi(data.dds_descriptor.format));
-                    result.pdata     = data.data.template get<u8>() + data.dds_descriptor.headerSize;
-                    result.data_size = data.data.template length<u8>() - data.dds_descriptor.headerSize;
+                        static_cast<rhi::image_format>(platform::vk_format_from_dxgi(data.dds_descriptor.format));
+                    result.pdata = bytes(data.data.template get<u8>() + data.dds_descriptor.headerSize,
+                                         data.data.template length<u8>() - data.dds_descriptor.headerSize);
                 }
                 else if constexpr (std::is_same_v<desc_t, SDL_Surface*>)
                 {
-                    result.width        = data->w;
-                    result.height       = data->h;
-                    result.depth        = 1;
+                    result.dimensions = uvec3(data->w, data->h, 1);
+
                     result.mips_count   = 1;
                     result.arrays_count = 1;
-                    result.pdata        = data->pixels;
-                    result.data_size    = data->pitch * data->h;
-                    result.format       = render::rhi::image_format::r8g8b8a8un;
+                    result.pdata        = bytes(data->pixels, data->pitch * data->h);
+                    result.format       = rhi::image_format::r8g8b8a8un;
                 }
                 else
                 {
@@ -138,10 +122,10 @@ namespace
 
         if (parsed_texture.usage != texture_usage::unknown)
         {
-            result.format = static_cast<render::rhi::image_format>(render::vk_format_force_color_space(
+            result.format = static_cast<rhi::image_format>(platform::vk_format_force_color_space(
                 static_cast<VkFormat>(result.format),
-                parsed_texture.usage == texture_usage::albedo ? render::color_space::srgb
-                                                              : render::color_space::linear));
+                parsed_texture.usage == texture_usage::albedo ? platform::color_space::srgb
+                                                              : platform::color_space::linear));
         }
 
         return result;
@@ -355,8 +339,8 @@ static result<parsed_texture> read_texture(const fs::path& uri, texture_usage us
 }
 
 #if 0
-static result<render::vk_image> upload_texture(const parsed_texture& texture, const render::vk_renderer& renderer,
-                                               const render::vk_buffer_transfer& scratch)
+static result<platform::vk_image> upload_texture(const parsed_texture& texture, const platform::vk_renderer& renderer,
+                                               const platform::vk_buffer_transfer& scratch)
 {
     const auto desc                           = desc_from_parse_result(texture);
     const VkImageCreateInfo image_create_info = {
@@ -372,11 +356,11 @@ static result<render::vk_image> upload_texture(const parsed_texture& texture, co
         .usage       = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
     };
 
-    const auto image_r = render::vk_create_image(
+    const auto image_r = platform::vk_create_image(
         renderer.get_context().device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, renderer.get_context().allocator);
 
     RESULT_FORWARD_IF_FAILED(image_r);
-    render::vk_upload_image(scratch,
+    platform::vk_upload_image(scratch,
                             *image_r,
                             static_cast<const u8*>(desc.pdata),
                             desc.data_size,
@@ -411,19 +395,15 @@ u32 loader::get_max_lod_meshlets(const loader::primitive& prim)
     return res;
 }
 
-// result<render::vk_image> loader::load_texture(const fs::path& path, const render::vk_renderer& renderer,
-//                                               const render::vk_buffer_transfer& scratch)
-// {
-//     ZoneScoped;
-//     if (const auto read_r = read_texture(path, texture_usage::unknown))
-//     {
-//         return upload_texture(*read_r, renderer, scratch);
-//     }
-//
-//     return error("failed to read texture");
-// }
+auto loader::load_texture(const fs::path& path) -> result<texture_desc>
+{
+    auto texture = read_texture(path, texture_usage::unknown);
+    RESULT_FORWARD_IF_FAILED(texture);
 
-loader::scene_data loader::load_scene(const fs::path& path, scene& scene)
+    return desc_from_parse_result(std::move(*texture));
+}
+
+auto loader::load_scene(const fs::path& path, scene& scene) -> result<scene_data>
 {
     ZoneScoped;
     LOG_INFO("loading GLTF scene {}", path.c_str());
@@ -433,7 +413,7 @@ loader::scene_data loader::load_scene(const fs::path& path, scene& scene)
         LOG_WARNING(
             "loading non-gltf scenes not supported. supported file extensions: '.gltf', '.glb'. file extension: '{}'",
             path.extension().c_str())
-        return {};
+        return error("failed to load scene");
     }
 
     cgltf_options options = {};
@@ -503,49 +483,39 @@ loader::scene_data loader::load_scene(const fs::path& path, scene& scene)
         }
     }
 
-    // textures.resize(data->textures_count);
-    //     cpp::heap_array<parsed_texture> textures_data(data->textures_count);
-    //
-    //     {
-    //         ZoneScopedN("loader::load_scene::schedule_load_textures");
-    //
-    //         for (u64 i = 0; i < data->textures_count; ++i)
-    //         {
-    //             const auto& texture = data->textures[i];
-    //             if (!texture.image->uri)
-    //             {
-    //                 continue;
-    //             }
-    //
-    //             textures_wg.add(1);
-    //             job::schedule_async(
-    //                 [&path, &textures_data, i, data]()
-    //                 {
-    //                     const auto* tex = &data->textures[i];
-    //                     const auto uri  = path.parent() / fs::path(tex->image->uri);
-    // #if TRACY_ENABLE
-    //                     const auto debug_name =
-    //                         cpp::big_stack_string::make_formatted("read texture: %s", uri.filename().c_str());
-    //                     TracyMessage(debug_name.c_str(), debug_name.length());
-    // #endif
-    //
-    //                     if (auto res = read_texture(uri, try_get_texture_usage(data, tex)))
-    //                     {
-    //                         textures_data[i] = std::move(*res);
-    //                     }
-    //                 },
-    //                 textures_wg);
-    //         }
-    //     }
-    //
-    //     textures_wg.wait_till_done();
-    // for (u32 i = 0; i < textures_data.size(); ++i)
-    // {
-    //     if (auto image_r = upload_texture(textures_data[i], renderer, geometry_pool.transfer))
-    //     {
-    //         textures[i] = *image_r;
-    //     }
-    // }
+    scene_data.textures.resize(data->textures_count);
+
+    {
+        ZoneScopedN("loader::load_scene::schedule_load_textures");
+
+        for (u64 i = 0; i < data->textures_count; ++i)
+        {
+            const auto& texture = data->textures[i];
+            if (!texture.image->uri)
+            {
+                continue;
+            }
+
+            textures_wg.add(1);
+            job::schedule_async(
+                [&path, &scene_data, i, data]()
+                {
+                    const auto* tex = &data->textures[i];
+                    const auto uri  = path.parent() / fs::path(tex->image->uri);
+#if TRACY_ENABLE
+                    const auto debug_name =
+                        cpp::big_stack_string::make_formatted("read texture: %s", uri.filename().c_str());
+                    TracyMessage(debug_name.c_str(), debug_name.length());
+#endif
+
+                    if (auto res = read_texture(uri, try_get_texture_usage(data, tex)))
+                    {
+                        scene_data.textures[i] = desc_from_parse_result(std::move(*res));
+                    }
+                },
+                textures_wg);
+        }
+    }
 
     scene_data.materials.resize(data->materials_count + 1);
     scene_data.materials[0].diffuse_factor = vec4(1.0F, 0.0F, 0.71F, 1.0F);  // -> pinkish <-
@@ -614,11 +584,6 @@ loader::scene_data loader::load_scene(const fs::path& path, scene& scene)
     hierarchy.nodes.resize(data->nodes_count);
 #endif
 
-    u32 triangles_max     = 0;
-    u32 instance_count    = 0;
-    u32 visibility_offset = 0;
-    std::array<u32, shader_constants::kMatClassCount> mat_offset_table {};
-
     for (size_t i = 0; i < data->nodes_count; ++i)
     {
         const cgltf_node* node = &data->nodes[i];
@@ -639,18 +604,18 @@ loader::scene_data loader::load_scene(const fs::path& path, scene& scene)
                 auto& instance             = scene_data.instances.emplace_back();
                 instance.pos_and_scale     = {transform_comp.position, transform_comp.uniform_scale};
                 instance.rotation_quat     = transform_comp.rotation;
-                instance.visibility_offset = visibility_offset;
+                instance.visibility_offset = scene_data.counters.meshlets;
                 instance.mesh_data_index   = desc.offset + j;
                 instance.base_vertex       = scene_data.primitives[desc.offset + j].base_vertex;
                 instance.material_index    = node->mesh->primitives[j].material
                                                ? (cgltf_material_index(data, node->mesh->primitives[j].material) + 1)
                                                : 0;
-                mat_offset_table[scene_data.materials[instance.material_index].material_class] +=
+                scene_data.counters.mat_offset_table[scene_data.materials[instance.material_index].material_class] +=
                     get_max_draw_commands(get_max_lod_meshlets(scene_data.primitives[desc.offset + j]));
 
-                ++instance_count;
-                triangles_max += get_max_lod_tris(raw_meshes[desc.offset + j]);
-                visibility_offset += get_max_lod_meshlets(scene_data.primitives[desc.offset + j]);
+                ++scene_data.counters.instances;
+                scene_data.counters.triangles += get_max_lod_tris(raw_meshes[desc.offset + j]);
+                scene_data.counters.meshlets += get_max_lod_meshlets(scene_data.primitives[desc.offset + j]);
             }
         }
 
@@ -691,15 +656,16 @@ loader::scene_data loader::load_scene(const fs::path& path, scene& scene)
 #endif
     }
 
+    textures_wg.wait_till_done();
     return scene_data;
 }
 
-result<loader::meshes_context> loader::load_meshes(const fs::path& path)
+auto loader::load_meshes(const fs::path& path) -> result<meshes_data>
 {
     ZoneScoped;
     if (path.extension() != ".gltf" && path.extension() != ".glb")
     {
-        return {};
+        return error("extension is not gltf/glb, terminating early");
     }
 
     cgltf_options options = {};
@@ -711,7 +677,7 @@ result<loader::meshes_context> loader::load_meshes(const fs::path& path)
     CHECK(cgltf_load_buffers(&options, data, path.c_str()));
     CHECK(cgltf_validate(data));
 
-    loader::meshes_context ctx;
+    loader::meshes_data ctx;
     ctx.meshes.resize(data->meshes_count);
 
 #if TRACY_ENABLE

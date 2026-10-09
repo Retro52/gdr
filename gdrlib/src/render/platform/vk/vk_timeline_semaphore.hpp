@@ -5,7 +5,7 @@
 #include <pod_types.hpp>
 #include <result.hpp>
 
-namespace render
+namespace platform
 {
     struct vk_timeline_semaphore
     {

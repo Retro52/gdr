@@ -7,12 +7,12 @@
 #include <render/types.hpp>
 #include <window.hpp>
 
-namespace render
+namespace platform
 {
     struct vk_swapchain_image
     {
         vk_image image;
-        VkSemaphore release_semaphore;
+        VkSemaphore release_semaphore = VK_NULL_HANDLE;
     };
 
     struct vk_swapchain
@@ -20,7 +20,7 @@ namespace render
         cpp::heap_array<vk_swapchain_image> images;
         VkSurfaceFormatKHR surface_format;
 
-        VkSwapchainKHR sc     = VK_NULL_HANDLE;
+        VkSwapchainKHR sc = VK_NULL_HANDLE;
     };
 
     struct vk_queue_data

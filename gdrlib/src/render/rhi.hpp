@@ -5,7 +5,7 @@
 #endif
 
 #include <fs/path.hpp>
-#include <render/resources.hpp>
+#include <render/rhi_handles.hpp>
 #include <render/rhi_pso_options.hpp>
 #include <render/types.hpp>
 #include <result.hpp>
@@ -30,7 +30,7 @@
 #define RHI_SAFE_CALL(FPN, ...) FPN(__VA_ARGS__)
 #endif
 
-namespace render::rhi
+namespace rhi
 {
     using destroy_context_pfn = void (*)(context& context);
     using create_context_pfn  = result<context> (*)(const window& window, const instance_desc& desc);
@@ -44,6 +44,8 @@ namespace render::rhi
     using destroy_command_buffer_pfn = void (*)(context context, command_buffer& cmd);
 
     using create_bindless_set_pfn  = result<bindless_set> (*)(context context, u32 resource_count);
+    using update_bindless_set_pfn  = void (*)(context context, bindless_set set,
+                                             std::span<const bindless_set_write_info> info);
     using destroy_bindless_set_pfn = void (*)(context context, bindless_set& set);
 
     using create_fence_pfn  = result<fence> (*)(context context, u64 initial_value);
@@ -91,12 +93,17 @@ namespace render::rhi
     using cmd_begin_recording_pfn = void (*)(command_buffer cmd);
     using cmd_end_recording_pfn   = void (*)(command_buffer cmd);
 
-    using cmd_reset_pfn         = void (*)(command_buffer cmd);
-    using cmd_barriers_pfn      = void (*)(command_buffer cmd, const barrier_batch& barriers);
-    using cmd_copy_buffer_pfn   = void (*)(command_buffer cmd, buffer src_buffer, u64vec2 src_range, buffer dst_buffer,
+    using cmd_reset_pfn       = void (*)(command_buffer cmd);
+    using cmd_barriers_pfn    = void (*)(command_buffer cmd, const barrier_batch& barriers);
+    using cmd_image_blit_pfn  = void (*)(command_buffer cmd, image src, image dst, const blit_image_info& info);
+    using cmd_copy_buffer_pfn = void (*)(command_buffer cmd, buffer src_buffer, u64vec2 src_range, buffer dst_buffer,
                                          u64 dst_offset);
-    using cmd_clear_buffer_pfn  = void (*)(command_buffer cmd, buffer buffer, u64vec2 range, u32 value);
-    using cmd_update_buffer_pfn = void (*)(command_buffer cmd, buffer buffer, u64vec2 range, const void* data);
+
+    using cmd_clear_buffer_pfn         = void (*)(command_buffer cmd, buffer buffer, u64vec2 range, u32 value);
+    using cmd_update_buffer_pfn        = void (*)(command_buffer cmd, buffer buffer, u64vec2 range, const void* data);
+    using cmd_copy_buffer_to_image_pfn = void (*)(command_buffer cmd, buffer src, image dst, image_layout layout,
+                                                  std::span<const copy_image_info> regions);
+
     using cmd_clear_depth_attachment_pfn = void (*)(command_buffer cmd, image image, ds_clear_value value);
     using cmd_clear_color_attachment_pfn = void (*)(command_buffer cmd, image image, color_clear_value value);
 
@@ -105,13 +112,16 @@ namespace render::rhi
                                             attachment_state_info depth_attachment, uvec4 viewport);
     using cmd_clear_draw_state_pfn = void (*)(command_buffer cmd);
 
+    using cmd_set_cull_mode_pfn  = void (*)(command_buffer cmd, cull_mode mode);
+    using cmd_set_depth_bias_pfn = void (*)(command_buffer cmd, f32 constant_factor, f32 slope_factor, f32 clamp);
+
     using cmd_bind_pso_pfn       = void (*)(command_buffer cmd, pipeline pso);
     using cmd_bind_index_pfn     = void (*)(command_buffer cmd, buffer index_buffer);
     using cmd_push_constants_pfn = void (*)(command_buffer cmd, pipeline pso, const void* data, u32 size, u32 offset);
     using cmd_push_bindings_pfn  = void (*)(command_buffer cmd, pipeline pso, std::span<const binding> bindings);
     using cmd_push_bindless_set_pfn = void (*)(command_buffer cmd, pipeline pso, bindless_set set, u32 binding);
 
-    using cmd_dispatch_pfn          = void (*)(command_buffer cmd, uvec3 threads);
+    using cmd_dispatch_pfn          = void (*)(command_buffer cmd, pipeline pso, uvec3 threads);
     using cmd_dispatch_indirect_pfn = void (*)(command_buffer cmd, buffer count_buffer, u32 buffer_offset);
 
     using cmd_draw_pfn = void (*)(command_buffer cmd, u32 vtx_count, u32 instance_count, u32 first_vertex,
@@ -133,7 +143,7 @@ namespace render::rhi
     using submit_pfn  = void (*)(context context, queue queue, const submit_info& info);
     using present_pfn = void (*)(command_buffer cmd, swapchain swapchain, queue submit, queue present);
 
-    struct rhi
+    struct impl
     {
         create_context_pfn create_context;
         destroy_context_pfn destroy_context;
@@ -146,6 +156,7 @@ namespace render::rhi
         destroy_command_buffer_pfn destroy_command_buffer;
 
         create_bindless_set_pfn create_bindless_set;
+        update_bindless_set_pfn update_bindless_set;
         destroy_bindless_set_pfn destroy_bindless_set;
 
         create_fence_pfn create_fence;
@@ -191,14 +202,20 @@ namespace render::rhi
 
         cmd_reset_pfn cmd_reset;
         cmd_barriers_pfn cmd_barriers;
+        cmd_image_blit_pfn cmd_image_blit;
         cmd_copy_buffer_pfn cmd_copy_buffer;
+
         cmd_clear_buffer_pfn cmd_clear_buffer;
         cmd_update_buffer_pfn cmd_update_buffer;
+        cmd_copy_buffer_to_image_pfn cmd_copy_buffer_to_image;
         cmd_clear_depth_attachment_pfn cmd_clear_depth_attachment;
         cmd_clear_color_attachment_pfn cmd_clear_color_attachment;
 
         cmd_set_draw_state_pfn cmd_set_draw_state;
         cmd_clear_draw_state_pfn cmd_clear_draw_state;
+
+        cmd_set_cull_mode_pfn cmd_set_cull_mode;
+        cmd_set_depth_bias_pfn cmd_set_depth_bias;
 
         cmd_bind_pso_pfn cmd_bind_pso;
         cmd_bind_index_pfn cmd_bind_index;
@@ -221,9 +238,9 @@ namespace render::rhi
         present_pfn present;
     };
 
-    rhi create_for_vk();
+    impl create_for_vk();
 
 #if GDR_ENABLE_DX12_BACKEND
-    rhi create_for_d3d12();
+    impl create_for_d3d12();
 #endif
 }

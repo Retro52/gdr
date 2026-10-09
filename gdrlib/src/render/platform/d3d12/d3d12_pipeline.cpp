@@ -3,7 +3,7 @@
 #include <render/platform/d3d12/d3d12_pipeline.hpp>
 #include <render/platform/d3d12/d3d12_utils.hpp>
 
-result<render::d3d12_shader> render::d3d12_create_shader(const fs::path& shader_path)
+result<platform::d3d12_shader> platform::d3d12_create_shader(const fs::path& shader_path)
 {
     ZoneScoped;
     const auto spv_binary = fs::read_file(shader_path);
@@ -12,19 +12,19 @@ result<render::d3d12_shader> render::d3d12_create_shader(const fs::path& shader_
     const auto d3d12_binary = fs::read_file(shader_path.parent() / shader_path.stem().append(".dxl"));
     RESULT_FORWARD_IF_FAILED(d3d12_binary);
 
-    return render::d3d12_shader {
+    return platform::d3d12_shader {
         .dxil_bytecode = *d3d12_binary,
         .spv_meta      = vk_shader::parse_spirv(*spv_binary),
     };
 }
 
-void render::d3d12_destroy_shader(d3d12_shader& shader)
+void platform::d3d12_destroy_shader(d3d12_shader& shader)
 {
     shader.dxil_bytecode.release();
     memset(&shader.spv_meta, 0, sizeof(shader.spv_meta));
 }
 
-auto render::d3d12_create_pipeline_compute(ID3D12Device2* device, const d3d12_shader& shader, bool debug,
+auto platform::d3d12_create_pipeline_compute(ID3D12Device2* device, const d3d12_shader& shader, bool debug,
                                            const d3d12_descriptor_set* desc_set, u32 desc_set_count)
     -> result<d3d12_pipeline>
 {
@@ -43,9 +43,9 @@ auto render::d3d12_create_pipeline_compute(ID3D12Device2* device, const d3d12_sh
     return error("not implemented");
 }
 
-auto render::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12_shader* shaders, const u32 shaders_count,
+auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12_shader* shaders, const u32 shaders_count,
                                             const d3d12_descriptor_set* desc_set, u32 desc_set_count,
-                                            const render::rhi::pso_options& options) -> result<d3d12_pipeline>
+                                            const rhi::pso_options& options) -> result<d3d12_pipeline>
 {
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
     root_signature_desc.Init_1_1(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
@@ -72,13 +72,13 @@ auto render::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12_s
         return D3D_ROOT_SIGNATURE_VERSION_1_0;
     }();
 
-    render::com_ptr<ID3DBlob> err_blob;
-    render::com_ptr<ID3DBlob> root_signature_blob;
+    platform::com_ptr<ID3DBlob> err_blob;
+    platform::com_ptr<ID3DBlob> root_signature_blob;
 
     D3D12_RETURN_ON_FAIL(D3DX12SerializeVersionedRootSignature(
         &root_signature_desc, root_signature_version, &root_signature_blob, &err_blob));
 
-    render::com_ptr<ID3D12RootSignature> root_signature;
+    platform::com_ptr<ID3D12RootSignature> root_signature;
     D3D12_RETURN_ON_FAIL(device->CreateRootSignature(0,
                                                      root_signature_blob->GetBufferPointer(),
                                                      root_signature_blob->GetBufferSize(),
@@ -148,7 +148,7 @@ auto render::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12_s
         .pPipelineStateSubobjectStream = &desc,
     };
 
-    render::com_ptr<ID3D12PipelineState> pipeline;
+    platform::com_ptr<ID3D12PipelineState> pipeline;
     D3D12_RETURN_ON_FAIL(device->CreatePipelineState(&stream_desc, IID_PPV_ARGS(&pipeline)));
 
     return d3d12_pipeline {
@@ -158,7 +158,7 @@ auto render::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12_s
     };
 }
 
-void render::d3d12_destroy_pipeline(d3d12_pipeline& pipeline)
+void platform::d3d12_destroy_pipeline(d3d12_pipeline& pipeline)
 {
     pipeline.pso.Reset();
     pipeline.root_signature.Reset();

@@ -3,9 +3,9 @@
 #include <render/rhi_vk.hpp>
 
 #if GDR_ENABLE_DX12_BACKEND
-render::rhi::rhi render::rhi::create_for_d3d12()
+rhi::impl rhi::create_for_d3d12()
 {
-    constexpr render::rhi::rhi result {
+    constexpr rhi::rhi result {
         .create_context         = d3d12_create_context,
         .destroy_context        = d3d12_destroy_context,
         .create_swapchain       = d3d12_create_swapchain,
@@ -53,9 +53,9 @@ render::rhi::rhi render::rhi::create_for_d3d12()
 }
 #endif
 
-render::rhi::rhi render::rhi::create_for_vk()
+rhi::impl rhi::create_for_vk()
 {
-    constexpr render::rhi::rhi result {
+    constexpr rhi::impl result {
         .create_context         = vk_create_context,
         .destroy_context        = vk_destroy_context,
         .create_swapchain       = vk_create_swapchain,
@@ -65,6 +65,7 @@ render::rhi::rhi render::rhi::create_for_vk()
         .destroy_command_buffer = vk_destroy_command_buffer,
 
         .create_bindless_set  = vk_create_bindless_set,
+        .update_bindless_set  = vk_update_bindless_set,
         .destroy_bindless_set = vk_destroy_bindless_set,
 
         .create_fence  = vk_create_fence,
@@ -108,17 +109,23 @@ render::rhi::rhi render::rhi::create_for_vk()
         .cmd_begin_recording = vk_cmd_begin_recording,
         .cmd_end_recording   = vk_cmd_end_recording,
 
-        .cmd_reset         = vk_cmd_reset,
-        .cmd_barriers      = vk_cmd_barriers,
-        .cmd_copy_buffer   = vk_cmd_copy_buffer,
-        .cmd_clear_buffer  = vk_cmd_clear_buffer,
-        .cmd_update_buffer = vk_cmd_update_buffer,
+        .cmd_reset       = vk_cmd_reset,
+        .cmd_barriers    = vk_cmd_barriers,
+        .cmd_image_blit  = vk_cmd_image_blit,
+        .cmd_copy_buffer = vk_cmd_copy_buffer,
+
+        .cmd_clear_buffer         = vk_cmd_clear_buffer,
+        .cmd_update_buffer        = vk_cmd_update_buffer,
+        .cmd_copy_buffer_to_image = vk_cmd_copy_buffer_to_image,
 
         .cmd_clear_depth_attachment = vk_cmd_clear_depth_attachment,
         .cmd_clear_color_attachment = vk_cmd_clear_color_attachment,
 
         .cmd_set_draw_state   = vk_cmd_set_draw_state,
         .cmd_clear_draw_state = vk_cmd_clear_draw_state,
+
+        .cmd_set_cull_mode  = vk_cmd_set_cull_mode,
+        .cmd_set_depth_bias = vk_cmd_set_depth_bias,
 
         .cmd_bind_pso          = vk_cmd_bind_pso,
         .cmd_bind_index        = vk_cmd_bind_index,

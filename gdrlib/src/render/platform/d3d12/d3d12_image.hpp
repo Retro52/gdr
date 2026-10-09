@@ -2,7 +2,7 @@
 
 #include <render/platform/d3d12/d3d12.hpp>
 
-namespace render
+namespace platform
 {
     struct d3d12_image
     {

@@ -7,7 +7,7 @@
 #include <tracy/TracyVulkan.hpp>
 #include <window.hpp>
 
-namespace render
+namespace platform
 {
     class vk_renderer
     {
@@ -27,13 +27,13 @@ namespace render
         };
 
     public:
-        vk_renderer(const render::rhi::instance_desc& desc, const window& window, bool vsync);
+        vk_renderer(const rhi::instance_desc& desc, const window& window, bool vsync);
 
         ~vk_renderer();
 
-        [[nodiscard]] const render::vk_context& get_context() const;
+        [[nodiscard]] const platform::vk_context& get_context() const;
 
-        [[nodiscard]] const render::vk_swapchain& get_swapchain() const;
+        [[nodiscard]] const platform::vk_swapchain& get_swapchain() const;
 
         void resize_swapchain(ivec2 new_size);
 
@@ -55,7 +55,7 @@ namespace render
 
         [[nodiscard]] VkCommandBuffer get_frame_command_buffer() const;
 
-        [[nodiscard]] render::vk_swapchain_image get_frame_swapchain_image() const;
+        [[nodiscard]] platform::vk_swapchain_image get_frame_swapchain_image() const;
 
         [[nodiscard]] cpp::heap_array<delete_callback_t>& get_frame_callbacks_queue();
 
@@ -95,8 +95,8 @@ namespace render
             count
         };
 
-        render::vk_context m_context;
-        render::vk_swapchain m_swapchain;
+        platform::vk_context m_context;
+        platform::vk_swapchain m_swapchain;
 
         cpp::heap_array<frame_data> m_in_flight_frames;
 

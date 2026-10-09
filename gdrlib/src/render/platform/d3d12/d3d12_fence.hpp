@@ -4,7 +4,7 @@
 #include <render/platform/d3d12/d3d12.hpp>
 #include <result.hpp>
 
-namespace render
+namespace platform
 {
     struct d3d12_context;
 

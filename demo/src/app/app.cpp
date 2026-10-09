@@ -10,6 +10,7 @@
 #include <app/render.hpp>
 #include <camera_controller.hpp>
 #include <codegen/render_settings.hpp>
+#include <debug/frustum_renderer.hpp>
 #include <editor/hierarchy.hpp>
 #include <editor/info.hpp>
 #include <events.hpp>
@@ -18,7 +19,6 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <log.hpp>
-#include <render/debug/frustum_renderer.hpp>
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 #include <scene/loader.hpp>
@@ -32,9 +32,6 @@
 #include <window.hpp>
 
 #define NO_EDITOR        1
-#define NO_SHADOWS       0
-#define NO_ENV_MAP       0
-#define NO_TEXTURES      1
 #define NO_PERF_QUERY    1
 #define NO_POPULATE_MODE 1
 
@@ -67,23 +64,23 @@ namespace
 
     struct world_geometry
     {
-        render::rhi::buffer vertex;
-        render::rhi::buffer meshlets;
-        render::rhi::buffer primitives;
-        render::rhi::buffer instances;
-        render::rhi::buffer materials;
-        render::rhi::buffer meshlets_payload;
+        rhi::buffer vertex;
+        rhi::buffer meshlets;
+        rhi::buffer primitives;
+        rhi::buffer instances;
+        rhi::buffer materials;
+        rhi::buffer meshlets_payload;
     };
 
     struct descriptor_bindings
     {
         constexpr static u32 kMaxSetZeroBindings = 32;
         u32 max_count                            = 0;
-        render::rhi::binding bindings[kMaxSetZeroBindings] {};
+        rhi::binding bindings[kMaxSetZeroBindings] {};
 
-        std::span<render::rhi::binding> get() { return {bindings, max_count}; }
+        std::span<rhi::binding> get() { return {bindings, max_count}; }
 
-        auto& bind_at(const render::rhi::binding& next, const u32 index)
+        auto& bind_at(const rhi::binding& next, const u32 index)
         {
             assert2(index < kMaxSetZeroBindings);
             bindings[index] = next;
@@ -94,11 +91,11 @@ namespace
 
     struct frames_tracker
     {
-        using delete_callback_t = std::function<void(const render::rhi::rhi& rhi, render::rhi::context ctx)>;
+        using delete_callback_t = std::function<void(const rhi::impl& rhi, rhi::context ctx)>;
 
         struct frame_data
         {
-            render::rhi::command_buffer command_buffer = render::rhi::null_command_buffer;
+            rhi::command_buffer command_buffer = rhi::null_command_buffer;
             cpp::heap_array<delete_callback_t> delete_callbacks;
         };
 
@@ -107,7 +104,7 @@ namespace
 
         void next_frame() { frame_index = (frame_index + 1) % frame_data.size(); }
 
-        [[nodiscard]] render::rhi::command_buffer get_frame_command_buffer() const noexcept
+        [[nodiscard]] rhi::command_buffer get_frame_command_buffer() const noexcept
         {
             return frame_data[frame_index].command_buffer;
         }
@@ -118,12 +115,12 @@ namespace
             std::invoke(func, get_frame_command_buffer());
         }
 
-        void init(const render::rhi::rhi& rhi, const render::rhi::context ctx, const u32 frames_in_flight)
+        void init(const rhi::impl& rhi, const rhi::context ctx, const u32 frames_in_flight)
         {
             frame_data.resize(frames_in_flight);
             for (auto& frame : frame_data)
             {
-                frame.command_buffer = *rhi.create_command_buffer(ctx, render::rhi::queue_kind::gfx);
+                frame.command_buffer = *rhi.create_command_buffer(ctx, rhi::queue_kind::gfx);
             }
         }
     };
@@ -169,7 +166,7 @@ namespace
 
 #if !NO_POPULATE_MODE
     loader::scene_info populate_scene(const u32 draw_count, const cpp::heap_array<mesh::raw_mesh>& primitives,
-                                      scene& scene, render::vk_scene_geometry_pool& geometry_pool)
+                                      scene& scene, platform::vk_scene_geometry_pool& geometry_pool)
     {
         ZoneScoped;
 
@@ -271,16 +268,17 @@ namespace
                 / shader_constants::kTaskWorkGroups;
         }
 
-        render::vk_upload_data(
+        platform::vk_upload_data(
             geometry_pool.transfer, geometry_pool.primitives, ctx.primitives.data(), ctx.primitives.size());
-        render::vk_upload_data(geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
-        render::vk_upload_data(
+        platform::vk_upload_data(
+            geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
+        platform::vk_upload_data(
             geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
-        render::vk_upload_data(
+        platform::vk_upload_data(
             geometry_pool.transfer, geometry_pool.materials, ctx.materials.data(), ctx.materials.size());
-        render::vk_upload_data(
+        platform::vk_upload_data(
             geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
-        render::vk_upload_data(geometry_pool.transfer, geometry_pool.instances, instances.data(), instances.size());
+        platform::vk_upload_data(geometry_pool.transfer, geometry_pool.instances, instances.data(), instances.size());
 
         return {.meshes           = primitives.size(),
                 .meshlets         = visibility_offset,
@@ -306,8 +304,8 @@ static std::array<u32, shader_constants::kMatClassCount> make_offset_table(
     return result;
 }
 
-static const render::rhi::pipeline& get_shadow_pipeline(app::pso_data& pipelines, const u32 material_class,
-                                                        const bool enable_meshlets)
+static const rhi::pipeline& get_shadow_pipeline(app::pso_data& pipelines, const u32 material_class,
+                                                const bool enable_meshlets)
 {
     app::pso_id id {};
     switch (material_class)
@@ -330,8 +328,8 @@ static const render::rhi::pipeline& get_shadow_pipeline(app::pso_data& pipelines
     return pipelines[id];
 }
 
-static const render::rhi::pipeline& get_render_pipeline(app::pso_data& pipelines, const u32 material_class,
-                                                        const bool occlusion_cull, const bool enable_meshlets)
+static const rhi::pipeline& get_render_pipeline(app::pso_data& pipelines, const u32 material_class,
+                                                const bool occlusion_cull, const bool enable_meshlets)
 {
     app::pso_id id {};
     switch (material_class)
@@ -358,21 +356,19 @@ static const render::rhi::pipeline& get_render_pipeline(app::pso_data& pipelines
     return pipelines[id];
 }
 
-static void app_cmd_transition_image(
-    const render::rhi::rhi& rhi, const render::rhi::command_buffer cmd, const render::rhi::image image,
-    const render::rhi::image_layout layout,
-    const render::rhi::image_aspects aspects = static_cast<u32>(render::rhi::image_aspect::color))
+static void app_cmd_transition_image(const rhi::impl& rhi, const rhi::command_buffer cmd, const rhi::image image,
+                                     const rhi::image_layout layout,
+                                     const rhi::image_aspect_bits aspects = rhi::image_aspect::color)
 {
-    const render::rhi::image_barrier barrier = app::make_image_barrier(image, layout, aspects);
+    const rhi::image_barrier barrier = app::make_image_barrier(image, layout, aspects);
 
-    const render::rhi::barrier_batch barriers {
+    const rhi::barrier_batch barriers {
         .images = {&barrier, 1}
     };
 
     rhi.cmd_barriers(cmd, barriers);
 }
 
-#if !NO_SHADOWS
 static std::array<glm::mat4, shader_constants::kMaxShadowCascades> update_csm_buffers(
     const app::csm& csm, const app::mapped_buffer& csm_buffer, const vec3& light_dir, const camera_component& camera,
     const glm::mat4& camera_view, const vec3& camera_pos, const render_settings& settings)
@@ -410,11 +406,10 @@ static std::array<glm::mat4, shader_constants::kMaxShadowCascades> update_csm_bu
 
     return result;
 }
-#endif
 
 // dumb order of initialization issue here, but what can u do
 // this function was only supposed to actually create the renderer, but now it will also apply some CLI args
-static render::rhi::rhi load_rhi(const app::argv_handler& args)
+static rhi::impl load_rhi(const app::argv_handler& args)
 {
     ZoneScoped;
 
@@ -426,46 +421,52 @@ static render::rhi::rhi load_rhi(const app::argv_handler& args)
     const bool use_dx12 = args.read_numeric("--use_dx12");
 
 #if GDR_ENABLE_DX12_BACKEND
-    return use_dx12 ? render::rhi::create_for_d3d12() : render::rhi::create_for_vk();
+    return use_dx12 ? rhi::create_for_d3d12() : rhi::create_for_vk();
 #else
-    return render::rhi::create_for_vk();
+    return rhi::create_for_vk();
 #endif
 }
 
-static render::rhi::instance_desc get_instance_desc()
+static rhi::instance_desc get_instance_desc(auto& args)
 {
-    constexpr auto features_table = render::rhi::rendering_features_table()
+    constexpr auto features_table = rhi::rendering_features_table()
 #if !defined(NDEBUG)
-                                        .request(render::rhi::feature_flag::validation)
+                                        .request(rhi::feature_flag::validation)
 #endif
 #if !NO_PERF_QUERY
-                                        .request(render::rhi::feature_flag::ePipelineStats)
+                                        .request(rhi::feature_flag::ePipelineStats)
 #endif
 #if !defined(__APPLE__)
-                                        .require(render::rhi::feature_flag::sampler_min_max)
+                                        .require(rhi::feature_flag::sampler_min_max)
 #endif
-                                        .request(render::rhi::feature_flag::mesh_shading)
-                                        .require(render::rhi::feature_flag::types_16bit)
-                                        .require(render::rhi::feature_flag::types_int8)
-                                        .require(render::rhi::feature_flag::draw_indirect)
-                                        .require(render::rhi::feature_flag::dynamic_render)
-                                        .require(render::rhi::feature_flag::bindless_textures)
-                                        .require(render::rhi::feature_flag::scalar_block_layout)
-                                        .require(render::rhi::feature_flag::synchronization2);
-    return render::rhi::instance_desc {
+                                        .request(rhi::feature_flag::mesh_shading)
+                                        .require(rhi::feature_flag::types_16bit)
+                                        .require(rhi::feature_flag::types_int8)
+                                        .require(rhi::feature_flag::draw_indirect)
+                                        .require(rhi::feature_flag::dynamic_render)
+                                        .require(rhi::feature_flag::bindless_textures)
+                                        .require(rhi::feature_flag::scalar_block_layout)
+                                        .require(rhi::feature_flag::synchronization2);
+    return rhi::instance_desc {
         .app_name        = "GDR",
         .app_version     = 1,
+        .device_id_hint  = static_cast<u32>(args.read_numeric("--device_id", -1)),
         .device_features = features_table,
     };
 }
 
+static window create_app_window()
+{
+    return window {
+        "GDR", {.position = {200, 200}, .fullscreen = false}
+    };
+}
+
 app::instance::instance(const int argc, char* argv[])
-    : m_window("GDR",
-               {
-                   .position = {200, 200},
-                     .fullscreen = false
-}),
-    m_args(argc, argv), m_rhi(load_rhi(m_args)), m_events_queue(m_window)
+    : m_window(create_app_window())
+    , m_args(argc, argv)
+    , m_rhi(load_rhi(m_args))
+    , m_events_queue(m_window)
 {
 }
 
@@ -477,13 +478,13 @@ int app::instance::run()
         return -1;
     }
 
-    auto context = m_rhi.create_context(m_window, get_instance_desc());
+    auto context = m_rhi.create_context(m_window, get_instance_desc(m_args));
     RESULT_EXIT_IF_FAILED(context);
 
     constexpr auto kFramesInFlight  = 2;
     constexpr auto kSwapchainVsync  = true;
-    constexpr auto kSwapchainFormat = render::rhi::image_format::r8g8b8a8un;
-    render::rhi::create_swapchain_info create_swapchain_info {
+    constexpr auto kSwapchainFormat = rhi::image_format::r8g8b8a8un;
+    rhi::create_swapchain_info create_swapchain_info {
         .size             = m_window.get_size_in_px(),
         .frames_in_flight = kFramesInFlight,
         .format           = kSwapchainFormat,
@@ -493,38 +494,30 @@ int app::instance::run()
     auto swapchain = m_rhi.create_swapchain(*context, create_swapchain_info);
     RESULT_EXIT_IF_FAILED(swapchain);
 
-    render::rhi::image depth_image =
-        create_depth_image(m_rhi, m_window.get_size_in_px(), render::rhi::image_format::d32sf, *context);
+    rhi::image depth_image = create_depth_image(m_rhi, m_window.get_size_in_px(), rhi::image_format::d32sf, *context);
 
-    render::rhi::image render_target =
-        create_color_image(m_rhi, m_window.get_size_in_px(), render::rhi::image_format::r8g8b8a8ui, *context);
+    rhi::image render_target =
+        create_color_image(m_rhi, m_window.get_size_in_px(), rhi::image_format::r8g8b8a8un, *context);
 
-    render::rhi::image vis_buffer = create_vis_buffer_image(m_rhi, m_window.get_size_in_px(), *context);
+    rhi::image vis_buffer = create_vis_buffer_image(m_rhi, m_window.get_size_in_px(), *context);
 
     depth_pyramid_data depth_pyramid =
-        create_depth_pyramid(m_rhi, m_window.get_size_in_px(), render::rhi::image_format::r32sf, *context);
+        create_depth_pyramid(m_rhi, m_window.get_size_in_px(), rhi::image_format::r32sf, *context);
 
-#if !NO_ENV_MAP
     app::envmap envmap {
         m_rhi,
         *context,
-        render::rhi::image_format::r16g16b16a16sf,
+        rhi::image_format::r16g16b16a16sf,
         {.env_resolution = 1024, .brdf_lut_resolution = 512, .prefilter_resolution = 128, .irradiance_resolution = 32}
     };
-#endif
 
-#if !NO_SHADOWS
     app::csm csm {
-        m_rhi,
-        *context,
-        render::rhi::image_format::d32sf,
-        {.resolution = 2048, .max_range = 96.0F, .split_lambda = 0.65F}
+        m_rhi, *context, rhi::image_format::d32sf, {.resolution = 2048, .max_range = 500.0F, .split_lambda = 0.65F}
     };
-#endif
 
     bool exit                     = false;
-    bool mesh_shading_supported   = *m_rhi.query_feature_support(*context, render::rhi::feature_flag::mesh_shading);
-    bool pipeline_stats_supported = *m_rhi.query_feature_support(*context, render::rhi::feature_flag::pipeline_stats);
+    bool mesh_shading_supported   = *m_rhi.query_feature_support(*context, rhi::feature_flag::mesh_shading);
+    bool pipeline_stats_supported = *m_rhi.query_feature_support(*context, rhi::feature_flag::pipeline_stats);
 
     m_events_queue.add_watcher(
         event_type::request_close,
@@ -547,13 +540,13 @@ int app::instance::run()
 
     struct resize_context
     {
-        render::rhi::rhi& rhi;
-        render::rhi::context& context;
-        render::rhi::swapchain& swapchain;
+        rhi::impl& rhi;
+        rhi::context& context;
+        rhi::swapchain& swapchain;
 
-        render::rhi::image& vis_buffer;
-        render::rhi::image& depth_image;
-        render::rhi::image& render_target;
+        rhi::image& vis_buffer;
+        rhi::image& depth_image;
+        rhi::image& render_target;
         depth_pyramid_data& depth_pyramid;
     } resize_ctx(m_rhi, *context, *swapchain, vis_buffer, depth_image, render_target, depth_pyramid);
 
@@ -565,7 +558,7 @@ int app::instance::run()
 
             ctx.rhi.device_wait_idle(ctx.context);
 
-            const render::rhi::create_swapchain_info update_swapchain_info {
+            const rhi::create_swapchain_info update_swapchain_info {
                 .size             = payload.window.size_px,
                 .frames_in_flight = kFramesInFlight,
                 .format           = kSwapchainFormat,
@@ -577,14 +570,14 @@ int app::instance::run()
             ctx.rhi.destroy_image(ctx.context, ctx.render_target);
 
             ctx.depth_image =
-                create_depth_image(ctx.rhi, payload.window.size_px, render::rhi::image_format::d32sf, ctx.context);
+                create_depth_image(ctx.rhi, payload.window.size_px, rhi::image_format::d32sf, ctx.context);
 
             ctx.render_target =
-                create_color_image(ctx.rhi, payload.window.size_px, render::rhi::image_format::r8g8b8a8ui, ctx.context);
+                create_color_image(ctx.rhi, payload.window.size_px, rhi::image_format::r8g8b8a8un, ctx.context);
 
             destroy_depth_pyramid(ctx.rhi, ctx.depth_pyramid, ctx.context);
             ctx.depth_pyramid =
-                create_depth_pyramid(ctx.rhi, payload.window.size_px, render::rhi::image_format::r32sf, ctx.context);
+                create_depth_pyramid(ctx.rhi, payload.window.size_px, rhi::image_format::r32sf, ctx.context);
 
             ctx.rhi.destroy_image(ctx.context, ctx.vis_buffer);
             ctx.vis_buffer = create_vis_buffer_image(ctx.rhi, payload.window.size_px, ctx.context);
@@ -592,21 +585,19 @@ int app::instance::run()
         &resize_ctx);
 
     auto bindless_textures_desc_set = m_rhi.create_bindless_set(*context, 65536);
-    auto bindless_textures_sampler =
-        m_rhi.create_sampler(*context, render::rhi::create_sampler_info {.anisotropy_factor = 16});
+    auto bindless_textures_sampler = m_rhi.create_sampler(*context, rhi::create_sampler_info {.anisotropy_factor = 16});
 
-    auto shadow_alpha_sampler = m_rhi.create_sampler(
-        *context, render::rhi::create_sampler_info {.mipmap_mode = render::rhi::sampler_mipmap_mode::nearest});
+    auto shadow_alpha_sampler =
+        m_rhi.create_sampler(*context, rhi::create_sampler_info {.mipmap_mode = rhi::sampler_mipmap_mode::nearest});
 
-    auto color_sampler = m_rhi.create_sampler(*context, {.mipmap_mode = render::rhi::sampler_mipmap_mode::nearest});
+    auto color_sampler = m_rhi.create_sampler(*context, {.mipmap_mode = rhi::sampler_mipmap_mode::nearest});
 
-    auto depth_texture_sampler =
-        m_rhi.create_sampler(*context,
-                             {
-                                 .filter       = render::rhi::sampler_filter::nearest,
-                                 .mipmap_mode  = render::rhi::sampler_mipmap_mode::nearest,
-                                 .address_mode = render::rhi::sampler_address_mode::clamp_to_border,
-                             });
+    auto depth_texture_sampler = m_rhi.create_sampler(*context,
+                                                      {
+                                                          .filter       = rhi::sampler_filter::nearest,
+                                                          .mipmap_mode  = rhi::sampler_mipmap_mode::nearest,
+                                                          .address_mode = rhi::sampler_address_mode::clamp_to_border,
+                                                      });
 
     pso_data pipelines;
     pipelines.load(m_rhi, *context, *swapchain, *bindless_textures_desc_set);
@@ -626,11 +617,7 @@ int app::instance::run()
         .meshlets_payload = *m_rhi.create_buffer(*context, {.size = 128_MB}),
     };
 
-    loader::scene_info scene_info;
-
-#if !NO_TEXTURES
-    cpp::heap_array<render::vk_image> textures;
-#endif
+    loader::scene_counters scene_counters;
 
     const int instance_count = m_args.read_numeric("--instances");
     const int first_instance = m_args.get_positional_args_start();
@@ -640,6 +627,7 @@ int app::instance::run()
 
     // test scene stuff
     scene client_scene;
+    cpp::heap_array<rhi::image> textures;
 #if !NO_POPULATE_MODE
     if (instance_count > 0 && first_instance > 0)
     {
@@ -655,28 +643,24 @@ int app::instance::run()
             meshes.append(ctx->primitives);
         }
 
-        scene_info = populate_scene(instance_count, meshes, client_scene, geometry_pool);
+        scene_counters = populate_scene(instance_count, meshes, client_scene, geometry_pool);
     }
     else
 #endif
     {
-        const auto scene_data = loader::load_scene(m_args.argv()[first_instance], client_scene);
+        ZoneScopedN("loader::load_scene");
+        const auto scene_data = *loader::load_scene(m_args.argv()[first_instance], client_scene);
+        scene_counters        = scene_data.counters;
 
-        scene_info = {
-            .meshes     = scene_data.instances.size(),
-            .meshlets   = scene_data.meshlets.size(),
-            .triangles  = scene_data.instances.size() / 3,
-            .primitives = scene_data.primitives.size(),
-        };
-
-        for (auto& instance : scene_data.instances)
+        cpp::local_array<rhi::bindless_set_write_info> updates;
+        for (u32 i = 0; i < scene_data.textures.size(); ++i)
         {
-            auto& material = scene_data.materials[instance.material_index];
-            scene_info.mat_offset_table[material.material_class] +=
-                (loader::get_max_lod_meshlets(scene_data.primitives[instance.mesh_data_index])
-                 + shader_constants::kTaskWorkGroups - 1)
-                / shader_constants::kTaskWorkGroups;
+            const auto handle = upload_mgr.create_texture(scene_data.textures[i]);
+            textures.emplace_back(handle);
+            updates.push_back(rhi::bindless_set_write_info {.dst = handle, .index = i + 1});
         }
+
+        m_rhi.update_bindless_set(*context, *bindless_textures_desc_set, std::span {updates});
 
         upload_mgr.submit(geometry_pool.vertex, scene_data.vertices.data(), scene_data.vertices.size());
         upload_mgr.submit(geometry_pool.meshlets, scene_data.meshlets.data(), scene_data.meshlets.size());
@@ -733,40 +717,15 @@ int app::instance::run()
     camera.get_component<transform_component>().position =
         m_args.read_vec3("--camera_position", camera.get_component<transform_component>().position);
 
-#if !NO_TEXTURES
-    for (u32 i = 0; i < textures.size(); ++i)
-    {
-        auto& tex = textures[i];
-        if (tex.image == VK_NULL_HANDLE)
-        {
-            continue;
-        }
-
-        const VkDescriptorImageInfo img_info = {.imageView = tex.view, .imageLayout = VK_IMAGE_LAYOUT_GENERAL};
-
-        const VkWriteDescriptorSet desc_write {
-            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet          = bindless_textures_desc_set.descriptor_set,
-            .dstBinding      = 0,
-            .dstArrayElement = i + 1,
-            .descriptorCount = 1,
-            .descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-            .pImageInfo      = &img_info,
-        };
-
-        vkUpdateDescriptorSets(m_renderer.get_context().device, 1, &desc_write, 0, nullptr);
-    }
-#endif
-
 #if !NO_PERF_QUERY
     constexpr u32 kQueryPoolCount = 64;
-    render::vk_query timestamp_query_pool =
-        *render::vk_create_query_pool(m_renderer.get_context().device, kQueryPoolCount, VK_QUERY_TYPE_TIMESTAMP);
+    platform::vk_query timestamp_query_pool =
+        *platform::vk_create_query_pool(m_renderer.get_context().device, kQueryPoolCount, VK_QUERY_TYPE_TIMESTAMP);
 
-    render::vk_query pipeline_statistics_query;
+    platform::vk_query pipeline_statistics_query;
     if (pipeline_stats_supported)
     {
-        pipeline_statistics_query = *render::vk_create_pipeline_stat_query_pool(
+        pipeline_statistics_query = *platform::vk_create_pipeline_stat_query_pool(
             m_renderer.get_context().device,
             kQueryPoolCount,
             VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT
@@ -777,47 +736,40 @@ int app::instance::run()
     }
 #endif
 
-    render::rhi::buffer draw_count_buffer =
-        *m_rhi.create_buffer(*context,
-                             {.size        = sizeof(u32[shader_constants::kMatClassCount * 3]),
-                              .usage_flags = render::rhi::buffer_usage::indirect | render::rhi::buffer_usage::copy_dst
-                                           | render::rhi::buffer_usage::shader_rw});
+    rhi::buffer draw_count_buffer = *m_rhi.create_buffer(
+        *context,
+        {.size        = sizeof(u32[shader_constants::kMatClassCount * 3]),
+         .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw});
 
-    render::rhi::buffer indexed_count_buffer =
-        *m_rhi.create_buffer(*context,
-                             {.size        = sizeof(u32[2]),
-                              .usage_flags = render::rhi::buffer_usage::indirect | render::rhi::buffer_usage::copy_dst
-                                           | render::rhi::buffer_usage::shader_rw});
+    rhi::buffer indexed_count_buffer = *m_rhi.create_buffer(
+        *context,
+        {.size        = sizeof(u32[2]),
+         .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw});
 
-    render::rhi::buffer mesh_visibility_buffer =
-        *m_rhi.create_buffer(*context,
-                             {.size        = (scene_info.primitives + 31) / 8,
-                              .usage_flags = render::rhi::buffer_usage::indirect | render::rhi::buffer_usage::copy_dst
-                                           | render::rhi::buffer_usage::shader_rw});
+    rhi::buffer mesh_visibility_buffer = *m_rhi.create_buffer(
+        *context,
+        {.size        = (scene_counters.instances + 31) / 8,
+         .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw});
 
-    render::rhi::buffer meshlets_visibility_buffer =
-        *m_rhi.create_buffer(*context,
-                             {.size        = (scene_info.meshlets + 31) / 8,
-                              .usage_flags = render::rhi::buffer_usage::indirect | render::rhi::buffer_usage::copy_dst
-                                           | render::rhi::buffer_usage::shader_rw});
+    rhi::buffer meshlets_visibility_buffer = *m_rhi.create_buffer(
+        *context,
+        {.size        = (scene_counters.meshlets + 31) / 8,
+         .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw});
 
-    render::rhi::buffer indexed_indices_buffer =
-        *m_rhi.create_buffer(*context,
-                             {.size        = 96_MB,
-                              .usage_flags = render::rhi::buffer_usage::index | render::rhi::buffer_usage::indirect
-                                           | render::rhi::buffer_usage::shader_rw});
+    rhi::buffer indexed_indices_buffer = *m_rhi.create_buffer(
+        *context,
+        {.size        = 96_MB,
+         .usage_flags = rhi::buffer_usage::index | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw});
 
-    render::rhi::buffer indexed_draw_indirect_buffer =
-        *m_rhi.create_buffer(*context,
-                             {.size        = 16_MB,
-                              .usage_flags = render::rhi::buffer_usage::copy_dst | render::rhi::buffer_usage::indirect
-                                           | render::rhi::buffer_usage::shader_rw});
+    rhi::buffer indexed_draw_indirect_buffer = *m_rhi.create_buffer(
+        *context,
+        {.size        = 16_MB,
+         .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw});
 
-    render::rhi::buffer meshlets_draw_indirect_buffer =
-        *m_rhi.create_buffer(*context,
-                             {.size        = 16_MB,
-                              .usage_flags = render::rhi::buffer_usage::copy_dst | render::rhi::buffer_usage::indirect
-                                           | render::rhi::buffer_usage::shader_rw});
+    rhi::buffer meshlets_draw_indirect_buffer = *m_rhi.create_buffer(
+        *context,
+        {.size        = 16_MB,
+         .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw});
 
     cpp::heap_array<mapped_buffer> world_data_buffers(*m_rhi.query_swapchain_images_count(*swapchain));
     cpp::heap_array<mapped_buffer> frame_cull_data_buffers(*m_rhi.query_swapchain_images_count(*swapchain));
@@ -825,29 +777,26 @@ int app::instance::run()
 
     for (u32 i = 0; i < *m_rhi.query_swapchain_images_count(*swapchain); i++)
     {
-        world_data_buffers[i] =
-            mapped_buffer::create(m_rhi,
-                                  *context,
-                                  render::rhi::create_buffer_info {
-                                      .size        = sizeof(shader_types::FrameWorldData),
-                                      .usage_flags = static_cast<u32>(render::rhi::buffer_usage::shader_rw),
-                                  });
+        world_data_buffers[i] = mapped_buffer::create(m_rhi,
+                                                      *context,
+                                                      rhi::create_buffer_info {
+                                                          .size        = sizeof(shader_types::FrameWorldData),
+                                                          .usage_flags = rhi::buffer_usage::shader_rw,
+                                                      });
 
-        shadow_cascades_data_buffers[i] =
-            mapped_buffer::create(m_rhi,
-                                  *context,
-                                  render::rhi::create_buffer_info {
-                                      .size        = sizeof(shader_types::ShadowCascadesData),
-                                      .usage_flags = static_cast<u32>(render::rhi::buffer_usage::shader_rw),
-                                  });
+        shadow_cascades_data_buffers[i] = mapped_buffer::create(m_rhi,
+                                                                *context,
+                                                                rhi::create_buffer_info {
+                                                                    .size = sizeof(shader_types::ShadowCascadesData),
+                                                                    .usage_flags = rhi::buffer_usage::shader_rw,
+                                                                });
 
-        frame_cull_data_buffers[i] =
-            mapped_buffer::create(m_rhi,
-                                  *context,
-                                  render::rhi::create_buffer_info {
-                                      .size        = sizeof(shader_types::FrameCullData),
-                                      .usage_flags = static_cast<u32>(render::rhi::buffer_usage::shader_rw),
-                                  });
+        frame_cull_data_buffers[i] = mapped_buffer::create(m_rhi,
+                                                           *context,
+                                                           rhi::create_buffer_info {
+                                                               .size        = sizeof(shader_types::FrameCullData),
+                                                               .usage_flags = rhi::buffer_usage::shader_rw,
+                                                           });
     }
 
     gpu_profile_data profile_data;
@@ -881,7 +830,7 @@ int app::instance::run()
     f64 last_frame_time = get_time();
     camera_controller controller(m_events_queue, camera);
 
-    // render::debug::frustum_renderer frustum_renderer(pipelines[pso_id::frustum_debug]);
+    app::debug::frustum_renderer frustum_renderer(pipelines[pso_id::frustum_debug]);
 
 #if !NO_EDITOR
     editor::hierarchy_window_context hierarchy_window_context;
@@ -892,8 +841,8 @@ int app::instance::run()
     };
 #endif
 
-    const auto offset_table = make_offset_table(scene_info.mat_offset_table);
-    auto fill_indexed       = [&](render::rhi::command_buffer cmd,
+    const auto offset_table = make_offset_table(scene_counters.mat_offset_table);
+    auto fill_indexed       = [&](rhi::command_buffer cmd,
                             const u32 material_class,
                             const bool enable_occlusion_cull,
                             const bool for_shadow_pass     = false,
@@ -929,7 +878,7 @@ int app::instance::run()
             bindings.bind_at(meshlets_visibility_buffer, shader_bindings::fill::kVisibilityBinding);
             if (enable_occlusion_cull)
             {
-                bindings.bind_at(render::rhi::binding(depth_pyramid.image, depth_pyramid.sampler),
+                bindings.bind_at(rhi::binding(depth_pyramid.image, depth_pyramid.sampler),
                                  shader_bindings::fill::kHiZBinding);
             }
         }
@@ -951,7 +900,7 @@ int app::instance::run()
             break;
         }
 
-        const render::rhi::pipeline& fill_pass = pipelines[id];
+        const rhi::pipeline& fill_pass = pipelines[id];
 
         m_rhi.cmd_bind_pso(cmd, fill_pass);
         m_rhi.cmd_push_constants(
@@ -967,58 +916,61 @@ int app::instance::run()
         m_rhi.cmd_push_bindings(cmd, fill_pass, bindings.get());
         m_rhi.cmd_dispatch_indirect(cmd, draw_count_buffer, material_class * 3 * sizeof(u32));
 
-        m_rhi.cmd_dispatch_indirect(cmd, draw_count_buffer, material_class * 3 * sizeof(u32));
-
-        constexpr render::rhi::global_barrier barrier {
-            .before = {.stages = static_cast<u32>(render::rhi::barrier_stage::compute_shader),
-                       .access = static_cast<u32>(render::rhi::barrier_access::storage_write)},
-            .after  = {.stages = render::rhi::barrier_stage::compute_shader | render::rhi::barrier_stage::indirect
-                               | render::rhi::barrier_stage::all_graphics,
-                       .access = render::rhi::barrier_access::indirect_read | render::rhi::barrier_access::storage_read
-                               | render::rhi::barrier_access::index_read                     },
+        constexpr rhi::global_barrier barrier {
+            .before =
+                {
+                         .stages = rhi::barrier_stage::compute_shader,
+                         .access = rhi::barrier_access::storage_write,
+                         },
+            .after =
+                {
+                         .stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::indirect
+                            | rhi::barrier_stage::all_graphics,
+                         .access = rhi::barrier_access::indirect_read | rhi::barrier_access::storage_read
+                            | rhi::barrier_access::index_read,
+                         },
         };
 
-        const render::rhi::barrier_batch barriers {
+        const rhi::barrier_batch barriers {
             .globals = {&barrier, 1}
         };
 
         m_rhi.cmd_barriers(cmd, barriers);
     };
 
-    auto draw_scene =
-        [&](render::rhi::command_buffer cmd, const render::rhi::pipeline& pipeline, const u32 material_class)
+    auto draw_scene = [&](rhi::command_buffer cmd, const rhi::pipeline& pipeline, const u32 material_class)
     {
         ZoneScopedN("app.instance.run.draw_scene");
         // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "draw scene"));
 
-        constexpr render::rhi::barrier_stages kAttachmentStages = render::rhi::barrier_stage::color_attachment
-                                                                | render::rhi::barrier_stage::early_depth_stencil
-                                                                | render::rhi::barrier_stage::late_depth_stencil;
-        constexpr render::rhi::barrier_accesses kAttachmentAccess =
-            render::rhi::barrier_access::color_attachment_read | render::rhi::barrier_access::color_attachment_write
-            | render::rhi::barrier_access::depth_stencil_read | render::rhi::barrier_access::depth_stencil_write;
+        constexpr rhi::barrier_stage_bits kAttachmentStages = rhi::barrier_stage::color_attachment
+                                                            | rhi::barrier_stage::early_depth_stencil
+                                                            | rhi::barrier_stage::late_depth_stencil;
+        constexpr rhi::barrier_access_bits kAttachmentAccess =
+            rhi::barrier_access::color_attachment_read | rhi::barrier_access::color_attachment_write
+            | rhi::barrier_access::depth_stencil_read | rhi::barrier_access::depth_stencil_write;
 
-        constexpr render::rhi::global_barrier barrier {
+        constexpr rhi::global_barrier barrier {
             .before = {.stages = kAttachmentStages, .access = kAttachmentAccess},
             .after  = {.stages = kAttachmentStages, .access = kAttachmentAccess},
         };
 
-        const render::rhi::barrier_batch barriers {
+        const rhi::barrier_batch barriers {
             .globals = {&barrier, 1}
         };
 
         m_rhi.cmd_barriers(cmd, barriers);
 
-        const render::rhi::attachment_state_info color_attachments[] = {
+        const rhi::attachment_state_info color_attachments[] = {
             {.attachment = vis_buffer,
-             .load_op    = render::rhi::resource_load_op::load,
-             .store_op   = render::rhi::resource_store_op::store},
+             .load_op    = rhi::resource_load_op::load,
+             .store_op   = rhi::resource_store_op::store},
         };
         m_rhi.cmd_set_draw_state(cmd,
                                  color_attachments,
                                  {.attachment = depth_image,
-                                  .load_op    = render::rhi::resource_load_op::load,
-                                  .store_op   = render::rhi::resource_store_op::store},
+                                  .load_op    = rhi::resource_load_op::load,
+                                  .store_op   = rhi::resource_store_op::store},
                                  {0, 0, m_window.get_size_in_px().x, m_window.get_size_in_px().y});
 
         if (material_class != shader_constants::kMatClassOpaque)
@@ -1029,7 +981,7 @@ int app::instance::run()
         descriptor_bindings bindings;
         bindings.bind_at(geometry_pool.vertex, shader_bindings::draw::kVertexBinding);
         bindings.bind_at(geometry_pool.materials, shader_bindings::draw::kMaterialBinding);
-        bindings.bind_at(render::rhi::binding(*bindless_textures_sampler), shader_bindings::draw::kTextureBinding);
+        bindings.bind_at(rhi::binding(*bindless_textures_sampler), shader_bindings::draw::kTextureBinding);
         bindings.bind_at(geometry_pool.meshlets, shader_bindings::draw::kMeshletBinding);
         bindings.bind_at(geometry_pool.meshlets_payload, shader_bindings::draw::kMeshletDataBinding);
         bindings.bind_at(geometry_pool.primitives, shader_bindings::draw::kPrimitiveBinding);
@@ -1041,7 +993,7 @@ int app::instance::run()
             bindings.bind_at(frame_cull_data_buffers[*m_rhi.query_current_frame_index(*swapchain)].buffer,
                              shader_bindings::draw::kCullBinding);
             bindings.bind_at(meshlets_visibility_buffer, shader_bindings::draw::kVisibilityBinding);
-            bindings.bind_at(render::rhi::binding(depth_pyramid.image, depth_pyramid.sampler),
+            bindings.bind_at(rhi::binding(depth_pyramid.image, depth_pyramid.sampler),
                              shader_bindings::draw::kHiZBinding);
 
             m_rhi.cmd_push_bindings(cmd, pipeline, bindings.get());
@@ -1067,7 +1019,7 @@ int app::instance::run()
                                                   0,
                                                   indexed_count_buffer,
                                                   sizeof(u32),
-                                                  scene_info.mat_offset_table[material_class],
+                                                  scene_counters.mat_offset_table[material_class],
                                                   sizeof(shader_types::DrawIndexedIndirect));
 #endif
             // pipeline_statistics_query.end_and_advance(cmd);
@@ -1076,26 +1028,23 @@ int app::instance::run()
         m_rhi.cmd_clear_draw_state(cmd);
     };
 
-    auto draw_shadow = [&](render::rhi::command_buffer cmd,
-                           const render::rhi::pipeline& pipeline,
-                           const u32 material_class,
-                           const u32 cascade_index)
+    auto draw_shadow =
+        [&](rhi::command_buffer cmd, const rhi::pipeline& pipeline, const u32 material_class, const u32 cascade_index)
     {
-#if !NO_SHADOWS
         ZoneScopedN("app.instance.run.draw_shadow");
         // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "draw shadow"));
 
-        constexpr render::rhi::barrier_stages kAttachmentStages =
-            render::rhi::barrier_stage::early_depth_stencil | render::rhi::barrier_stage::late_depth_stencil;
-        constexpr render::rhi::barrier_accesses kAttachmentAccess =
-            render::rhi::barrier_access::depth_stencil_read | render::rhi::barrier_access::depth_stencil_write;
+        constexpr rhi::barrier_stage_bits kAttachmentStages =
+            rhi::barrier_stage::early_depth_stencil | rhi::barrier_stage::late_depth_stencil;
+        constexpr rhi::barrier_access_bits kAttachmentAccess =
+            rhi::barrier_access::depth_stencil_read | rhi::barrier_access::depth_stencil_write;
 
-        constexpr render::rhi::global_barrier barrier {
+        constexpr rhi::global_barrier barrier {
             .before = {.stages = kAttachmentStages, .access = kAttachmentAccess},
             .after  = {.stages = kAttachmentStages, .access = kAttachmentAccess},
         };
 
-        const render::rhi::barrier_batch barriers {
+        const rhi::barrier_batch barriers {
             .globals = {&barrier, 1}
         };
 
@@ -1104,14 +1053,14 @@ int app::instance::run()
         m_rhi.cmd_set_draw_state(cmd,
                                  {},
                                  {.attachment = csm.cascade_views[cascade_index],
-                                  .load_op    = render::rhi::resource_load_op::load,
-                                  .store_op   = render::rhi::resource_store_op::store},
+                                  .load_op    = rhi::resource_load_op::load,
+                                  .store_op   = rhi::resource_store_op::store},
                                  {0, 0, csm.resolution, csm.resolution});
 
         descriptor_bindings bindings;
         bindings.bind_at(geometry_pool.vertex, shader_bindings::shadow_draw::kVertexBinding);
         bindings.bind_at(geometry_pool.materials, shader_bindings::shadow_draw::kMaterialBinding);
-        bindings.bind_at(render::rhi::binding(*shadow_alpha_sampler), shader_bindings::shadow_draw::kTextureBinding);
+        bindings.bind_at(rhi::binding(*shadow_alpha_sampler), shader_bindings::shadow_draw::kTextureBinding);
         bindings.bind_at(geometry_pool.meshlets, shader_bindings::shadow_draw::kMeshletBinding);
         bindings.bind_at(geometry_pool.meshlets_payload, shader_bindings::shadow_draw::kMeshletDataBinding);
         bindings.bind_at(geometry_pool.primitives, shader_bindings::shadow_draw::kPrimitiveBinding);
@@ -1150,60 +1099,49 @@ int app::instance::run()
                                                   0,
                                                   indexed_count_buffer,
                                                   sizeof(u32),
-                                                  scene_info.mat_offset_table[material_class],
+                                                  scene_counters.mat_offset_table[material_class],
                                                   sizeof(shader_types::DrawIndexedIndirect));
 #endif
         }
 
         m_rhi.cmd_clear_draw_state(cmd);
-#endif
     };
 
     frames_tracker tracker;
     tracker.init(m_rhi, *context, *m_rhi.query_swapchain_images_count(*swapchain));
 
-#if !NO_SHADOWS || !NO_ENV_MAP
-    tracker.submit(
-        [&](render::rhi::command_buffer cmd)
+    {
+        ZoneScopedN("app.instance.run.preload");
+        auto fence = *m_rhi.create_fence(*context, 0);
+        auto cmd   = *m_rhi.create_command_buffer(*context, rhi::queue_kind::gfx);
+
+        m_rhi.cmd_begin_recording(cmd);
+        csm.init(m_rhi, cmd);
+
+        envmap.init(m_rhi, cmd, pipelines);
+        if (!env_map.empty())
         {
-            ZoneScopedN("app.instance.run.preload");
+            // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "load envmap"));
+            envmap.load(m_rhi, cmd, pipelines, upload_mgr, env_map);
+        }
+        m_rhi.cmd_end_recording(cmd);
 
-            m_rhi.cmd_begin_recording(cmd);
-#if !NO_SHADOWS
-            csm.init(m_rhi, cmd);
-#endif
+        const rhi::fence_submit_info signals[] = {
+            {.fence = fence, .value = 1}
+        };
 
-#if !NO_ENV_MAP
-            envmap.init(m_rhi, cmd, pipelines);
-        // if (!env_map.empty())
-        // {
-        //     TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "load envmap"));
-        //     envmap.load(env_map, pipelines, m_renderer, geometry_pool.transfer);
-        // }
-#endif
+        const rhi::submit_info submit_info {
+            .signals         = signals,
+            .command_buffers = {&cmd, 1},
+        };
+        m_rhi.submit(*context, *m_rhi.query_queue(*context, rhi::queue_kind::gfx), submit_info);
+        m_rhi.fence_wait_for_value(*context, fence, 1);
+        m_rhi.destroy_fence(*context, fence);
+        m_rhi.destroy_command_buffer(*context, cmd);
+    }
 
-            m_rhi.cmd_end_recording(cmd);
-
-            auto fence = *m_rhi.create_fence(*context, 0);
-
-            const render::rhi::fence_submit_info signals[] = {
-                {.fence = fence, .value = 1}
-            };
-
-            const render::rhi::submit_info submit_info {
-                .signals         = signals,
-                .command_buffers = {&cmd, 1},
-            };
-            m_rhi.submit(*context, *m_rhi.query_queue(*context, render::rhi::queue_kind::gfx), submit_info);
-            m_rhi.fence_wait_for_value(*context, fence, 1);
-            m_rhi.destroy_fence(*context, fence);
-        });
-#endif
-
-    VkClearDepthStencilValue ds_clear      = {.depth = 0.0F, .stencil = 0};
-    VkImageSubresourceRange ds_clear_range = render::vk_image_subresource_range(VK_IMAGE_ASPECT_DEPTH_BIT);
-
-    render::rhi::color_clear_value vb_clear = {.u4 = uvec4(~0U)};
+    rhi::ds_clear_value ds_clear    = {.depth = 0.0F, .stencil = 0};
+    rhi::color_clear_value vb_clear = {.u4 = uvec4(~0U)};
 
     auto render_loop = [&]()
     {
@@ -1229,8 +1167,9 @@ int app::instance::run()
             return;
         }
 
+        tracker.next_frame();
         tracker.submit(
-            [&](const render::rhi::command_buffer buffer)
+            [&](const rhi::command_buffer buffer)
             {
                 ZoneScopedN("main.m_renderer.submit");
 
@@ -1259,7 +1198,7 @@ int app::instance::run()
 
                     shader_types::FrameCullData fcd {.pyramid_size  = depth_pyramid.base_size,
                                                      .viewport_size = m_window.get_size_in_px(),
-                                                     .draw_count    = static_cast<u32>(scene_info.primitives),
+                                                     .draw_count    = static_cast<u32>(scene_counters.instances),
                                                      .flags         = client_render_settings.flags};
                     build_frustum(fcd, projection, view);
                     (*static_cast<shader_types::FrameCullData*>(frame_cull_data_buffer.mapped)) = fcd;
@@ -1293,7 +1232,6 @@ int app::instance::run()
 
                 auto& shadow_cascades_data_buffer =
                     shadow_cascades_data_buffers[*m_rhi.query_current_frame_index(*swapchain)];
-#if !NO_SHADOWS
                 const auto light_cascades_vps = update_csm_buffers(csm,
                                                                    shadow_cascades_data_buffer,
                                                                    sun_direction,
@@ -1301,11 +1239,9 @@ int app::instance::run()
                                                                    freeze_cull_data ? debug_camera_view : camera_view,
                                                                    camera_transform.position,
                                                                    client_render_settings);
-#endif
 
                 app::zero_buffer(m_rhi, buffer, indexed_count_buffer);
 
-#if !NO_SHADOWS
                 m_rhi.cmd_clear_depth_attachment(buffer, csm.shadow_map, {.depth = 0.0F, .stencil = 0});
                 for (u32 c = 0; c < shader_constants::kMaxShadowCascades; ++c)
                 {
@@ -1322,23 +1258,21 @@ int app::instance::run()
                         .bind_at(shadow_cascades_data_buffer.buffer, shader_bindings::shadow_cull::kCascadeCullBinding)
                         .bind_at(meshlets_draw_indirect_buffer, shader_bindings::shadow_cull::kOutDrawBinding);
 
-                    const render::rhi::pipeline cull_pass = pipelines[pso_id::shadow_cull];
+                    const rhi::pipeline cull_pass = pipelines[pso_id::shadow_cull];
                     m_rhi.cmd_bind_pso(buffer, cull_pass);
                     m_rhi.cmd_push_bindings(buffer, cull_pass, cull_pass_bindings.get());
 
                     m_rhi.cmd_push_constants(buffer, cull_pass, &c, sizeof(c), 0);
                     m_rhi.cmd_push_constants(buffer, cull_pass, &offset_table, sizeof(offset_table), sizeof(c));
 
-                    m_rhi.cmd_dispatch(buffer, {static_cast<u32>(scene_info.primitives), 1, 1});
+                    m_rhi.cmd_dispatch(buffer, cull_pass, {static_cast<u32>(scene_counters.instances), 1, 1});
 
-                    render::rhi::global_barrier barrier {
-                        .before = {.stages = (u32)render::rhi::barrier_stage::compute_shader,
-                                   .access = (u32)render::rhi::barrier_access::storage_write},
-                        .after  = {.stages = (u32)render::rhi::barrier_stage::compute_shader
-                                           | render::rhi::barrier_stage::indirect
-                                           | render::rhi::barrier_stage::all_graphics,
-                                   .access = (u32)render::rhi::barrier_access::indirect_read
-                                           | render::rhi::barrier_access::storage_read      },
+                    rhi::global_barrier barrier {
+                        .before = {.stages = rhi::barrier_stage::compute_shader,
+                                   .access = rhi::barrier_access::storage_write                                    },
+                        .after  = {.stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::indirect
+                                           | rhi::barrier_stage::all_graphics,
+                                   .access = rhi::barrier_access::indirect_read | rhi::barrier_access::storage_read},
                     };
 
                     m_rhi.cmd_barriers(buffer,
@@ -1359,25 +1293,24 @@ int app::instance::run()
 
                         shader_types::ShadowDrawPushConstants pc(light_cascades_vps[c], offset_table[i], c);
                         m_rhi.cmd_push_constants(buffer, render_pipeline, &pc, sizeof(pc), 0);
+                        m_rhi.cmd_set_cull_mode(buffer,
+                                                i == shader_constants::kMatClassOpaque ? rhi::cull_mode::back
+                                                                                       : rhi::cull_mode::none);
+                        m_rhi.cmd_set_depth_bias(buffer,
+                                                 client_render_settings.shadow_depth_bias_constant,
+                                                 client_render_settings.shadow_depth_bias_slope,
+                                                 0.0F);
 
-                        // vkCmdSetCullMode(
-                        //     buffer, i == shader_constants::kMatClassOpaque ? VK_CULL_MODE_BACK_BIT :
-                        //     VK_CULL_MODE_NONE);
-                        // vkCmdSetDepthBias(buffer,
-                        //                   client_render_settings.shadow_depth_bias_constant,
-                        //                   0.0F,
-                        //                   client_render_settings.shadow_depth_bias_slope);
                         draw_shadow(buffer, render_pipeline, i, c);
                     }
                 }
-#endif
 
                 {
                     // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "cull last frame
                     // occluders"));
 
                     reset_draw_count_buffer(m_rhi, buffer, draw_count_buffer);
-                    const render::rhi::binding cull_pass_bindings[] = {
+                    const rhi::binding cull_pass_bindings[] = {
                         geometry_pool.primitives,
                         geometry_pool.instances,
                         geometry_pool.materials,
@@ -1387,44 +1320,39 @@ int app::instance::run()
                         meshlets_draw_indirect_buffer,
                     };
 
-                    const render::rhi::pipeline& cull_pass = pipelines[pso_id::task_cull_pipeline];
+                    const rhi::pipeline& cull_pass = pipelines[pso_id::task_cull_pipeline];
 
                     m_rhi.cmd_bind_pso(buffer, cull_pass);
                     m_rhi.cmd_push_constants(buffer, cull_pass, &offset_table, sizeof(offset_table), 0);
                     m_rhi.cmd_push_bindings(buffer, cull_pass, std::span {cull_pass_bindings});
 
-                    m_rhi.cmd_dispatch(buffer, {static_cast<u32>(scene_info.primitives), 1, 1});
+                    m_rhi.cmd_dispatch(buffer, cull_pass, {static_cast<u32>(scene_counters.instances), 1, 1});
 
-                    render::rhi::global_barrier barrier {
-                        .before = {.stages = static_cast<u32>(render::rhi::barrier_stage::compute_shader),
-                                   .access = static_cast<u32>(render::rhi::barrier_access::storage_write)},
+                    rhi::global_barrier barrier {
+                        .before = {.stages = rhi::barrier_stage::compute_shader,
+                                   .access = rhi::barrier_access::storage_write},
                         .after  = {
-                                   .stages = render::rhi::barrier_stage::compute_shader | render::rhi::barrier_stage::indirect
-                                    | render::rhi::barrier_stage::all_graphics,
-                                   .access =
-                                render::rhi::barrier_access::indirect_read | render::rhi::barrier_access::storage_read,
+                                   .stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::indirect
+                                    | rhi::barrier_stage::all_graphics,
+                                   .access = rhi::barrier_access::indirect_read | rhi::barrier_access::storage_read,
                                    }
                     };
 
-                    render::rhi::barrier_batch barriers {
+                    rhi::barrier_batch barriers {
                         .globals = {&barrier, 1}
                     };
                     m_rhi.cmd_barriers(buffer, barriers);
                 }
-                app_cmd_transition_image(m_rhi, buffer, render_target, render::rhi::image_layout::common);
+                app_cmd_transition_image(m_rhi, buffer, render_target, rhi::image_layout::common);
 
-                app_cmd_transition_image(m_rhi, buffer, *frame_image, render::rhi::image_layout::common);
+                app_cmd_transition_image(m_rhi, buffer, *frame_image, rhi::image_layout::common);
 
-                app_cmd_transition_image(m_rhi, buffer, vis_buffer, render::rhi::image_layout::common);
+                app_cmd_transition_image(m_rhi, buffer, vis_buffer, rhi::image_layout::common);
 
-                app_cmd_transition_image(m_rhi,
-                                         buffer,
-                                         depth_image,
-                                         render::rhi::image_layout::common,
-                                         u32(render::rhi::image_aspect::depth));
+                app_cmd_transition_image(
+                    m_rhi, buffer, depth_image, rhi::image_layout::common, rhi::image_aspect::depth);
 
-                m_rhi.cmd_clear_depth_attachment(
-                    buffer, depth_image, {.depth = ds_clear.depth, .stencil = static_cast<u8>(ds_clear.stencil)});
+                m_rhi.cmd_clear_depth_attachment(buffer, depth_image, ds_clear);
 
                 m_rhi.cmd_clear_color_attachment(buffer, vis_buffer, vb_clear);
 
@@ -1444,8 +1372,9 @@ int app::instance::run()
                         freeze_cull_data ? camera_proj * debug_camera_view : camera_proj_view, offset_table[i]};
                     m_rhi.cmd_push_constants(buffer, render_pipeline, &push_constants, sizeof(push_constants), 0);
 
-                    // vkCmdSetCullMode(
-                    //     buffer, i == shader_constants::kMatClassOpaque ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE);
+                    m_rhi.cmd_set_cull_mode(
+                        buffer, i == shader_constants::kMatClassOpaque ? rhi::cull_mode::back : rhi::cull_mode::none);
+
                     draw_scene(buffer, render_pipeline, i);
                 }
 
@@ -1453,32 +1382,32 @@ int app::instance::run()
                 {
                     // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "depth reduce"));
 
-                    constexpr render::rhi::global_barrier barrier {
-                        .before = {.stages = render::rhi::barrier_stage::early_depth_stencil
-                                           | render::rhi::barrier_stage::late_depth_stencil,
-                                   .access = static_cast<u32>(render::rhi::barrier_access::depth_stencil_write)},
-                        .after  = {.stages = static_cast<u32>(render::rhi::barrier_stage::compute_shader),
-                                   .access = static_cast<u32>(render::rhi::barrier_access::sampled_read)       },
+                    constexpr rhi::global_barrier barrier {
+                        .before = {.stages =
+                                       rhi::barrier_stage::early_depth_stencil | rhi::barrier_stage::late_depth_stencil,
+                                   .access = rhi::barrier_access::depth_stencil_write},
+                        .after  = {.stages = rhi::barrier_stage::compute_shader,
+                                   .access = rhi::barrier_access::sampled_read       },
                     };
 
-                    const render::rhi::barrier_batch barriers {
+                    const rhi::barrier_batch barriers {
                         .globals = {&barrier, 1}
                     };
 
                     m_rhi.cmd_barriers(buffer, barriers);
 
-                    app_cmd_transition_image(m_rhi, buffer, depth_pyramid.image, render::rhi::image_layout::common);
+                    app_cmd_transition_image(m_rhi, buffer, depth_pyramid.image, rhi::image_layout::common);
 
                     const auto& depth_reduce_pipeline = pipelines[pso_id::depth_reduce_pipeline];
                     m_rhi.cmd_bind_pso(buffer, depth_reduce_pipeline);
 
                     for (i32 i = 0; i < depth_pyramid.pyramid_count; ++i)
                     {
-                        const render::rhi::binding cull_pass_bindings[] = {
-                            render::rhi::binding(i == 0 ? render::rhi::attachment(depth_image)
-                                                        : render::rhi::attachment(depth_pyramid.views[i - 1]),
-                                                 depth_pyramid.sampler),
-                            render::rhi::binding(depth_pyramid.views[i], depth_pyramid.sampler),
+                        const rhi::binding cull_pass_bindings[] = {
+                            rhi::binding(i == 0 ? rhi::attachment(depth_image)
+                                                : rhi::attachment(depth_pyramid.views[i - 1]),
+                                         depth_pyramid.sampler),
+                            rhi::binding(depth_pyramid.views[i], depth_pyramid.sampler),
                         };
 
                         m_rhi.cmd_push_bindings(buffer, depth_reduce_pipeline, std::span {cull_pass_bindings});
@@ -1487,17 +1416,16 @@ int app::instance::run()
                         const vec2 push_constants(out_size);
                         m_rhi.cmd_push_constants(
                             buffer, depth_reduce_pipeline, &push_constants, sizeof(push_constants), 0);
-                        m_rhi.cmd_dispatch(buffer, {out_size.x, out_size.y, 1});
+                        m_rhi.cmd_dispatch(buffer, depth_reduce_pipeline, {out_size.x, out_size.y, 1});
 
-                        constexpr render::rhi::global_barrier dp_barrier {
-                            .before = {.stages = static_cast<u32>(render::rhi::barrier_stage::compute_shader),
-                                       .access = static_cast<u32>(render::rhi::barrier_access::storage_write)},
-                            .after  = {.stages = static_cast<u32>(render::rhi::barrier_stage::compute_shader),
-                                       .access = render::rhi::barrier_access::sampled_read
-                                               | render::rhi::barrier_access::storage_read                   },
+                        constexpr rhi::global_barrier dp_barrier {
+                            .before = {.stages = rhi::barrier_stage::compute_shader,
+                                       .access = rhi::barrier_access::storage_write                                   },
+                            .after  = {.stages = rhi::barrier_stage::compute_shader,
+                                       .access = rhi::barrier_access::sampled_read | rhi::barrier_access::storage_read},
                         };
 
-                        const render::rhi::barrier_batch dp_barriers {
+                        const rhi::barrier_batch dp_barriers {
                             .globals = {&dp_barrier, 1}
                         };
 
@@ -1508,8 +1436,7 @@ int app::instance::run()
                 // NOTE: only executed if freeze_cull_data == true
                 if (freeze_cull_data)
                 {
-                    m_rhi.cmd_clear_depth_attachment(
-                        buffer, depth_image, {.depth = ds_clear.depth, .stencil = static_cast<u8>(ds_clear.stencil)});
+                    m_rhi.cmd_clear_depth_attachment(buffer, depth_image, ds_clear);
 
                     m_rhi.cmd_clear_color_attachment(buffer, vis_buffer, vb_clear);
 
@@ -1527,10 +1454,10 @@ int app::instance::run()
                         m_rhi.cmd_bind_pso(buffer, render_pipeline);
                         const auto push_constants = shader_types::DrawPushConstants(camera_proj_view, offset_table[i]);
                         m_rhi.cmd_push_constants(buffer, render_pipeline, &push_constants, sizeof(push_constants), 0);
+                        m_rhi.cmd_set_cull_mode(buffer,
+                                                i == shader_constants::kMatClassOpaque ? rhi::cull_mode::back
+                                                                                       : rhi::cull_mode::none);
 
-                        // vkCmdSetCullMode(
-                        //     buffer, i == shader_constants::kMatClassOpaque ? VK_CULL_MODE_BACK_BIT :
-                        //     VK_CULL_MODE_NONE);
                         draw_scene(buffer, render_pipeline, i);
                     }
                 }
@@ -1539,7 +1466,7 @@ int app::instance::run()
                     // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "cull new objects"));
 
                     reset_draw_count_buffer(m_rhi, buffer, draw_count_buffer);
-                    const render::rhi::binding cull_pass_bindings[] = {
+                    const rhi::binding cull_pass_bindings[] = {
                         geometry_pool.primitives,
                         geometry_pool.instances,
                         geometry_pool.materials,
@@ -1547,27 +1474,25 @@ int app::instance::run()
                         mesh_visibility_buffer,
                         frame_cull_data_buffer.buffer,
                         meshlets_draw_indirect_buffer,
-                        render::rhi::binding(depth_pyramid.image, depth_pyramid.sampler)};
+                        rhi::binding(depth_pyramid.image, depth_pyramid.sampler)};
 
-                    const render::rhi::pipeline& cull_pass = pipelines[pso_id::task_occlusion_cull_pipeline];
+                    const rhi::pipeline& cull_pass = pipelines[pso_id::task_occlusion_cull_pipeline];
 
                     m_rhi.cmd_bind_pso(buffer, cull_pass);
                     m_rhi.cmd_push_constants(buffer, cull_pass, &offset_table, sizeof(offset_table), 0);
                     m_rhi.cmd_push_bindings(buffer, cull_pass, std::span {cull_pass_bindings});
 
-                    m_rhi.cmd_dispatch(buffer, {static_cast<u32>(scene_info.primitives), 1, 1});
+                    m_rhi.cmd_dispatch(buffer, cull_pass, {static_cast<u32>(scene_counters.instances), 1, 1});
 
-                    constexpr render::rhi::global_barrier barrier {
-                        .before = {.stages = static_cast<u32>(render::rhi::barrier_stage::compute_shader),
-                                   .access = static_cast<u32>(render::rhi::barrier_access::storage_write)},
-                        .after  = {.stages = render::rhi::barrier_stage::compute_shader
-                                           | render::rhi::barrier_stage::indirect
-                                           | render::rhi::barrier_stage::all_graphics,
-                                   .access = render::rhi::barrier_access::indirect_read
-                                           | render::rhi::barrier_access::storage_read                   },
+                    constexpr rhi::global_barrier barrier {
+                        .before = {.stages = rhi::barrier_stage::compute_shader,
+                                   .access = rhi::barrier_access::storage_write                                    },
+                        .after  = {.stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::indirect
+                                           | rhi::barrier_stage::all_graphics,
+                                   .access = rhi::barrier_access::indirect_read | rhi::barrier_access::storage_read},
                     };
 
-                    const render::rhi::barrier_batch barriers {
+                    const rhi::barrier_batch barriers {
                         .globals = {&barrier, 1}
                     };
 
@@ -1591,8 +1516,8 @@ int app::instance::run()
                     const auto push_constants = shader_types::DrawPushConstants(camera_proj_view, offset_table[i]);
                     m_rhi.cmd_push_constants(buffer, render_pipeline, &push_constants, sizeof(push_constants), 0);
 
-                    // vkCmdSetCullMode(
-                    //     buffer, i == shader_constants::kMatClassOpaque ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE);
+                    m_rhi.cmd_set_cull_mode(
+                        buffer, i == shader_constants::kMatClassOpaque ? rhi::cull_mode::back : rhi::cull_mode::none);
                     draw_scene(buffer, render_pipeline, i);
                 }
 
@@ -1601,26 +1526,25 @@ int app::instance::run()
                     // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "vb resolve"));
 
                     {
-                        constexpr render::rhi::global_barrier barrier {
-                            .before = {.stages = render::rhi::barrier_stage::color_attachment
-                                               | render::rhi::barrier_stage::late_depth_stencil,
-                                       .access = render::rhi::barrier_access::color_attachment_write
-                                               | render::rhi::barrier_access::depth_stencil_write},
-                            .after  = {.stages = static_cast<u32>(render::rhi::barrier_stage::compute_shader),
-                                       .access = render::rhi::barrier_access::storage_read
-                                               | render::rhi::barrier_access::sampled_read       },
+                        constexpr rhi::global_barrier barrier {
+                            .before = {.stages = rhi::barrier_stage::color_attachment
+                                               | rhi::barrier_stage::late_depth_stencil,
+                                       .access = rhi::barrier_access::color_attachment_write
+                                               | rhi::barrier_access::depth_stencil_write                             },
+                            .after  = {.stages = rhi::barrier_stage::compute_shader,
+                                       .access = rhi::barrier_access::storage_read | rhi::barrier_access::sampled_read},
                         };
 
-                        const render::rhi::barrier_batch barriers {
+                        const rhi::barrier_batch barriers {
                             .globals = {&barrier, 1}
                         };
 
                         m_rhi.cmd_barriers(buffer, barriers);
                     }
 
-                    const render::rhi::binding resolve_pass_bindings[] = {
-                        render::rhi::binding(render::rhi::attachment(render_target)),
-                        render::rhi::binding(render::rhi::attachment(vis_buffer)),
+                    const rhi::binding resolve_pass_bindings[] = {
+                        rhi::binding(rhi::attachment(render_target)),
+                        rhi::binding(rhi::attachment(vis_buffer)),
                         indexed_indices_buffer,
                         geometry_pool.vertex,
                         geometry_pool.meshlets,
@@ -1630,20 +1554,16 @@ int app::instance::run()
                         geometry_pool.materials,
                         world_data_buffer.buffer,
                         shadow_cascades_data_buffer.buffer,
-                        render::rhi::binding(*bindless_textures_sampler),
-                        render::rhi::binding(depth_image, *depth_texture_sampler),
-#if !NO_ENV_MAP
+                        rhi::binding(*bindless_textures_sampler),
+                        rhi::binding(depth_image, *depth_texture_sampler),
                         envmap.get_lut_descriptor_info(),
                         envmap.get_cube_descriptor_info(),
                         envmap.get_conv_descriptor_info(),
                         envmap.get_pref_descriptor_info(),
-#endif
-#if !NO_SHADOWS
                         csm.get_descriptor_info(),
-#endif
                     };
 
-                    const render::rhi::pipeline& resolve_pass =
+                    const rhi::pipeline& resolve_pass =
                         pipelines[enable_meshlets_pipeline ? pso_id::mesh_resolve_pipeline
                                                            : pso_id::vert_resolve_pipeline];
 
@@ -1654,17 +1574,18 @@ int app::instance::run()
                     const auto push_constants = shader_types::ResolvePassPushConstants(camera_view, camera_proj);
                     m_rhi.cmd_push_constants(buffer, resolve_pass, &push_constants, sizeof(push_constants), 0);
 
-                    m_rhi.cmd_dispatch(buffer, {m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1});
+                    m_rhi.cmd_dispatch(
+                        buffer, resolve_pass, {m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1});
 
                     {
-                        constexpr render::rhi::global_barrier barrier {
-                            .before = {.stages = static_cast<u32>(render::rhi::barrier_stage::compute_shader),
-                                       .access = static_cast<u32>(render::rhi::barrier_access::storage_write)},
-                            .after  = {.stages = static_cast<u32>(render::rhi::barrier_stage::compute_shader),
-                                       .access = static_cast<u32>(render::rhi::barrier_access::sampled_read) },
+                        constexpr rhi::global_barrier barrier {
+                            .before = {.stages = rhi::barrier_stage::compute_shader,
+                                       .access = rhi::barrier_access::storage_write},
+                            .after  = {.stages = rhi::barrier_stage::compute_shader,
+                                       .access = rhi::barrier_access::sampled_read },
                         };
 
-                        const render::rhi::barrier_batch barriers {
+                        const rhi::barrier_batch barriers {
                             .globals = {&barrier, 1}
                         };
 
@@ -1676,13 +1597,13 @@ int app::instance::run()
                     ZoneScopedN("FXAA pass");
                     // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "vb resolve"));
 
-                    const render::rhi::binding fxaa_pass_bindings[] = {
-                        render::rhi::binding(*frame_image),
-                        render::rhi::binding(render_target, *color_sampler),
-                        render::rhi::binding(depth_image, *depth_texture_sampler),
+                    const rhi::binding fxaa_pass_bindings[] = {
+                        rhi::binding(*frame_image),
+                        rhi::binding(render_target, *color_sampler),
+                        rhi::binding(depth_image, *depth_texture_sampler),
                     };
 
-                    const render::rhi::pipeline& fxaa_pass = pipelines[pso_id::fxaa_pipeline];
+                    const rhi::pipeline& fxaa_pass = pipelines[pso_id::fxaa_pipeline];
 
                     m_rhi.cmd_bind_pso(buffer, fxaa_pass);
                     m_rhi.cmd_push_bindings(buffer, fxaa_pass, std::span {fxaa_pass_bindings});
@@ -1693,17 +1614,18 @@ int app::instance::run()
                     m_rhi.cmd_push_constants(
                         buffer, fxaa_pass, &viewport_size, sizeof(viewport_size), sizeof(camera_data.near_plane));
 
-                    m_rhi.cmd_dispatch(buffer, {m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1});
+                    m_rhi.cmd_dispatch(
+                        buffer, fxaa_pass, {m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1});
 
-                    constexpr render::rhi::global_barrier barrier {
-                        .before = {.stages = static_cast<u32>(render::rhi::barrier_stage::compute_shader),
-                                   .access = static_cast<u32>(render::rhi::barrier_access::storage_write)},
-                        .after  = {.stages = static_cast<u32>(render::rhi::barrier_stage::color_attachment),
-                                   .access = render::rhi::barrier_access::color_attachment_read
-                                           | render::rhi::barrier_access::color_attachment_write         },
+                    constexpr rhi::global_barrier barrier {
+                        .before = {.stages = rhi::barrier_stage::compute_shader,
+                                   .access = rhi::barrier_access::storage_write         },
+                        .after  = {.stages = rhi::barrier_stage::color_attachment,
+                                   .access = rhi::barrier_access::color_attachment_read
+                                           | rhi::barrier_access::color_attachment_write},
                     };
 
-                    const render::rhi::barrier_batch barriers {
+                    const rhi::barrier_batch barriers {
                         .globals = {&barrier, 1}
                     };
 
@@ -1712,26 +1634,24 @@ int app::instance::run()
 
                 if (freeze_cull_data)
                 {
-#if !NO_SHADOWS
                     ZoneScopedN("Frustum debug render pass");
                     // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "frustum debug"));
 
-                    const render::rhi::attachment_state_info color_attachments[] = {
+                    const rhi::attachment_state_info color_attachments[] = {
                         {.attachment = *frame_image,
-                         .load_op    = render::rhi::resource_load_op::load,
-                         .store_op   = render::rhi::resource_store_op::store},
+                         .load_op    = rhi::resource_load_op::load,
+                         .store_op   = rhi::resource_store_op::store},
                     };
 
                     m_rhi.cmd_set_draw_state(buffer,
                                              {color_attachments, COUNT_OF(color_attachments)},
                                              {.attachment = depth_image,
-                                              .load_op    = render::rhi::resource_load_op::load,
-                                              .store_op   = render::rhi::resource_store_op::store},
+                                              .load_op    = rhi::resource_load_op::load,
+                                              .store_op   = rhi::resource_store_op::store},
                                              {0, 0, m_window.get_size_in_px().x, m_window.get_size_in_px().y});
 
-                    // frustum_renderer.draw(buffer, camera_proj_view, frame_cull_data_buffer);
+                    frustum_renderer.draw(m_rhi, buffer, camera_proj_view, frame_cull_data_buffer.buffer);
                     m_rhi.cmd_clear_draw_state(buffer);
-#endif
                 }
 
 #if !NO_EDITOR
@@ -1968,7 +1888,7 @@ int app::instance::run()
                 }
 #endif
 
-                app_cmd_transition_image(m_rhi, buffer, *frame_image, render::rhi::image_layout::present);
+                app_cmd_transition_image(m_rhi, buffer, *frame_image, rhi::image_layout::present);
 #if !NO_PERF_QUERY
                 vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool.handle, 1);
 #endif
@@ -1976,8 +1896,8 @@ int app::instance::run()
                 m_rhi.cmd_end_recording(buffer);
                 m_rhi.present(buffer,
                               *swapchain,
-                              *m_rhi.query_queue(*context, render::rhi::queue_kind::gfx),
-                              *m_rhi.query_queue(*context, render::rhi::queue_kind::present));
+                              *m_rhi.query_queue(*context, rhi::queue_kind::gfx),
+                              *m_rhi.query_queue(*context, rhi::queue_kind::present));
 
 #if !NO_PERF_QUERY
                 vkDeviceWaitIdle(m_renderer.get_context().device);
@@ -2038,13 +1958,8 @@ int app::instance::run()
 
     m_rhi.device_wait_idle(*context);
 
-#if !NO_SHADOWS
     csm.shutdown(m_rhi, *context);
-#endif
-
-#if !NO_ENV_MAP
     envmap.shutdown(m_rhi, *context);
-#endif
 
     watcher.shutdown();
     pipelines.shutdown(m_rhi, *context);
@@ -2055,8 +1970,8 @@ int app::instance::run()
     destroy_depth_pyramid(m_rhi, depth_pyramid, *context);
 
 #if !NO_PERF_QUERY
-    render::vk_destroy_query_pool(m_renderer.get_context().device, timestamp_query_pool);
-    render::vk_destroy_query_pool(m_renderer.get_context().device, pipeline_statistics_query);
+    platform::vk_destroy_query_pool(m_renderer.get_context().device, timestamp_query_pool);
+    platform::vk_destroy_query_pool(m_renderer.get_context().device, pipeline_statistics_query);
 #endif
 
     m_rhi.destroy_buffer(*context, geometry_pool.vertex);
@@ -2094,12 +2009,10 @@ int app::instance::run()
     m_rhi.destroy_sampler(*context, *shadow_alpha_sampler);
     m_rhi.destroy_sampler(*context, *bindless_textures_sampler);
 
-#if !NO_TEXTURES
     for (auto& texture : textures)
     {
-        render::vk_destroy_image(m_renderer.get_context().device, m_renderer.get_context().allocator, texture);
+        m_rhi.destroy_image(*context, texture);
     }
-#endif
 
     return 0;
 }

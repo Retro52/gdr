@@ -7,7 +7,7 @@
 #include <array>
 #include <type_traits>
 
-namespace render
+namespace platform
 {
     struct d3d12_desc_heap
     {

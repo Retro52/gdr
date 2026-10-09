@@ -4,7 +4,7 @@
 #include <render/platform/vk/vma.hpp>
 #include <result.hpp>
 
-namespace render
+namespace platform
 {
     struct vk_buffer
     {

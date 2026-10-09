@@ -2,7 +2,7 @@
 #include <render/platform/vk/vk_error.hpp>
 #include <tracy/Tracy.hpp>
 
-app::frame_statistics_data app::query_frame_statistics_data(VkDevice device, render::vk_query query)
+app::frame_statistics_data app::query_frame_statistics_data(VkDevice device, platform::vk_query query)
 {
     ZoneScoped;
     if (!query.handle)
@@ -23,7 +23,7 @@ app::frame_statistics_data app::query_frame_statistics_data(VkDevice device, ren
     return result;
 }
 
-app::pipeline_statistics_data app::query_pipeline_statistics_data(VkDevice device, render::vk_query query,
+app::pipeline_statistics_data app::query_pipeline_statistics_data(VkDevice device, platform::vk_query query,
                                                                   u32 query_idx)
 {
     ZoneScoped;

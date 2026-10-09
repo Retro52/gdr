@@ -7,7 +7,7 @@
     case srgb_format :                                                   \
         return space == color_space::linear ? linear_format : srgb_format
 
-VkFormat render::vk_format_from_dxgi(const u32 dx_format)
+VkFormat platform::vk_format_from_dxgi(const u32 dx_format)
 {
     using ddspp::DXGIFormat;
 
@@ -242,7 +242,7 @@ VkFormat render::vk_format_from_dxgi(const u32 dx_format)
     }
 }
 
-VkFormat render::vk_format_force_color_space(const VkFormat vk_format, const color_space space)
+VkFormat platform::vk_format_force_color_space(const VkFormat vk_format, const color_space space)
 {
     switch (vk_format)
     {
@@ -284,23 +284,41 @@ VkFormat render::vk_format_force_color_space(const VkFormat vk_format, const col
     }
 }
 
-VkImageViewType render::vk_rhi_parse_image_view_type(const render::rhi::image_view_kind kind)
+VkImageLayout platform::vk_rhi_parse_image_layout(const rhi::image_layout layout)
+{
+    switch (layout)
+    {
+    case rhi::image_layout::discard :
+        return VK_IMAGE_LAYOUT_UNDEFINED;
+    case rhi::image_layout::present :
+        return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    case rhi::image_layout::render_target_color :
+        return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    case rhi::image_layout::render_target_depth_stencil :
+        return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    default :
+    case rhi::image_layout::common :
+        return VK_IMAGE_LAYOUT_GENERAL;
+    }
+}
+
+VkImageViewType platform::vk_rhi_parse_image_view_type(const rhi::image_view_kind kind)
 {
     switch (kind)
     {
-    case render::rhi::image_view_kind::flat_1d :
+    case rhi::image_view_kind::flat_1d :
         return VK_IMAGE_VIEW_TYPE_1D;
-    case render::rhi::image_view_kind::array_1d :
+    case rhi::image_view_kind::array_1d :
         return VK_IMAGE_VIEW_TYPE_1D_ARRAY;
-    case render::rhi::image_view_kind::flat_2d :
+    case rhi::image_view_kind::flat_2d :
         return VK_IMAGE_VIEW_TYPE_2D;
-    case render::rhi::image_view_kind::array_2d :
+    case rhi::image_view_kind::array_2d :
         return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-    case render::rhi::image_view_kind::flat_cube :
+    case rhi::image_view_kind::flat_cube :
         return VK_IMAGE_VIEW_TYPE_CUBE;
-    case render::rhi::image_view_kind::array_cube :
+    case rhi::image_view_kind::array_cube :
         return VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
-    case render::rhi::image_view_kind::flat_3d :
+    case rhi::image_view_kind::flat_3d :
         return VK_IMAGE_VIEW_TYPE_3D;
     default :
         break;
@@ -309,19 +327,19 @@ VkImageViewType render::vk_rhi_parse_image_view_type(const render::rhi::image_vi
     return VK_IMAGE_VIEW_TYPE_2D;
 }
 
-VkImageAspectFlags render::vk_rhi_parse_aspect_flags(const render::rhi::image_aspects aspects)
+VkImageAspectFlags platform::vk_rhi_parse_aspect_flags(const rhi::image_aspect_bits aspects)
 {
     VkImageAspectFlags result = 0;
-    assert2(!(aspects & render::rhi::image_aspect::format));
+    assert2(!(aspects & rhi::image_aspect::format));
 
-    result |= aspects & render::rhi::image_aspect::color ? VK_IMAGE_ASPECT_COLOR_BIT : result;
-    result |= aspects & render::rhi::image_aspect::depth ? VK_IMAGE_ASPECT_DEPTH_BIT : result;
-    result |= aspects & render::rhi::image_aspect::stencil ? VK_IMAGE_ASPECT_STENCIL_BIT : result;
+    result |= aspects & rhi::image_aspect::color ? VK_IMAGE_ASPECT_COLOR_BIT : result;
+    result |= aspects & rhi::image_aspect::depth ? VK_IMAGE_ASPECT_DEPTH_BIT : result;
+    result |= aspects & rhi::image_aspect::stencil ? VK_IMAGE_ASPECT_STENCIL_BIT : result;
 
     return result;
 }
 
-VkImageAspectFlags render::vk_rhi_parse_format_aspect_flags(const VkFormat format)
+VkImageAspectFlags platform::vk_rhi_parse_format_aspect_flags(const VkFormat format)
 {
     switch (format)
     {
@@ -340,30 +358,30 @@ VkImageAspectFlags render::vk_rhi_parse_format_aspect_flags(const VkFormat forma
     }
 }
 
-render::rhi::shader_stage render::vk_rhi_translate_shader_stage(const VkShaderStageFlagBits stage)
+rhi::shader_stage platform::vk_rhi_translate_shader_stage(const VkShaderStageFlagBits stage)
 {
     switch (stage)
     {
     case VK_SHADER_STAGE_TASK_BIT_EXT :
-        return render::rhi::shader_stage::task;
+        return rhi::shader_stage::task;
     case VK_SHADER_STAGE_MESH_BIT_EXT :
-        return render::rhi::shader_stage::mesh;
+        return rhi::shader_stage::mesh;
     case VK_SHADER_STAGE_COMPUTE_BIT :
-        return render::rhi::shader_stage::compute;
+        return rhi::shader_stage::compute;
     case VK_SHADER_STAGE_FRAGMENT_BIT :
-        return render::rhi::shader_stage::fragment;
+        return rhi::shader_stage::fragment;
     default :
     case VK_SHADER_STAGE_VERTEX_BIT :
-        return render::rhi::shader_stage::vertex;
+        return rhi::shader_stage::vertex;
     }
 }
 
-VkImageUsageFlags render::vk_rhi_parse_image_usage_flags(const render::rhi::image_usages usage)
+VkImageUsageFlags platform::vk_rhi_parse_image_usage_flags(const rhi::image_usage_bits usage)
 {
     VkImageUsageFlags result = 0;
-    for (u32 i = 0; i < reflection::get_enum_values_count<render::rhi::image_usage>(); i++)
+    for (u32 i = 0; i < reflection::get_enum_values_count<rhi::image_usage>(); i++)
     {
-        const auto flag = reflection::get_enum_value_at<render::rhi::image_usage>(i);
+        const auto flag = reflection::get_enum_value_at<rhi::image_usage>(i);
         if (!(flag & usage))
         {
             continue;
@@ -371,22 +389,22 @@ VkImageUsageFlags render::vk_rhi_parse_image_usage_flags(const render::rhi::imag
 
         switch (flag)
         {
-        case render::rhi::image_usage::sampled :
+        case rhi::image_usage::sampled :
             result |= VK_IMAGE_USAGE_SAMPLED_BIT;
             break;
-        case render::rhi::image_usage::storage :
+        case rhi::image_usage::storage :
             result |= VK_IMAGE_USAGE_STORAGE_BIT;
             break;
-        case render::rhi::image_usage::attachment_color :
+        case rhi::image_usage::attachment_color :
             result |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
             break;
-        case render::rhi::image_usage::attachment_ds :
+        case rhi::image_usage::attachment_ds :
             result |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
             break;
-        case render::rhi::image_usage::transfer_src :
+        case rhi::image_usage::transfer_src :
             result |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
             break;
-        case render::rhi::image_usage::transfer_dst :
+        case rhi::image_usage::transfer_dst :
             result |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
             break;
         default :
@@ -397,12 +415,12 @@ VkImageUsageFlags render::vk_rhi_parse_image_usage_flags(const render::rhi::imag
     return result;
 }
 
-VkBufferUsageFlags render::vk_rhi_parse_buffer_usage_flags(const render::rhi::buffer_usages usage)
+VkBufferUsageFlags platform::vk_rhi_parse_buffer_usage_flags(const rhi::buffer_usage_bits usage)
 {
     VkBufferUsageFlags result = 0;
-    for (u32 i = 0; i < reflection::get_enum_values_count<render::rhi::buffer_usage>(); i++)
+    for (u32 i = 0; i < reflection::get_enum_values_count<rhi::buffer_usage>(); i++)
     {
-        const auto flag = reflection::get_enum_value_at<render::rhi::buffer_usage>(i);
+        const auto flag = reflection::get_enum_value_at<rhi::buffer_usage>(i);
         if (!(flag & usage))
         {
             continue;
@@ -410,19 +428,19 @@ VkBufferUsageFlags render::vk_rhi_parse_buffer_usage_flags(const render::rhi::bu
 
         switch (flag)
         {
-        case render::rhi::buffer_usage::copy_src :
+        case rhi::buffer_usage::copy_src :
             result |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
             break;
-        case render::rhi::buffer_usage::copy_dst :
+        case rhi::buffer_usage::copy_dst :
             result |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             break;
-        case render::rhi::buffer_usage::shader_rw :
+        case rhi::buffer_usage::shader_rw :
             result |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
             break;
-        case render::rhi::buffer_usage::indirect :
+        case rhi::buffer_usage::indirect :
             result |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
             break;
-        case render::rhi::buffer_usage::index :
+        case rhi::buffer_usage::index :
             result |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
             break;
         default :
@@ -433,189 +451,340 @@ VkBufferUsageFlags render::vk_rhi_parse_buffer_usage_flags(const render::rhi::bu
     return result;
 }
 
-VkFilter render::vk_rhi_parse_sampler_filter(const render::rhi::sampler_filter sampler_filter)
+VkFilter platform::vk_rhi_parse_sampler_filter(const rhi::sampler_filter sampler_filter)
 {
     switch (sampler_filter)
     {
-    case render::rhi::sampler_filter::nearest :
+    case rhi::sampler_filter::nearest :
         return VK_FILTER_NEAREST;
     default :
-    case render::rhi::sampler_filter::linear :
+    case rhi::sampler_filter::linear :
         return VK_FILTER_LINEAR;
     }
 }
 
-VkBorderColor render::vk_rhi_parse_sampler_border_color(const render::rhi::sampler_border_color sampler_border_color)
+VkBorderColor platform::vk_rhi_parse_sampler_border_color(const rhi::sampler_border_color sampler_border_color)
 {
     switch (sampler_border_color)
     {
-    case render::rhi::sampler_border_color::white :
+    case rhi::sampler_border_color::white :
         return VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-    case render::rhi::sampler_border_color::black :
+    case rhi::sampler_border_color::black :
         return VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
     default :
-    case render::rhi::sampler_border_color::black_transparent :
+    case rhi::sampler_border_color::black_transparent :
         return VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
     }
 }
 
-VkSamplerReductionMode render::vk_rhi_parse_sampler_reduction(const render::rhi::sampler_reduction sampler_reduction)
+VkSamplerReductionMode platform::vk_rhi_parse_sampler_reduction(const rhi::sampler_reduction sampler_reduction)
 {
     switch (sampler_reduction)
     {
-    case render::rhi::sampler_reduction::min :
+    case rhi::sampler_reduction::min :
         return VK_SAMPLER_REDUCTION_MODE_MIN;
-    case render::rhi::sampler_reduction::max :
+    case rhi::sampler_reduction::max :
         return VK_SAMPLER_REDUCTION_MODE_MAX;
     default :
-    case render::rhi::sampler_reduction::none :
+    case rhi::sampler_reduction::none :
         return VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE;
     }
 }
 
-VkSamplerMipmapMode render::vk_rhi_parse_sampler_mipmap_mode(const render::rhi::sampler_mipmap_mode sampler_mipmap_mode)
+VkSamplerMipmapMode platform::vk_rhi_parse_sampler_mipmap_mode(const rhi::sampler_mipmap_mode sampler_mipmap_mode)
 {
     switch (sampler_mipmap_mode)
     {
-    case render::rhi::sampler_mipmap_mode::nearest :
+    case rhi::sampler_mipmap_mode::nearest :
         return VK_SAMPLER_MIPMAP_MODE_NEAREST;
     default :
-    case render::rhi::sampler_mipmap_mode::linear :
+    case rhi::sampler_mipmap_mode::linear :
         return VK_SAMPLER_MIPMAP_MODE_LINEAR;
     }
 }
 
-VkSamplerAddressMode render::vk_rhi_parse_sampler_address_mode(
-    const render::rhi::sampler_address_mode sampler_address_mode)
+VkSamplerAddressMode platform::vk_rhi_parse_sampler_address_mode(const rhi::sampler_address_mode sampler_address_mode)
 {
     switch (sampler_address_mode)
     {
-    case render::rhi::sampler_address_mode::clamp_to_edge :
+    case rhi::sampler_address_mode::clamp_to_edge :
         return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    case render::rhi::sampler_address_mode::clamp_to_border :
+    case rhi::sampler_address_mode::clamp_to_border :
         return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-    case render::rhi::sampler_address_mode::mirrored_repeat :
+    case rhi::sampler_address_mode::mirrored_repeat :
         return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
-    case render::rhi::sampler_address_mode::mirrored_clamp_to_edge :
+    case rhi::sampler_address_mode::mirrored_clamp_to_edge :
         return VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
     default :
-    case render::rhi::sampler_address_mode::repeat :
+    case rhi::sampler_address_mode::repeat :
         return VK_SAMPLER_ADDRESS_MODE_REPEAT;
     }
 }
 
-VkCompareOp render::vk_rhi_parse_compare_op(const render::rhi::compare_op compare_op)
+VkCompareOp platform::vk_rhi_parse_compare_op(const rhi::compare_op compare_op)
 {
     switch (compare_op)
     {
-    case render::rhi::compare_op::always :
+    case rhi::compare_op::always :
         return VK_COMPARE_OP_ALWAYS;
-    case render::rhi::compare_op::less :
+    case rhi::compare_op::less :
         return VK_COMPARE_OP_LESS;
-    case render::rhi::compare_op::greater :
+    case rhi::compare_op::greater :
         return VK_COMPARE_OP_GREATER;
-    case render::rhi::compare_op::equal :
+    case rhi::compare_op::equal :
         return VK_COMPARE_OP_EQUAL;
-    case render::rhi::compare_op::not_equal :
+    case rhi::compare_op::not_equal :
         return VK_COMPARE_OP_NOT_EQUAL;
-    case render::rhi::compare_op::equal_or_less :
+    case rhi::compare_op::equal_or_less :
         return VK_COMPARE_OP_LESS_OR_EQUAL;
-    case render::rhi::compare_op::equal_or_greater :
+    case rhi::compare_op::equal_or_greater :
         return VK_COMPARE_OP_GREATER_OR_EQUAL;
     default :
-    case render::rhi::compare_op::none :
-    case render::rhi::compare_op::never :
+    case rhi::compare_op::none :
+    case rhi::compare_op::never :
         return VK_COMPARE_OP_NEVER;
     }
 }
 
-VkClearValue render::vk_rhi_parse_color_clear_value(render::rhi::clear_value cv)
+VkClearValue platform::vk_rhi_parse_color_clear_value(rhi::clear_value cv)
 {
     VkClearValue value;
     cpp::cx_memcpy(value.color.float32, &cv.color.f4.x, COUNT_OF(value.color.float32) * sizeof(cv.color.f4[0]));
     return value;
 }
 
-VkClearValue render::vk_rhi_parse_depth_clear_value(const render::rhi::clear_value cv)
+VkClearValue platform::vk_rhi_parse_depth_clear_value(const rhi::clear_value cv)
 {
     return {
         .depthStencil = {.depth = cv.ds.depth, .stencil = cv.ds.stencil}
     };
 }
 
-VkPrimitiveTopology render::vk_rhi_parse_topology(const render::rhi::topology topology)
+VkPrimitiveTopology platform::vk_rhi_parse_topology(const rhi::topology topology)
 {
     switch (topology)
     {
-    case render::rhi::topology::list_points :
+    case rhi::topology::list_points :
         return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
-    case render::rhi::topology::list_patches :
+    case rhi::topology::list_patches :
         return VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
 
-    case render::rhi::topology::list_lines :
+    case rhi::topology::list_lines :
         return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-    case render::rhi::topology::list_lines_adjacent :
+    case rhi::topology::list_lines_adjacent :
         return VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY;
-    case render::rhi::topology::list_triangles_adjacent :
+    case rhi::topology::list_triangles_adjacent :
         return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY;
 
-    case render::rhi::topology::strip_lines :
+    case rhi::topology::strip_lines :
         return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-    case render::rhi::topology::strip_triangles :
+    case rhi::topology::strip_triangles :
         return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-    case render::rhi::topology::strip_lines_adjacent :
+    case rhi::topology::strip_lines_adjacent :
         return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY;
-    case render::rhi::topology::strip_triangles_adjacent :
+    case rhi::topology::strip_triangles_adjacent :
         return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY;
 
     default :
-    case render::rhi::topology::list_triangles :
+    case rhi::topology::list_triangles :
         return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     }
 }
 
-VkBlendOp render::vk_rhi_parse_blend_op(const render::rhi::blend_op blend_op)
+VkBlendOp platform::vk_rhi_parse_blend_op(const rhi::blend_op blend_op)
 {
     switch (blend_op)
     {
-    case render::rhi::blend_op::max :
+    case rhi::blend_op::max :
         return VK_BLEND_OP_MAX;
-    case render::rhi::blend_op::add :
+    case rhi::blend_op::add :
         return VK_BLEND_OP_ADD;
-    case render::rhi::blend_op::subtract :
+    case rhi::blend_op::subtract :
         return VK_BLEND_OP_SUBTRACT;
-    case render::rhi::blend_op::reverse_subtract :
+    case rhi::blend_op::reverse_subtract :
         return VK_BLEND_OP_REVERSE_SUBTRACT;
     default :
-    case render::rhi::blend_op::min :
+    case rhi::blend_op::min :
         return VK_BLEND_OP_MIN;
     }
 }
 
-VkBlendFactor render::vk_rhi_parse_blend_factor(const render::rhi::blend_factor blend_factor)
+VkBlendFactor platform::vk_rhi_parse_blend_factor(const rhi::blend_factor blend_factor)
 {
     switch (blend_factor)
     {
-    case render::rhi::blend_factor::one :
+    case rhi::blend_factor::one :
         return VK_BLEND_FACTOR_ONE;
-    case render::rhi::blend_factor::src_color :
+    case rhi::blend_factor::src_color :
         return VK_BLEND_FACTOR_SRC_COLOR;
-    case render::rhi::blend_factor::src_alpha :
+    case rhi::blend_factor::src_alpha :
         return VK_BLEND_FACTOR_SRC_ALPHA;
-    case render::rhi::blend_factor::one_minus_src_color :
+    case rhi::blend_factor::one_minus_src_color :
         return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
-    case render::rhi::blend_factor::one_minus_src_alpha :
+    case rhi::blend_factor::one_minus_src_alpha :
         return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    case render::rhi::blend_factor::dst_color :
+    case rhi::blend_factor::dst_color :
         return VK_BLEND_FACTOR_DST_COLOR;
-    case render::rhi::blend_factor::dst_alpha :
+    case rhi::blend_factor::dst_alpha :
         return VK_BLEND_FACTOR_DST_ALPHA;
-    case render::rhi::blend_factor::one_minus_dst_color :
+    case rhi::blend_factor::one_minus_dst_color :
         return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
-    case render::rhi::blend_factor::one_minus_dst_alpha :
+    case rhi::blend_factor::one_minus_dst_alpha :
         return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
     default :
-    case render::rhi::blend_factor::zero :
+    case rhi::blend_factor::zero :
         return VK_BLEND_FACTOR_ZERO;
     }
+}
+
+VkAttachmentLoadOp platform::vk_rhi_parse_load_op(const rhi::resource_load_op load_op)
+{
+    switch (load_op)
+    {
+    case rhi::resource_load_op::load :
+        return VK_ATTACHMENT_LOAD_OP_LOAD;
+        break;
+    case rhi::resource_load_op::clear :
+        return VK_ATTACHMENT_LOAD_OP_CLEAR;
+        break;
+    default :
+    case rhi::resource_load_op::discard :
+        return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        break;
+    }
+}
+
+VkAttachmentStoreOp platform::vk_rhi_parse_store_op(const rhi::resource_store_op store_op)
+{
+    switch (store_op)
+    {
+    case rhi::resource_store_op::store :
+        return VK_ATTACHMENT_STORE_OP_STORE;
+        break;
+    default :
+    case rhi::resource_store_op::discard :
+        return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        break;
+    }
+}
+
+VkAccessFlags2 platform::vk_rhi_parse_access_flags(const rhi::barrier_access_bits access)
+{
+    VkAccessFlags2 result = 0;
+    for (u32 i = 0; i < reflection::get_enum_values_count<rhi::barrier_access>(); i++)
+    {
+        const auto flag = reflection::get_enum_value_at<rhi::barrier_access>(i);
+        if (!(flag & access))
+        {
+            continue;
+        }
+
+        switch (flag)
+        {
+        case rhi::barrier_access::indirect_read :
+            result |= VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
+            break;
+        case rhi::barrier_access::index_read :
+            result |= VK_ACCESS_2_INDEX_READ_BIT;
+            break;
+        case rhi::barrier_access::vertex_read :
+            result |= VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
+            break;
+        case rhi::barrier_access::uniform_read :
+            result |= VK_ACCESS_2_UNIFORM_READ_BIT;
+            break;
+        case rhi::barrier_access::sampled_read :
+            result |= VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+            break;
+        case rhi::barrier_access::storage_read :
+            result |= VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
+            break;
+        case rhi::barrier_access::storage_write :
+            result |= VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+            break;
+        case rhi::barrier_access::color_attachment_read :
+            result |= VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
+            break;
+        case rhi::barrier_access::color_attachment_write :
+            result |= VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+            break;
+        case rhi::barrier_access::depth_stencil_read :
+            result |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+            break;
+        case rhi::barrier_access::depth_stencil_write :
+            result |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            break;
+        case rhi::barrier_access::copy_read :
+            result |= VK_ACCESS_2_TRANSFER_READ_BIT;
+            break;
+        case rhi::barrier_access::copy_write :
+            result |= VK_ACCESS_2_TRANSFER_WRITE_BIT;
+            break;
+        default :
+        case rhi::barrier_access::none :
+            break;
+        }
+    }
+
+    return result;
+}
+
+VkPipelineStageFlags2 platform::vk_rhi_parse_stage_flags(const rhi::barrier_stage_bits stages)
+{
+    VkAccessFlags2 result = 0;
+    for (u32 i = 0; i < reflection::get_enum_values_count<rhi::barrier_stage>(); i++)
+    {
+        const auto flag = reflection::get_enum_value_at<rhi::barrier_stage>(i);
+        if (!(flag & stages))
+        {
+            continue;
+        }
+
+        switch (flag)
+        {
+        case rhi::barrier_stage::indirect :
+            result |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+            break;
+        case rhi::barrier_stage::vertex_input :
+            result |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+            break;
+        case rhi::barrier_stage::vertex_shader :
+            result |= VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+            break;
+        case rhi::barrier_stage::task_shader :
+            result |= VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT;
+            break;
+        case rhi::barrier_stage::mesh_shader :
+            result |= VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
+            break;
+        case rhi::barrier_stage::fragment_shader :
+            result |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+            break;
+        case rhi::barrier_stage::compute_shader :
+            result |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            break;
+        case rhi::barrier_stage::early_depth_stencil :
+            result |= VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+            break;
+        case rhi::barrier_stage::late_depth_stencil :
+            result |= VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+            break;
+        case rhi::barrier_stage::color_attachment :
+            result |= VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+            break;
+        case rhi::barrier_stage::copy :
+            result |= VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT;
+            break;
+        case rhi::barrier_stage::all_graphics :
+            result |= VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+            break;
+        case rhi::barrier_stage::all_commands :
+            result |= VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            break;
+        default :
+        case rhi::barrier_stage::none :
+            break;
+        }
+    }
+    return result;
 }

@@ -2,10 +2,10 @@
 #include <render/platform/vk/vk_renderer.hpp>
 #include <tracy/Tracy.hpp>
 
-using namespace render;
+using namespace platform;
 
-vk_renderer::vk_renderer(const render::rhi::instance_desc& desc, const window& window, bool vsync)
-    : m_context(*render::vk_create_context(window, desc))
+vk_renderer::vk_renderer(const rhi::instance_desc& desc, const window& window, bool vsync)
+    : m_context(*platform::vk_create_context(window, desc))
 {
     ZoneScoped;
 
@@ -21,8 +21,8 @@ vk_renderer::vk_renderer(const render::rhi::instance_desc& desc, const window& w
 
     for (auto& frame : m_in_flight_frames)
     {
-        frame.command_buffer = *render::vk_create_command_buffer(
-            m_context.device, m_context.queues[static_cast<u32>(render::rhi::queue_kind::gfx)].family);
+        frame.command_buffer = *platform::vk_create_command_buffer(
+            m_context.device, m_context.queues[static_cast<u32>(rhi::queue_kind::gfx)].family);
 
         VK_ASSERT_ON_FAIL(vkCreateFence(m_context.device, &fence_create_info, nullptr, &frame.fence));
         VK_ASSERT_ON_FAIL(
@@ -30,7 +30,7 @@ vk_renderer::vk_renderer(const render::rhi::instance_desc& desc, const window& w
         TRACY_ONLY(frame.tracy_ctx =
                        TracyVkContextCalibrated(m_context.physical_device,
                                                 m_context.device,
-                                                m_context.queues[static_cast<u32>(render::rhi::queue_kind::gfx)].queue,
+                                                m_context.queues[static_cast<u32>(rhi::queue_kind::gfx)].queue,
                                                 frame.command_buffer.cmd_buffer,
                                                 vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
                                                 vkGetCalibratedTimestampsEXT))
@@ -51,19 +51,19 @@ vk_renderer::~vk_renderer()
         TracyVkDestroy(frame.tracy_ctx);
 #endif
 
-        render::vk_destroy_command_buffer(m_context.device, frame.command_buffer);
+        platform::vk_destroy_command_buffer(m_context.device, frame.command_buffer);
     }
 
-    render::vk_destroy_swapchain(m_context, m_swapchain);
-    render::vk_destroy_context(m_context);
+    platform::vk_destroy_swapchain(m_context, m_swapchain);
+    platform::vk_destroy_context(m_context);
 }
 
-[[nodiscard]] const render::vk_context& vk_renderer::get_context() const
+[[nodiscard]] const platform::vk_context& vk_renderer::get_context() const
 {
     return m_context;
 }
 
-[[nodiscard]] const render::vk_swapchain& vk_renderer::get_swapchain() const
+[[nodiscard]] const platform::vk_swapchain& vk_renderer::get_swapchain() const
 {
     return m_swapchain;
 }
@@ -136,7 +136,7 @@ void vk_renderer::present_frame(VkCommandBuffer buffer)
         .pSignalSemaphoreInfos    = &signal_semaphore_info,
     };
 
-    VK_ASSERT_ON_FAIL(vkQueueSubmit2(m_context.queues[static_cast<u32>(render::rhi::queue_kind::gfx)].queue,
+    VK_ASSERT_ON_FAIL(vkQueueSubmit2(m_context.queues[static_cast<u32>(rhi::queue_kind::gfx)].queue,
                                      1,
                                      &gfx_submit_info,
                                      m_in_flight_frames[m_frame_index].fence));
@@ -153,7 +153,7 @@ void vk_renderer::present_frame(VkCommandBuffer buffer)
     };
 
     const auto present_result = vkQueuePresentKHR(
-        m_context.queues[static_cast<u32>(render::rhi::queue_kind::present)].queue, &present_info_khr);
+        m_context.queues[static_cast<u32>(rhi::queue_kind::present)].queue, &present_info_khr);
 
     switch (present_result)
     {
@@ -210,7 +210,7 @@ u8 vk_renderer::get_frames_in_flight() const
     return m_in_flight_frames[m_frame_index].command_buffer.cmd_buffer;
 }
 
-[[nodiscard]] render::vk_swapchain_image vk_renderer::get_frame_swapchain_image() const
+[[nodiscard]] platform::vk_swapchain_image vk_renderer::get_frame_swapchain_image() const
 {
     return m_swapchain.images[m_image_index];
 }
@@ -262,10 +262,10 @@ void vk_renderer::recreate_swapchain(ivec2 new_size, bool vsync)
 
 void vk_renderer::force_recreate_swapchain(ivec2 new_size, bool vsync)
 {
-    if (const auto created_sc = render::vk_create_swapchain(
+    if (const auto created_sc = platform::vk_create_swapchain(
             m_context, VK_FORMAT_B8G8R8A8_UNORM, new_size, kFramesInFlight, vsync, &m_swapchain))
     {
-        render::vk_destroy_swapchain(m_context, m_swapchain);
+        platform::vk_destroy_swapchain(m_context, m_swapchain);
 
         m_swapchain_size = new_size;
         m_swapchain      = *created_sc;

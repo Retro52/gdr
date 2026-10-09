@@ -11,13 +11,13 @@
 class imgui_layer
 {
 public:
-    imgui_layer(const window& window, const render::vk_renderer& renderer, app::pso_data& pipelines);
+    imgui_layer(const window& window, const platform::vk_renderer& renderer, app::pso_data& pipelines);
 
     ~imgui_layer();
 
     void begin_frame();
 
-    void end_frame(const render::vk_renderer& renderer);
+    void end_frame(const platform::vk_renderer& renderer);
 
     void image(VkImage image, VkImageView view, VkImageLayout src_layout, vec4 uv = {0, 0, 1, 1},
                ImVec2 size = {256, 256}, f32 mip = 0.0F, f32 znear = 0.0F);
@@ -57,7 +57,7 @@ private:
 
     struct atlas_data
     {
-        render::vk_image atlas_image;
+        platform::vk_image atlas_image;
         VkSampler sampler {VK_NULL_HANDLE};
         VkDescriptorSet imgui_descriptor {VK_NULL_HANDLE};
 
@@ -90,5 +90,5 @@ private:
     std::vector<blit_request> m_pending_uploads;
 
     app::pso_data& m_pipelines;
-    const render::vk_renderer& m_renderer;
+    const platform::vk_renderer& m_renderer;
 };

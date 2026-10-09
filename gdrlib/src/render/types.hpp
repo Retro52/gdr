@@ -6,11 +6,11 @@
 
 #include <cpp/tagged_int.hpp>
 #include <reflection/enum.hpp>
-#include <render/resources.hpp>
+#include <render/rhi_handles.hpp>
 
 #include <span>
 
-namespace render::rhi
+namespace rhi
 {
     // clang-format off
     REGISTER_FLAGS(feature_flag,
@@ -43,6 +43,14 @@ namespace render::rhi
         vertex,
         compute,
         fragment,
+        COUNT
+    );
+
+    REGISTER_ENUM(cull_mode,
+        all,
+        none,
+        back,
+        front,
         COUNT
     );
 
@@ -161,8 +169,6 @@ namespace render::rhi
         COUNT
     );
 
-    using barrier_accesses = barrier_accesss; // xD
-
     REGISTER_ENUM(sampler_filter,
         linear,
         nearest,
@@ -198,10 +204,11 @@ namespace render::rhi
         COUNT
     );
 
-    // I hate these custom enums that try to cover a gajillion different formats from the API they abstract, so fuck
-    // it, VkFormat is my new universal enum
-    // The only reason for this enum to exist is a sanity check to not use some crazy value that exists on some
+    // I hate these custom enums that try to cover a gajillion different formats from the API they abstract,
+    // so fuck it, VkFormat is my new universal enum
+    // The only reason this enum exists is a sanity check to not use some crazy value that exists on some
     // dinosaur years old hardware, or the opposite - some workstation class GPU for specialized workloads
+    // Oh, and naming! You look adorable, etc2_r8g8b8a1_srgb, GET OUTTA HERE VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK
     REGISTER_ENUM(image_format,
         none                = VK_FORMAT_UNDEFINED,
 
@@ -387,13 +394,13 @@ namespace render::rhi
 
     struct barrier_scope
     {
-        barrier_stages stages   = static_cast<barrier_stages>(barrier_stage::none);
-        barrier_accesses access = static_cast<barrier_accesses>(barrier_access::none);
+        barrier_stage_bits stages  = barrier_stage::none;
+        barrier_access_bits access = barrier_access::none;
     };
 
     struct image_subresource_range
     {
-        image_aspects aspects = static_cast<u32>(image_aspect::format);
+        image_aspect_bits aspects = image_aspect::format;
 
         uvec2 mips_range   = uvec2(0, kMipsAll);
         uvec2 layers_range = uvec2(0, kLayersAll);
@@ -452,10 +459,10 @@ namespace render::rhi
     {
         image_format format = image_format::none;
 
-        u32 mips_count           = 1;
-        u32 layer_count          = 1;
-        uvec3 dimensions         = uvec3(1, 1, 1);
-        image_usages usage_flags = static_cast<u32>(image_usage::sampled);
+        u32 mips_count               = 1;
+        u32 layer_count              = 1;
+        uvec3 dimensions             = uvec3(1, 1, 1);
+        image_usage_bits usage_flags = image_usage::sampled;
     };
 
     struct create_image_view_info
@@ -471,7 +478,35 @@ namespace render::rhi
         void** mapped = nullptr;  // if not null => will create mapped buffer. smart, huh?)
         u64 size      = 0;
 
-        buffer_usages usage_flags = buffer_usage::shader_rw | buffer_usage::copy_dst;
+        buffer_usage_bits usage_flags = buffer_usage::shader_rw | buffer_usage::copy_dst;
+    };
+
+    struct blit_image_info
+    {
+        ivec3 src_offset = ivec3(0, 0, 0);
+        ivec3 src_extent = ivec3(1, 1, 1);
+        uvec2 src_layers = uvec2(0, kLayersAll);
+        u32 src_mip      = 0;
+
+        ivec3 dst_offset = ivec3(0, 0, 0);
+        ivec3 dst_extent = ivec3(1, 1, 1);
+        uvec2 dst_layers = uvec2(0, kLayersAll);
+        u32 dst_mip      = 0;
+
+        image_aspect_bits aspects = image_aspect::color;
+        sampler_filter filter     = sampler_filter::linear;
+    };
+
+    struct copy_image_info
+    {
+        u64 source_offset = 0;
+
+        u32 dst_mip               = 0;
+        uvec2 dst_layers          = uvec2(0, kLayersAll);
+        image_aspect_bits aspects = image_aspect::color;
+
+        ivec3 dst_offset = uvec3(0, 0, 0);
+        uvec3 dst_extent = uvec3(1, 1, 1);
     };
 
     struct attachment
@@ -561,6 +596,12 @@ namespace render::rhi
 
     constexpr auto null_attachment_state_info = attachment_state_info {.attachment = attachment(null_image)};
 
+    struct bindless_set_write_info
+    {
+        attachment dst;
+        u32 index = 0;
+    };
+
     struct create_swapchain_info
     {
         ivec2 size;
@@ -586,22 +627,22 @@ namespace render::rhi
     {
         [[nodiscard]] constexpr bool required(const feature_flag flag) const noexcept
         {
-            return (flag & required_features) > 0;
+            return flag & required_features;
         }
 
         [[nodiscard]] constexpr bool requested(const feature_flag flag) const noexcept
         {
-            return (flag & requested_features) > 0 || required(flag);
+            return flag & requested_features || required(flag);
         }
 
         [[nodiscard]] constexpr bool supported(const feature_flag flag) const noexcept
         {
-            return (flag & supported_features) > 0;
+            return flag & supported_features;
         }
 
         [[nodiscard]] constexpr bool wanted(const feature_flag flag) const noexcept
         {
-            return (flag & supported_features) > 0 && requested(flag);
+            return (flag & supported_features) && requested(flag);
         }
 
         constexpr rendering_features_table& require(const feature_flag flag) noexcept
@@ -633,9 +674,9 @@ namespace render::rhi
             return result;
         }
 
-        u32 required_features  = 0;
-        u32 requested_features = 0;
-        u32 supported_features = 0;
+        feature_flag_bits required_features;
+        feature_flag_bits requested_features;
+        feature_flag_bits supported_features;
     };
 
     struct instance_desc

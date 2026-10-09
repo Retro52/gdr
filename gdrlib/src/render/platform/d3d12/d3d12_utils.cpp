@@ -3,7 +3,7 @@
 #include <ddspp.h>
 #include <render/platform/d3d12/d3d12_utils.hpp>
 
-u32 render::d3d12_format_from_vk(const VkFormat vk_format)
+u32 platform::d3d12_format_from_vk(const VkFormat vk_format)
 {
     using ddspp::DXGIFormat;
 

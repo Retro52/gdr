@@ -5,7 +5,7 @@
 #include <reflection/enum.hpp>
 #include <render/types.hpp>
 
-namespace render::rhi
+namespace rhi
 {
 #define DECLARE_SIMPLE_PSO_OPTION(TYPE, NAME, DEFAULT) \
     TYPE NAME = DEFAULT;                               \

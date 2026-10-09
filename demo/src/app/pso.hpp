@@ -54,17 +54,17 @@ namespace app
     struct pso_data
     {
     private:
-        std::unordered_map<u32, render::rhi::pipeline> m_pipelines;
+        std::unordered_map<u32, rhi::pipeline> m_pipelines;
 
     public:
-        render::rhi::pipeline& operator[](const pso_id id) { return m_pipelines[static_cast<u32>(id)]; }
+        rhi::pipeline& operator[](const pso_id id) { return m_pipelines[static_cast<u32>(id)]; }
 
-        void load(const render::rhi::rhi& rhi, render::rhi::context context, render::rhi::swapchain swapchain,
-                  render::rhi::bindless_set textures_set);
+        void load(const rhi::impl& rhi, rhi::context context, rhi::swapchain swapchain,
+                  rhi::bindless_set textures_set);
 
-        void destroy(const render::rhi::rhi& rhi, render::rhi::context context, pso_id id);
+        void destroy(const rhi::impl& rhi, rhi::context context, pso_id id);
 
-        void shutdown(const render::rhi::rhi& rhi, render::rhi::context context);
+        void shutdown(const rhi::impl& rhi, rhi::context context);
     };
 
     struct pso_watcher
@@ -75,14 +75,14 @@ namespace app
         u64 m_last_write_time;
 
         pso_data& m_pdata;
-        render::rhi::context m_context;
-        render::rhi::bindless_set m_textures_set;
+        rhi::context m_context;
+        rhi::bindless_set m_textures_set;
 
-        const render::rhi::rhi& m_rhi;
+        const rhi::impl& m_rhi;
 
     public:
-        pso_watcher(pso_data& pipelines, render::rhi::rhi& rhi, render::rhi::context context,
-                    render::rhi::bindless_set textures_set);
+        pso_watcher(pso_data& pipelines, rhi::impl& rhi, rhi::context context,
+                    rhi::bindless_set textures_set);
 
         void shutdown();
     };

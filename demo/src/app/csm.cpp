@@ -44,28 +44,26 @@ static vec3 get_corners_center(const std::array<glm::vec4, 8>& corners)
     return center / static_cast<f32>(corners.size());
 }
 
-app::csm::csm(const render::rhi::rhi& rhi, const render::rhi::context ctx, const render::rhi::image_format format,
-              const csm_config& cfg)
+app::csm::csm(const rhi::impl& rhi, const rhi::context ctx, const rhi::image_format format, const csm_config& cfg)
     : resolution(cfg.resolution)
     , max_range(cfg.max_range)
     , split_lambda(cfg.split_lambda)
 {
     sampler = *rhi.create_sampler(ctx,
                                   {
-                                      .address_mode = render::rhi::sampler_address_mode::clamp_to_border,
-                                      .compare_op   = render::rhi::compare_op::equal_or_greater,
-                                      .border_color = render::rhi::sampler_border_color::black,
+                                      .address_mode = rhi::sampler_address_mode::clamp_to_border,
+                                      .compare_op   = rhi::compare_op::equal_or_greater,
+                                      .border_color = rhi::sampler_border_color::black,
                                   });
 
-    const render::rhi::create_image_info image_create_info {
+    const rhi::create_image_info image_create_info {
         .format = format,
 
         .mips_count  = 1,
         .layer_count = shader_constants::kMaxShadowCascades,
 
         .dimensions  = uvec3(resolution, resolution, 1),
-        .usage_flags = render::rhi::image_usage::sampled | render::rhi::image_usage::transfer_dst
-                     | render::rhi::image_usage::attachment_ds,
+        .usage_flags = rhi::image_usage::sampled | rhi::image_usage::transfer_dst | rhi::image_usage::attachment_ds,
     };
 
     shadow_map = *rhi.create_image(ctx, image_create_info);
@@ -73,7 +71,7 @@ app::csm::csm(const render::rhi::rhi& rhi, const render::rhi::context ctx, const
     cascade_views.resize(shader_constants::kMaxShadowCascades);
     for (u32 i = 0; i < shader_constants::kMaxShadowCascades; ++i)
     {
-        render::rhi::create_image_view_info image_view_info {
+        rhi::create_image_view_info image_view_info {
             .range  = {.layers_range = {i, 1}},
             .format = format,
         };
@@ -81,19 +79,19 @@ app::csm::csm(const render::rhi::rhi& rhi, const render::rhi::context ctx, const
     }
 }
 
-void app::csm::init(const render::rhi::rhi& rhi, const render::rhi::command_buffer cmd)
+void app::csm::init(const rhi::impl& rhi, const rhi::command_buffer cmd)
 {
-    const render::rhi::image_barrier barrier = app::make_image_barrier(
-        shadow_map, render::rhi::image_layout::common, static_cast<u32>(render::rhi::image_aspect::depth));
+    const rhi::image_barrier barrier =
+        app::make_image_barrier(shadow_map, rhi::image_layout::common, rhi::image_aspect::depth);
 
-    const render::rhi::barrier_batch barriers {
+    const rhi::barrier_batch barriers {
         .images = {&barrier, 1}
     };
 
     rhi.cmd_barriers(cmd, barriers);
 }
 
-void app::csm::shutdown(const render::rhi::rhi& rhi, const render::rhi::context ctx)
+void app::csm::shutdown(const rhi::impl& rhi, const rhi::context ctx)
 {
     for (auto& view : cascade_views)
     {
@@ -106,7 +104,7 @@ void app::csm::shutdown(const render::rhi::rhi& rhi, const render::rhi::context 
     rhi.destroy_image(ctx, shadow_map);
 }
 
-render::rhi::binding app::csm::get_descriptor_info() const
+rhi::binding app::csm::get_descriptor_info() const
 {
     return {shadow_map, sampler};
 }

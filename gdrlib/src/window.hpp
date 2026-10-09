@@ -17,7 +17,8 @@ struct create_window_info
 
     u32 fullscreen : 1  = 0;
     u32 borderless : 1  = 0;
-    u32 reserved   : 30 = 0;
+    u32 resizable  : 1  = 1;
+    u32 reserved   : 29 = 0;
 };
 
 class window

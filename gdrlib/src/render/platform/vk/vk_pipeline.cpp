@@ -12,7 +12,7 @@
 #include <iostream>
 #include <stack>
 
-using namespace render;
+using namespace platform;
 
 namespace
 {
@@ -539,7 +539,7 @@ result<vk_pipeline> vk_pipeline::create_compute(VkDevice device, const vk_shader
 
 result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shader* shaders, u32 shaders_count,
                                                  const vk_descriptor_set* desc_set, u32 desc_set_count,
-                                                 const render::rhi::pso_options& options)
+                                                 const rhi::pso_options& options)
 {
     ZoneScoped;
     cpp::heap_array<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
@@ -740,14 +740,14 @@ void vk_pipeline::dispatch(VkCommandBuffer command_buffer, u32 global_x, u32 glo
                   align_wg(global_z, work_group_size[2]));
 }
 
-void render::vk_destroy_shader(VkDevice device, vk_shader& shader)
+void platform::vk_destroy_shader(VkDevice device, vk_shader& shader)
 {
     ZoneScoped;
     vkDestroyShaderModule(device, shader.module, nullptr);
     shader.module = VK_NULL_HANDLE;
 }
 
-void render::vk_destroy_pipeline(VkDevice device, vk_pipeline& pso)
+void platform::vk_destroy_pipeline(VkDevice device, vk_pipeline& pso)
 {
     ZoneScoped;
     vkDestroyPipelineLayout(device, pso.m_pipeline_layout, nullptr);

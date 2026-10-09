@@ -1,18 +1,26 @@
 #include <assert2.hpp>
 #include <render/platform/vk/vk_buffer_transfer.hpp>
 
-#include <cstring>
+static u32 vk_image_get_offset(const u32 width, const u32 height, const u32 block_size, const u32 bits_per_block)
+{
+    if (block_size > 1)
+    {
+        return ((width + block_size - 1) / block_size) * ((height + block_size - 1) / block_size) * bits_per_block / 8;
+    }
 
-result<render::vk_buffer_transfer> render::vk_create_buffer_transfer(VkDevice device, VmaAllocator allocator,
+    return width * height * bits_per_block / 8;
+}
+
+result<platform::vk_buffer_transfer> platform::vk_create_buffer_transfer(VkDevice device, VmaAllocator allocator,
                                                                      const vk_queue_data& queue,
                                                                      u64 staging_memory_size)
 {
     ZoneScoped;
     const auto cmd_buffer =
-        render::vk_create_command_buffer(device, queue.family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+        platform::vk_create_command_buffer(device, queue.family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
     RESULT_FORWARD_IF_FAILED(cmd_buffer);
 
-    const auto staging_buffer = render::vk_create_buffer(staging_memory_size,
+    const auto staging_buffer = platform::vk_create_buffer(staging_memory_size,
                                                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                                                          allocator,
                                                          VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
@@ -26,16 +34,16 @@ result<render::vk_buffer_transfer> render::vk_create_buffer_transfer(VkDevice de
         .mapped = data, .queue = queue, .staging_buffer = *staging_buffer, .staging_command_buffer = *cmd_buffer};
 }
 
-void render::vk_destroy_buffer_transfer(VkDevice device, VmaAllocator allocator, vk_buffer_transfer& buffer_transfer)
+void platform::vk_destroy_buffer_transfer(VkDevice device, VmaAllocator allocator, vk_buffer_transfer& buffer_transfer)
 {
     buffer_transfer.mapped = nullptr;
     vmaUnmapMemory(allocator, buffer_transfer.staging_buffer.allocation);
 
-    render::vk_destroy_buffer(allocator, buffer_transfer.staging_buffer);
-    render::vk_destroy_command_buffer(device, buffer_transfer.staging_command_buffer);
+    platform::vk_destroy_buffer(allocator, buffer_transfer.staging_buffer);
+    platform::vk_destroy_command_buffer(device, buffer_transfer.staging_command_buffer);
 }
 
-void render::vk_submit_transfer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const VkBufferCopy& region)
+void platform::vk_submit_transfer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const VkBufferCopy& region)
 {
     ZoneScoped;
 
@@ -61,7 +69,7 @@ void render::vk_submit_transfer(const vk_buffer_transfer& transfer, const vk_buf
     vkQueueWaitIdle(transfer.queue.queue);
 }
 
-void render::vk_fill_buffer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* value_ptr,
+void platform::vk_fill_buffer(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* value_ptr,
                             const u64 value_size, const VkBufferCopy& region)
 {
     ZoneScoped;
@@ -75,7 +83,7 @@ void render::vk_fill_buffer(const vk_buffer_transfer& transfer, const vk_buffer&
     vk_submit_transfer(transfer, dst, region);
 }
 
-void render::vk_upload_data(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* data,
+void platform::vk_upload_data(const vk_buffer_transfer& transfer, const vk_buffer& dst, const u8* data,
                             const VkBufferCopy& region)
 {
     ZoneScoped;
@@ -86,23 +94,13 @@ void render::vk_upload_data(const vk_buffer_transfer& transfer, const vk_buffer&
     vk_submit_transfer(transfer, dst, region);
 }
 
-void render::vk_upload_image(const vk_buffer_transfer& transfer, const vk_image& dst, const u8* data,
+void platform::vk_upload_image(const vk_buffer_transfer& transfer, const vk_image& dst, const u8* data,
                              const u64 data_size, const u32 width, const u32 height, const u32 mips,
                              const u32 block_size, const u32 bits_per_block)
 {
     assert2(bits_per_block % 8 == 0);
-    auto get_offset = [](const u32 width, const u32 height, const u32 block_size, const u32 bits_per_block)
-    {
-        if (block_size > 1)
-        {
-            return ((width + block_size - 1) / block_size) * ((height + block_size - 1) / block_size) * bits_per_block
-                 / 8;
-        }
 
-        return width * height * bits_per_block / 8;
-    };
-
-    VkCommandBufferBeginInfo begin_info {
+    constexpr VkCommandBufferBeginInfo begin_info {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
     };
@@ -140,16 +138,19 @@ void render::vk_upload_image(const vk_buffer_transfer& transfer, const vk_image&
     for (unsigned int i = 0; i < mips; ++i)
     {
         const VkBufferImageCopy region = {
-            src_offset,
-            0,
-            0,
-            {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = i, .baseArrayLayer = 0, .layerCount = 1},
-            {.x = 0, .y = 0, .z = 0},
-            {.width = mip_w, .height = mip_h, .depth = 1},
+            .bufferOffset      = src_offset,
+            .bufferRowLength   = 0,
+            .bufferImageHeight = 0,
+            .imageSubresource  = {.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                                  .mipLevel       = i,
+                                  .baseArrayLayer = 0,
+                                  .layerCount     = 1},
+            .imageOffset       = {.x = 0, .y = 0, .z = 0},
+            .imageExtent       = {.width = mip_w, .height = mip_h, .depth = 1},
         };
 
         vkCmdCopyBufferToImage(cmd, transfer.staging_buffer.buffer, dst.image, VK_IMAGE_LAYOUT_GENERAL, 1, &region);
-        src_offset += get_offset(mip_w, mip_h, block_size, bits_per_block);
+        src_offset += vk_image_get_offset(mip_w, mip_h, block_size, bits_per_block);
 
         mip_w = mip_w > 1 ? mip_w / 2 : 1;
         mip_h = mip_h > 1 ? mip_h / 2 : 1;

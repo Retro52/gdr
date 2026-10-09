@@ -5,7 +5,7 @@
 #include <render/rhi_pso_options.hpp>
 #include <result.hpp>
 
-namespace render
+namespace platform
 {
     struct d3d12_descriptor_set
     {
@@ -19,8 +19,8 @@ namespace render
 
     struct d3d12_pipeline
     {
-        render::com_ptr<ID3D12PipelineState> pso;
-        render::com_ptr<ID3D12RootSignature> root_signature;
+        platform::com_ptr<ID3D12PipelineState> pso;
+        platform::com_ptr<ID3D12RootSignature> root_signature;
 
         D3D12_PRIMITIVE_TOPOLOGY topology;
     };
@@ -37,7 +37,7 @@ namespace render
                                                           u32 shaders_count,
                                                           const d3d12_descriptor_set* desc_set    = nullptr,
                                                           u32 desc_set_count                      = 0,
-                                                          const render::rhi::pso_options& options = {});
+                                                          const rhi::pso_options& options = {});
 
     void d3d12_destroy_pipeline(d3d12_pipeline& pipeline);
 }
