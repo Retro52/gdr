@@ -527,7 +527,7 @@ int app::instance::run()
 
     const int instance_count = m_args.read_numeric("--instances");
     const int first_instance = m_args.get_positional_args_start();
-    auto env_map             = m_args.read_string<fs::path_string>("--envmap");
+    auto env_map             = m_args.read_string<fs::path_string>("--skymap");
 
     assert2(instance_count == 0 || first_instance > 0);
 
