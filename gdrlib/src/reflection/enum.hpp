@@ -31,103 +31,100 @@
         return values;                                                                  \
     }
 
-template<typename Enum>
-struct enum_flags_wrapper
-{
-    using underlying_t = u32;
-    using self_t       = enum_flags_wrapper<Enum>;
-
-private:
-    static constexpr underlying_t cast(Enum value) { return static_cast<underlying_t>(value); }
-
-public:
-    constexpr enum_flags_wrapper() = default;
-
-    constexpr enum_flags_wrapper(Enum data)
-        : m_data(self_t::cast(data))
-    {
-    }
-
-    [[nodiscard]] constexpr operator bool() const noexcept { return m_data > 0; }
-
-    [[nodiscard]] constexpr underlying_t raw() const noexcept { return m_data; }
-
-private:
-    u32 m_data = 0;
-};
-
-#define REGISTER_FLAGS(Name, ...)                                                       \
-    enum class Name : u32                                                               \
-    {                                                                                   \
-        __VA_ARGS__                                                                     \
-    };                                                                                  \
-                                                                                        \
-    using Name##_bits = enum_flags_wrapper<Name>;                                       \
-                                                                                        \
-    constexpr u64 enum_reflect_count(const Name* /*enum*/)                              \
-    {                                                                                   \
-        return reflection::enum_values_count(#__VA_ARGS__);                             \
-    }                                                                                   \
-                                                                                        \
-    inline const reflection::enum_value* enum_reflect_values(const Name* /* enum */)    \
-    {                                                                                   \
-        static const reflection::enum_value* values = []()                              \
-        {                                                                               \
-            constexpr static u64 count = reflection::get_enum_values_count<Name>();     \
-            static cpp::stack_string names[count];                                      \
-            static reflection::enum_value result[count];                                \
-            static reflection::enum_counter<Name> __VA_ARGS__;                          \
-            static u32 integer_values[] = {__VA_ARGS__};                                \
-            reflection::parse_enum_values(#__VA_ARGS__, integer_values, names, result); \
-            return result;                                                              \
-        }();                                                                            \
-                                                                                        \
-        return values;                                                                  \
-    }                                                                                   \
-                                                                                        \
-    constexpr Name##_bits operator~(Name value)                                         \
-    {                                                                                   \
-        return static_cast<Name>(~static_cast<u32>(value));                             \
-    }                                                                                   \
-                                                                                        \
-    constexpr Name##_bits operator|(Name lhs, Name rhs)                                 \
-    {                                                                                   \
-        return static_cast<Name>(static_cast<u32>(lhs) | static_cast<u32>(rhs));        \
-    }                                                                                   \
-                                                                                        \
-    constexpr Name##_bits operator|(Name##_bits lhs, Name rhs)                          \
-    {                                                                                   \
-        return static_cast<Name>(lhs.raw() | static_cast<u32>(rhs));                    \
-    }                                                                                   \
-                                                                                        \
-    constexpr Name##_bits operator|(Name lhs, Name##_bits rhs)                          \
-    {                                                                                   \
-        return static_cast<Name>(static_cast<u32>(lhs) | rhs.raw());                    \
-    }                                                                                   \
-                                                                                        \
-    constexpr Name##_bits operator|(Name##_bits lhs, Name##_bits rhs)                   \
-    {                                                                                   \
-        return static_cast<Name>(lhs.raw() | rhs.raw());                                \
-    }                                                                                   \
-                                                                                        \
-    constexpr Name##_bits operator&(Name lhs, Name rhs)                                 \
-    {                                                                                   \
-        return static_cast<Name>(static_cast<u32>(lhs) & static_cast<u32>(rhs));        \
-    }                                                                                   \
-                                                                                        \
-    constexpr Name##_bits operator&(Name##_bits lhs, Name rhs)                          \
-    {                                                                                   \
-        return static_cast<Name>(lhs.raw() & static_cast<u32>(rhs));                    \
-    }                                                                                   \
-                                                                                        \
-    constexpr Name##_bits operator&(Name lhs, Name##_bits rhs)                          \
-    {                                                                                   \
-        return static_cast<Name>(static_cast<u32>(lhs) & rhs.raw());                    \
-    }                                                                                   \
-                                                                                        \
-    constexpr Name##_bits operator&(Name##_bits lhs, Name##_bits rhs)                   \
-    {                                                                                   \
-        return static_cast<Name>(lhs.raw() & rhs.raw());                                \
+#define REGISTER_FLAGS(Name, ...)                                                                   \
+    enum class Name : u32                                                                           \
+    {                                                                                               \
+        __VA_ARGS__                                                                                 \
+    };                                                                                              \
+                                                                                                    \
+    struct Name##_bits                                                                              \
+    {                                                                                               \
+        using underlying_t = u32;                                                                   \
+        using self_t       = Name##_bits;                                                           \
+                                                                                                    \
+    private:                                                                                        \
+        static constexpr underlying_t cast(Name value) { return static_cast<underlying_t>(value); } \
+                                                                                                    \
+    public:                                                                                         \
+        constexpr Name##_bits() = default;                                                          \
+                                                                                                    \
+        constexpr Name##_bits(Name data)                                                            \
+            : m_data(self_t::cast(data))                                                            \
+        {                                                                                           \
+        }                                                                                           \
+                                                                                                    \
+        [[nodiscard]] constexpr operator bool() const noexcept { return m_data > 0; }               \
+                                                                                                    \
+        [[nodiscard]] constexpr underlying_t raw() const noexcept { return m_data; }                \
+                                                                                                    \
+    private:                                                                                        \
+        u32 m_data = 0;                                                                             \
+    };                                                                                              \
+                                                                                                    \
+    constexpr u64 enum_reflect_count(const Name* /*enum*/)                                          \
+    {                                                                                               \
+        return reflection::enum_values_count(#__VA_ARGS__);                                         \
+    }                                                                                               \
+                                                                                                    \
+    inline const reflection::enum_value* enum_reflect_values(const Name* /* enum */)                \
+    {                                                                                               \
+        static const reflection::enum_value* values = []()                                          \
+        {                                                                                           \
+            constexpr static u64 count = reflection::get_enum_values_count<Name>();                 \
+            static cpp::stack_string names[count];                                                  \
+            static reflection::enum_value result[count];                                            \
+            static reflection::enum_counter<Name> __VA_ARGS__;                                      \
+            static u32 integer_values[] = {__VA_ARGS__};                                            \
+            reflection::parse_enum_values(#__VA_ARGS__, integer_values, names, result);             \
+            return result;                                                                          \
+        }();                                                                                        \
+                                                                                                    \
+        return values;                                                                              \
+    }                                                                                               \
+                                                                                                    \
+    constexpr Name##_bits operator~(Name value)                                                     \
+    {                                                                                               \
+        return static_cast<Name>(~static_cast<u32>(value));                                         \
+    }                                                                                               \
+                                                                                                    \
+    constexpr Name##_bits operator|(Name lhs, Name rhs)                                             \
+    {                                                                                               \
+        return static_cast<Name>(static_cast<u32>(lhs) | static_cast<u32>(rhs));                    \
+    }                                                                                               \
+                                                                                                    \
+    constexpr Name##_bits operator|(Name##_bits lhs, Name rhs)                                      \
+    {                                                                                               \
+        return static_cast<Name>(lhs.raw() | static_cast<u32>(rhs));                                \
+    }                                                                                               \
+                                                                                                    \
+    constexpr Name##_bits operator|(Name lhs, Name##_bits rhs)                                      \
+    {                                                                                               \
+        return static_cast<Name>(static_cast<u32>(lhs) | rhs.raw());                                \
+    }                                                                                               \
+                                                                                                    \
+    constexpr Name##_bits operator|(Name##_bits lhs, Name##_bits rhs)                               \
+    {                                                                                               \
+        return static_cast<Name>(lhs.raw() | rhs.raw());                                            \
+    }                                                                                               \
+                                                                                                    \
+    constexpr Name##_bits operator&(Name lhs, Name rhs)                                             \
+    {                                                                                               \
+        return static_cast<Name>(static_cast<u32>(lhs) & static_cast<u32>(rhs));                    \
+    }                                                                                               \
+                                                                                                    \
+    constexpr Name##_bits operator&(Name##_bits lhs, Name rhs)                                      \
+    {                                                                                               \
+        return static_cast<Name>(lhs.raw() & static_cast<u32>(rhs));                                \
+    }                                                                                               \
+                                                                                                    \
+    constexpr Name##_bits operator&(Name lhs, Name##_bits rhs)                                      \
+    {                                                                                               \
+        return static_cast<Name>(static_cast<u32>(lhs) & rhs.raw());                                \
+    }                                                                                               \
+                                                                                                    \
+    constexpr Name##_bits operator&(Name##_bits lhs, Name##_bits rhs)                               \
+    {                                                                                               \
+        return static_cast<Name>(lhs.raw() & rhs.raw());                                            \
     }
 
 namespace reflection
