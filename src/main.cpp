@@ -14,6 +14,6 @@ int main(const int argc, char* argv[])
     std::this_thread::sleep_for(500ms);
 #endif
 
-    app::instance application;
-    return application.run(argc, argv);
+    app::instance application(argc, argv);
+    return application.run();
 }

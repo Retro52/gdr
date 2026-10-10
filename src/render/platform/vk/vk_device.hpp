@@ -86,6 +86,7 @@ namespace render
     {
         const char* app_name = "";
         u32 app_version      = 0;
+        u32 device_id_hint   = -1;
         rendering_features_table device_features;
     };
 

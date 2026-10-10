@@ -8,6 +8,9 @@ namespace logging
     extern quill::Logger* s_instance;
 }
 
+#undef LOG_TRACE_L1
+#undef LOG_TRACE_L2
+#undef LOG_TRACE_L3
 #undef LOG_DEBUG
 #undef LOG_INFO
 #undef LOG_NOTICE
@@ -16,6 +19,9 @@ namespace logging
 #undef LOG_CRITICAL
 #undef LOG_BACKTRACE
 
+#define LOG_TRACE_L1(fmt, ...)  QUILL_LOG_TRACE_L1(logging::s_instance, fmt, ##__VA_ARGS__);
+#define LOG_TRACE_L2(fmt, ...)  QUILL_LOG_TRACE_L2(logging::s_instance, fmt, ##__VA_ARGS__);
+#define LOG_TRACE_L3(fmt, ...)  QUILL_LOG_TRACE_L3(logging::s_instance, fmt, ##__VA_ARGS__);
 #define LOG_DEBUG(fmt, ...)     QUILL_LOG_DEBUG(logging::s_instance, fmt, ##__VA_ARGS__);
 #define LOG_INFO(fmt, ...)      QUILL_LOG_INFO(logging::s_instance, fmt, ##__VA_ARGS__);
 #define LOG_NOTICE(fmt, ...)    QUILL_LOG_NOTICE(logging::s_instance, fmt, ##__VA_ARGS__);

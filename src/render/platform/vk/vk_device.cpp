@@ -18,20 +18,38 @@ using namespace render;
 
 #define ENABLE_SYNC_VALIDATION 0
 
+static const char* device_type_to_str(VkPhysicalDeviceType type)
+{
+    switch (type)
+    {
+    case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU :
+        return "integrated";
+    case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU :
+        return "discrete";
+    case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU :
+        return "virtual";
+    case VK_PHYSICAL_DEVICE_TYPE_CPU :
+        return "cpu";
+    case VK_PHYSICAL_DEVICE_TYPE_OTHER :
+    default :
+        return "other";
+    }
+}
+
 static cpp::stack_string format_bytes_number(u64 number)
 {
     ZoneScoped;
 
     if (number < 1024)
     {
-        return cpp::stack_string::make_formatted("%d", number);
+        return cpp::stack_string::make_formatted("%d.000 B", number);
     }
 
     const char* magnitudes_per_thousand[] = {"KB", "MB", "GB", "TB"};
 
     auto magnitude     = static_cast<i32>(std::log2(number) / 10);
     const f64 fraction = static_cast<f64>(number) / std::pow(1024, magnitude);
-    return cpp::stack_string::make_formatted("%.3lf%s", fraction, magnitudes_per_thousand[magnitude - 1]);
+    return cpp::stack_string::make_formatted("%.3lf %s", fraction, magnitudes_per_thousand[magnitude - 1]);
 }
 
 static bool inst_ext_available(const char* name)
@@ -482,7 +500,7 @@ static u32 rate_device(VkPhysicalDevice physical_device)
 
 static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
                                              const ext_array& required_extensions,
-                                             rendering_features_table& required_features)
+                                             rendering_features_table& required_features, u32 wanted_index)
 {
     ZoneScoped;
     u32 device_count = 0;
@@ -495,11 +513,36 @@ static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR s
     VkPhysicalDevice current_pick                    = VK_NULL_HANDLE;
     rendering_features_table device_features_support = required_features;
 
-    for (const auto device : devices)
+    for (u32 i = 0; i < device_count; ++i)
     {
+        const auto device = devices[i];
+
+        VkPhysicalDeviceDriverProperties driver_properties {.sType =
+                                                                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+        VkPhysicalDeviceProperties2 properties2 {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+                                                 .pNext = &driver_properties};
+        vkGetPhysicalDeviceProperties2(device, &properties2);
+
+        LOG_DEBUG("Evaluating device: {} ({}). Driver: {} ({})",
+                  properties2.properties.deviceName,
+                  device_type_to_str(properties2.properties.deviceType),
+                  driver_properties.driverName,
+                  driver_properties.driverInfo);
+
+        if (!check_device_basic_features_support(device, surface, required_extensions, required_features))
+        {
+            continue;
+        }
+
+        if (wanted_index > -1 && wanted_index == i)
+        {
+            current_pick            = device;
+            device_features_support = required_features;
+            break;
+        }
+
         const auto rating = rate_device(device);
-        if (rating > best_rating
-            && check_device_basic_features_support(device, surface, required_extensions, required_features))
+        if (rating > best_rating)
         {
             best_rating             = rating;
             current_pick            = device;
@@ -527,7 +570,7 @@ static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR s
                           reflection::get_enum_name_at<render::feature_flag>(i),
                           supported ? "supported" : "unsupported");
             }
-            else if (wanted)
+            else if (wanted && flag != render::feature_flag::eValidation)  // validation is an instance-level flag tbh
             {
                 LOG_WARNING("{}: feature requested but unsupported",
                             reflection::get_enum_name_at<render::feature_flag>(i));
@@ -587,12 +630,13 @@ static VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhy
         {
             auto& gpu_total_taken = *static_cast<u64*>(pUserData);
             gpu_total_taken += size;
-            const auto msg =
-                cpp::stack_string::make_formatted("vkAllocateMemory: %s bytes", format_bytes_number(size).c_str());
+            const auto msg = cpp::stack_string::make_formatted(
+                "VMA alloc: %s (+%s)", format_bytes_number(gpu_total_taken).c_str(), format_bytes_number(size).c_str());
             TracyMessage(msg.c_str(), msg.length());
 
             TracyPlotConfig(kPlotName, tracy::PlotFormatType::Memory, true, true, 0);
             TracyPlot(kPlotName, static_cast<i64>(gpu_total_taken));
+            LOG_DEBUG("{}", msg.c_str());
         }
     };
 
@@ -606,12 +650,13 @@ static VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhy
         {
             auto& gpu_total_taken = *static_cast<u64*>(pUserData);
             gpu_total_taken -= size;
-            const auto msg =
-                cpp::stack_string::make_formatted("vkFreeMemory: %s bytes", format_bytes_number(size).c_str());
+            const auto msg = cpp::stack_string::make_formatted(
+                "VMA alloc: %s (-%s)", format_bytes_number(gpu_total_taken).c_str(), format_bytes_number(size).c_str());
             TracyMessage(msg.c_str(), msg.length());
 
             TracyPlotConfig(kPlotName, tracy::PlotFormatType::Memory, true, true, 0);
             TracyPlot(kPlotName, static_cast<i64>(gpu_total_taken));
+            LOG_DEBUG("{}", msg.c_str());
         }
     };
 
@@ -805,7 +850,8 @@ static result<context> create_vk_context(const window& window, const instance_de
     context.physical_device = pick_physical_device(context.instance,
                                                    context.surface,
                                                    build_extensions_from_feature_table(desc.device_features, true),
-                                                   context.enabled_device_features);
+                                                   context.enabled_device_features,
+                                                   desc.device_id_hint);
 
     // build new extensions table with required + (requested & supported) extensions included
     context.enabled_device_extensions = build_extensions_from_feature_table(context.enabled_device_features);

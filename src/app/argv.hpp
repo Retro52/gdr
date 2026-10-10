@@ -2,6 +2,7 @@
 
 #include <cpp/alg_constexpr.hpp>
 #include <cpp/containers/stack_string.hpp>
+#include <types.hpp>
 
 #include <cstdlib>
 
@@ -19,6 +20,10 @@ namespace app
             , m_argv(argv)
         {
         }
+
+        [[nodiscard]] int argc() const { return m_argc; }
+
+        [[nodiscard]] char** argv() const { return m_argv; }
 
         int get_positional_args_start() const noexcept
         {
