@@ -54,12 +54,12 @@ enum class pso_id : u32
 struct pso_data
 {
 private:
-    std::unordered_map<u32, render::rhi::pipeline> m_pipelines;
+    std::unordered_map<u32, rhi::pipeline> m_pipelines;
 
 public:
-    render::rhi::pipeline& operator[](const pso_id id) { return m_pipelines[static_cast<u32>(id)]; }
+    rhi::pipeline& operator[](const pso_id id) { return m_pipelines[static_cast<u32>(id)]; }
 
-    void load(const render::rhi::rhi& rhi, render::rhi::context context, render::rhi::swapchain swapchain, render::rhi::bindless_set textures_set);
+    void load(const rhi::impl& impl, rhi::context context, rhi::swapchain swapchain, rhi::bindless_set textures_set);
 
-    void shutdown(const render::rhi::rhi& rhi, render::rhi::context context);
+    void shutdown(const rhi::impl& impl, rhi::context context);
 };

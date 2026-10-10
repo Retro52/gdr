@@ -10,8 +10,8 @@ namespace
     constexpr fs::path kShadersBinDir = "../shaders/bin";
 }
 
-void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, render::rhi::swapchain swapchain,
-                    render::rhi::bindless_set textures_set)
+void pso_data::load(const rhi::impl& impl, rhi::context context, rhi::swapchain swapchain,
+                    rhi::bindless_set textures_set)
 {
     ZoneScoped;
     auto data = fs::read_file("../shaders/pipelines.json");
@@ -21,7 +21,7 @@ void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, r
         return;
     }
 
-    const auto sc_format = RHI_SAFE_CALL(rhi.query_swapchain_color_format, swapchain);
+    const auto sc_format = RHI_SAFE_CALL(impl.query_swapchain_color_format, swapchain);
     assert2(sc_format);
 
     if (!sc_format)
@@ -31,8 +31,8 @@ void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, r
 
     nlohmann::json info = nlohmann::json::parse(data->get<char>(), data->get<char>() + data->size());
 
-    std::unordered_map<u32, render::rhi::shader> cache;
-    cpp::heap_array<render::rhi::shader> compiled_shaders;
+    std::unordered_map<u32, rhi::shader> cache;
+    cpp::heap_array<rhi::shader> compiled_shaders;
 
     auto process = [&](const u32 key, const nlohmann::json& pipeline_info)
     {
@@ -64,7 +64,7 @@ void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, r
             const auto it        = cache.find(shader_id);
             if (it == cache.end())
             {
-                const auto compiled_shader = RHI_SAFE_CALL(rhi.create_shader, context, kShadersBinDir / shader);
+                const auto compiled_shader = RHI_SAFE_CALL(impl.create_shader, context, kShadersBinDir / shader);
                 assert2m(compiled_shader, compiled_shader.message);
                 if (compiled_shader)
                 {
@@ -89,13 +89,13 @@ void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, r
         {
             auto pso =
                 (shaders.size() == 1
-                 && (*RHI_SAFE_CALL(rhi.query_shader_stage, compiled_shaders.front()) == render::rhi::shader_stage::compute))
-                    ? RHI_SAFE_CALL(rhi.create_compute_pso, context, compiled_shaders[0], {&textures_set, 1})
-                    : RHI_SAFE_CALL(rhi.create_graphics_pso,
+                 && (*RHI_SAFE_CALL(impl.query_shader_stage, compiled_shaders.front()) == rhi::shader_stage::compute))
+                    ? RHI_SAFE_CALL(impl.create_compute_pso, context, compiled_shaders[0], {&textures_set, 1})
+                    : RHI_SAFE_CALL(impl.create_graphics_pso,
                                     context,
                                     {compiled_shaders.data(), compiled_shaders.size()},
                                     {&textures_set, 1},
-                                    render::rhi::pso_options().add_color_attachment(*sc_format));
+                                    rhi::pso_options().add_color_attachment(*sc_format));
 
             assert2m(pso && key, pso.message);
             if (pso)
@@ -119,15 +119,15 @@ void pso_data::load(const render::rhi::rhi& rhi, render::rhi::context context, r
 
     for (auto& [_, shader] : cache)
     {
-        RHI_SAFE_CALL(rhi.destroy_shader, context, shader);
+        RHI_SAFE_CALL(impl.destroy_shader, context, shader);
     }
 }
 
-void pso_data::shutdown(const render::rhi::rhi& rhi, render::rhi::context context)
+void pso_data::shutdown(const rhi::impl& impl, rhi::context context)
 {
     ZoneScoped;
     for (auto& [_, pso] : m_pipelines)
     {
-        RHI_SAFE_CALL(rhi.destroy_pso, context, pso);
+        RHI_SAFE_CALL(impl.destroy_pso, context, pso);
     }
 }

@@ -54,8 +54,8 @@ namespace platform
 
     struct d3d12_swapchain
     {
-        u32 flags         = 0;
         u32 frame_counter = 0;
+        swapchain_flag_bits flags;
 
         d3d12_fence sc_sync_fence;
         com_ptr<IDXGISwapChain4> swapchain = nullptr;

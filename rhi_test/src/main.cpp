@@ -10,26 +10,26 @@
 
 #include <chrono>
 
-static render::rhi::instance_desc get_instance_desc()
+static rhi::instance_desc get_instance_desc()
 {
-    constexpr auto features_table = render::rhi::rendering_features_table()
+    constexpr auto features_table = rhi::rendering_features_table()
 #if !defined(NDEBUG)
-                                        .request(render::rhi::feature_flag::validation)
+                                        .request(rhi::feature_flag::validation)
 #endif
 #if !NO_PERF_QUERY
-                                        .request(render::rhi::feature_flag::pipeline_stats)
+                                        .request(rhi::feature_flag::pipeline_stats)
 #endif
 #if !defined(__APPLE__)
-                                        .require(render::rhi::feature_flag::sampler_min_max)
+                                        .require(rhi::feature_flag::sampler_min_max)
 #endif
-                                        .request(render::rhi::feature_flag::mesh_shading)
-                                        .require(render::rhi::feature_flag::types_16bit)
-                                        .require(render::rhi::feature_flag::draw_indirect)
-                                        .require(render::rhi::feature_flag::dynamic_render)
-                                        .require(render::rhi::feature_flag::bindless_textures)
-                                        .require(render::rhi::feature_flag::scalar_block_layout)
-                                        .require(render::rhi::feature_flag::synchronization2);
-    return render::rhi::instance_desc {
+                                        .request(rhi::feature_flag::mesh_shading)
+                                        .require(rhi::feature_flag::types_16bit)
+                                        .require(rhi::feature_flag::draw_indirect)
+                                        .require(rhi::feature_flag::dynamic_render)
+                                        .require(rhi::feature_flag::bindless_textures)
+                                        .require(rhi::feature_flag::scalar_block_layout)
+                                        .require(rhi::feature_flag::synchronization2);
+    return rhi::instance_desc {
         .app_name        = "GDR rhi demo",
         .app_version     = 1,
         .device_features = features_table,
@@ -80,13 +80,13 @@ int main(const int argc, char* argv[])
 #endif
 
 #if GDR_ENABLE_DX12_BACKEND
-    use_dx12 = use_dx12 || (argc == 2 && (strcmp(argv[1], "--d3d12") == 0));
-    auto rhi = use_dx12 ? render::rhi::create_for_d3d12() : render::rhi::create_for_vk();
+    use_dx12  = use_dx12 || (argc == 2 && (strcmp(argv[1], "--d3d12") == 0));
+    auto impl = use_dx12 ? rhi::create_for_d3d12() : rhi::create_for_vk();
 #else
-    auto rhi = render::rhi::create_for_vk();
+    auto impl = rhi::create_for_vk();
 #endif
 
-    auto context = rhi.create_context(window, get_instance_desc());
+    auto context = impl.create_context(window, get_instance_desc());
     if (!context)
     {
         LOG_ERROR("failed to create instance. reason: {}", context.message);
@@ -95,15 +95,15 @@ int main(const int argc, char* argv[])
 
     constexpr auto kFramesInFlight  = 2;
     constexpr auto kSwapchainVsync  = false;
-    constexpr auto kSwapchainFormat = render::rhi::image_format::r8g8b8a8un;
-    render::rhi::create_swapchain_info create_swapchain_info {
+    constexpr auto kSwapchainFormat = rhi::image_format::r8g8b8a8un;
+    rhi::create_swapchain_info create_swapchain_info {
         .size             = window.get_size_in_px(),
         .frames_in_flight = kFramesInFlight,
         .format           = kSwapchainFormat,
         .vsync            = kSwapchainVsync,
     };
 
-    auto swapchain = rhi.create_swapchain(*context, create_swapchain_info);
+    auto swapchain = impl.create_swapchain(*context, create_swapchain_info);
     if (!swapchain)
     {
         LOG_ERROR("failed to create swapchain. reason: {}", swapchain.message);
@@ -112,10 +112,10 @@ int main(const int argc, char* argv[])
 
     struct resize_context
     {
-        render::rhi::rhi& rhi;
-        render::rhi::swapchain& sc;
-        render::rhi::context& context;
-    } resize_ctx(rhi, *swapchain, *context);
+        rhi::impl& impl;
+        rhi::swapchain& sc;
+        rhi::context& context;
+    } resize_ctx(impl, *swapchain, *context);
 
     events.add_watcher(
         event_type::window_size_changed,
@@ -127,15 +127,15 @@ int main(const int argc, char* argv[])
             }
 
             auto& ctx = *static_cast<resize_context*>(user_data);
-            const render::rhi::create_swapchain_info update_swapchain_info {
+            const rhi::create_swapchain_info update_swapchain_info {
                 .size             = payload.window.size_px,
                 .frames_in_flight = kFramesInFlight,
                 .format           = kSwapchainFormat,
                 .vsync            = kSwapchainVsync,
             };
 
-            ctx.rhi.device_wait_idle(ctx.context);
-            if (const auto resized_sc = ctx.rhi.resize_swapchain(ctx.context, ctx.sc, update_swapchain_info))
+            ctx.impl.device_wait_idle(ctx.context);
+            if (const auto resized_sc = ctx.impl.resize_swapchain(ctx.context, ctx.sc, update_swapchain_info))
             {
                 ctx.sc = *resized_sc;
             }
@@ -146,12 +146,12 @@ int main(const int argc, char* argv[])
         },
         &resize_ctx);
 
-    const u32 cmd_count = *rhi.query_swapchain_images_count(*swapchain);
-    cpp::heap_array<render::rhi::command_buffer> command_buffers(cmd_count);
+    const u32 cmd_count = *impl.query_swapchain_images_count(*swapchain);
+    cpp::heap_array<rhi::command_buffer> command_buffers(cmd_count);
 
     for (auto& slot : command_buffers)
     {
-        const auto command_buffer = rhi.create_command_buffer(*context, render::rhi::queue_kind::gfx);
+        const auto command_buffer = impl.create_command_buffer(*context, rhi::queue_kind::gfx);
         if (!command_buffer)
         {
             LOG_ERROR("failed to create graphics command_buffer");
@@ -161,9 +161,9 @@ int main(const int argc, char* argv[])
         slot = *command_buffer;
     }
 
-    auto gfx_queue     = rhi.query_queue(*context, render::rhi::queue_kind::gfx);
-    auto copy_queue    = rhi.query_queue(*context, render::rhi::queue_kind::transfer);
-    auto present_queue = rhi.query_queue(*context, render::rhi::queue_kind::present);
+    auto gfx_queue     = impl.query_queue(*context, rhi::queue_kind::gfx);
+    auto copy_queue    = impl.query_queue(*context, rhi::queue_kind::transfer);
+    auto present_queue = impl.query_queue(*context, rhi::queue_kind::present);
 
     if (!gfx_queue || !present_queue || !copy_queue)
     {
@@ -171,7 +171,7 @@ int main(const int argc, char* argv[])
         return 1;
     }
 
-    auto textures_set = rhi.create_bindless_set(*context, 65536);
+    auto textures_set = impl.create_bindless_set(*context, 65536);
     if (!textures_set)
     {
         LOG_ERROR("failed to create bindless textures set");
@@ -179,7 +179,7 @@ int main(const int argc, char* argv[])
     }
 
     pso_data pipelines;
-    pipelines.load(rhi, *context, *swapchain, *textures_set);
+    pipelines.load(impl, *context, *swapchain, *textures_set);
 
     auto get_time = []<typename T = f64>()
     {
@@ -194,81 +194,72 @@ int main(const int argc, char* argv[])
 
         last_frame_time = current_time;
 
-        auto frame_image = rhi.acquire_next_swapchain_image(*context, *swapchain);
+        auto frame_image = impl.acquire_next_swapchain_image(*context, *swapchain);
         if (!frame_image || window.get_size_in_px().x < 1 || window.get_size_in_px().y < 1)
         {
             return;
         }
 
-        const u32 frame_index                  = *rhi.query_current_frame_index(*swapchain);
-        const render::rhi::command_buffer& cmd = command_buffers[frame_index];
+        const u32 frame_index          = *impl.query_current_frame_index(*swapchain);
+        const rhi::command_buffer& cmd = command_buffers[frame_index];
 
-        rhi.cmd_begin_recording(cmd);
+        impl.cmd_begin_recording(cmd);
 
         {
-            const render::rhi::image_barrier image_barrier[] = {
+            const rhi::image_barrier image_barrier[] = {
                 {
                  .image = *frame_image,
 
-                 .before =
-                        render::rhi::barrier_scope {
-                            .stages = static_cast<u32>(render::rhi::barrier_stage::color_attachment),
-                            .access = static_cast<u32>(render::rhi::barrier_access::color_attachment_write)},
-                 .after = render::rhi::barrier_scope {.stages = static_cast<u32>(
-                                                             render::rhi::barrier_stage::color_attachment),
-                                                         .access = render::rhi::barrier_access::color_attachment_read
-                                                                 | render::rhi::barrier_access::color_attachment_write},
+                 .before = rhi::barrier_scope {.stages = rhi::barrier_stage::color_attachment,
+                                                  .access = rhi::barrier_access::color_attachment_write},
+                 .after  = rhi::barrier_scope {.stages = rhi::barrier_stage::color_attachment,
+                                                  .access = rhi::barrier_access::color_attachment_read
+                                                         | rhi::barrier_access::color_attachment_write},
 
-                 .layout_after = render::rhi::image_layout::render_target_color,
-                 .range        = render::rhi::image_subresource_range {.aspects = static_cast<u32>(
-                                                                       render::rhi::image_aspect::color)},
+                 .layout_after = rhi::image_layout::render_target_color,
+                 .range        = rhi::image_subresource_range {.aspects = rhi::image_aspect::color},
                  }
             };
 
-            rhi.cmd_barriers(cmd, {.images = image_barrier});
+            impl.cmd_barriers(cmd, {.images = image_barrier});
         }
 
-        render::rhi::attachment_state_info color_attachment {
+        rhi::attachment_state_info color_attachment {
             .attachment  = *frame_image,
-            .load_op     = render::rhi::resource_load_op::clear,
-            .store_op    = render::rhi::resource_store_op::store,
+            .load_op     = rhi::resource_load_op::clear,
+            .store_op    = rhi::resource_store_op::store,
             .clear_value = {.color = {.f4 = vec4(0.4F, 0.6F, 0.9F, 1.0F)}},
         };
 
-        RHI_SAFE_CALL(rhi.cmd_set_draw_state,
+        RHI_SAFE_CALL(impl.cmd_set_draw_state,
                       cmd,
                       {&color_attachment, 1},
-                      render::rhi::null_attachment_state_info,
+                      rhi::null_attachment_state_info,
                       {0, 0, window.get_size_in_px().x, window.get_size_in_px().y});
-        rhi.cmd_bind_pso(cmd, pipelines[pso_id::triangle]);
-        rhi.cmd_draw(cmd, 3, 1, 0, 0);
-        rhi.cmd_clear_draw_state(cmd);
+        impl.cmd_bind_pso(cmd, pipelines[pso_id::triangle]);
+        impl.cmd_draw(cmd, 3, 1, 0, 0);
+        impl.cmd_clear_draw_state(cmd);
 
         {
-            const render::rhi::image_barrier image_barrier[] = {
+            const rhi::image_barrier image_barrier[] = {
                 {
                  .image = *frame_image,
 
-                 .before =
-                        render::rhi::barrier_scope {
-                            .stages = static_cast<u32>(render::rhi::barrier_stage::color_attachment),
-                            .access = static_cast<u32>(render::rhi::barrier_access::color_attachment_write)},
-                 .after =
-                        render::rhi::barrier_scope {
-                            .stages = static_cast<u32>(render::rhi::barrier_stage::color_attachment),
-                            .access = static_cast<u32>(render::rhi::barrier_access::color_attachment_read)},
+                 .before = rhi::barrier_scope {.stages = rhi::barrier_stage::color_attachment,
+                                                  .access = rhi::barrier_access::color_attachment_write},
+                 .after  = rhi::barrier_scope {.stages = rhi::barrier_stage::color_attachment,
+                                                  .access = rhi::barrier_access::color_attachment_read},
 
-                 .layout_after = render::rhi::image_layout::present,
-                 .range        = render::rhi::image_subresource_range {.aspects = static_cast<u32>(
-                                                                       render::rhi::image_aspect::color)},
+                 .layout_after = rhi::image_layout::present,
+                 .range        = rhi::image_subresource_range {.aspects = rhi::image_aspect::color},
                  }
             };
 
-            rhi.cmd_barriers(cmd, {.images = image_barrier});
+            impl.cmd_barriers(cmd, {.images = image_barrier});
         }
 
-        rhi.cmd_end_recording(cmd);
-        rhi.present(cmd, *swapchain, *gfx_queue, *present_queue);
+        impl.cmd_end_recording(cmd);
+        impl.present(cmd, *swapchain, *gfx_queue, *present_queue);
         SDL_SetWindowTitle(
             window.get_native_handle().window,
             cpp::stack_string::make_formatted("CPU time: %lfms; FPS: %lf", dt * 1000.0F, 1.0F / dt).c_str());
@@ -296,15 +287,15 @@ int main(const int argc, char* argv[])
         events.poll();
     }
 
-    rhi.device_wait_idle(*context);
-    pipelines.shutdown(rhi, *context);
+    impl.device_wait_idle(*context);
+    pipelines.shutdown(impl, *context);
 
-    rhi.destroy_bindless_set(*context, *textures_set);
+    impl.destroy_bindless_set(*context, *textures_set);
     for (auto& cmd : command_buffers)
     {
-        rhi.destroy_command_buffer(*context, cmd);
+        impl.destroy_command_buffer(*context, cmd);
     }
-    rhi.destroy_swapchain(*context, *swapchain);
-    rhi.destroy_context(*context);
+    impl.destroy_swapchain(*context, *swapchain);
+    impl.destroy_context(*context);
     return 0;
 }
