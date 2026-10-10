@@ -585,10 +585,17 @@ int app::instance::run()
         &resize_ctx);
 
     auto bindless_textures_desc_set = m_rhi.create_bindless_set(*context, 65536);
-    auto bindless_textures_sampler = m_rhi.create_sampler(*context, rhi::create_sampler_info {.anisotropy_factor = 16});
+    auto bindless_textures_sampler  = m_rhi.create_sampler(*context,
+                                                          rhi::create_sampler_info {
+                                                               .anisotropy_factor = 16,
+                                                               .dbg_name          = "bindless_textures_sampler",
+                                                          });
 
-    auto shadow_alpha_sampler =
-        m_rhi.create_sampler(*context, rhi::create_sampler_info {.mipmap_mode = rhi::sampler_mipmap_mode::nearest});
+    auto shadow_alpha_sampler = m_rhi.create_sampler(*context,
+                                                     rhi::create_sampler_info {
+                                                         .mipmap_mode = rhi::sampler_mipmap_mode::nearest,
+                                                         .dbg_name    = "shadow_alpha_sampler",
+                                                     });
 
     auto color_sampler = m_rhi.create_sampler(*context, {.mipmap_mode = rhi::sampler_mipmap_mode::nearest});
 
@@ -597,6 +604,7 @@ int app::instance::run()
                                                           .filter       = rhi::sampler_filter::nearest,
                                                           .mipmap_mode  = rhi::sampler_mipmap_mode::nearest,
                                                           .address_mode = rhi::sampler_address_mode::clamp_to_border,
+                                                          .dbg_name     = "depth_texture_sampler",
                                                       });
 
     pso_data pipelines;
@@ -609,12 +617,12 @@ int app::instance::run()
 
     gpu_upload_mgr upload_mgr(m_rhi, *context, 128_MB);
     world_geometry geometry_pool {
-        .vertex           = *m_rhi.create_buffer(*context, {.size = 128_MB}),
-        .meshlets         = *m_rhi.create_buffer(*context, {.size = 16_MB}),
-        .primitives       = *m_rhi.create_buffer(*context, {.size = 1_MB}),
-        .instances        = *m_rhi.create_buffer(*context, {.size = 48_MB}),
-        .materials        = *m_rhi.create_buffer(*context, {.size = 48_MB}),
-        .meshlets_payload = *m_rhi.create_buffer(*context, {.size = 128_MB}),
+        .vertex           = *m_rhi.create_buffer(*context, {.size = 128_MB, .dbg_name = "vertex"}),
+        .meshlets         = *m_rhi.create_buffer(*context, {.size = 16_MB, .dbg_name = "meshlets"}),
+        .primitives       = *m_rhi.create_buffer(*context, {.size = 1_MB, .dbg_name = "primitives"}),
+        .instances        = *m_rhi.create_buffer(*context, {.size = 48_MB, .dbg_name = "instances"}),
+        .materials        = *m_rhi.create_buffer(*context, {.size = 48_MB, .dbg_name = "materials"}),
+        .meshlets_payload = *m_rhi.create_buffer(*context, {.size = 128_MB, .dbg_name = "meshlets_payload"}),
     };
 
     loader::scene_counters scene_counters;

@@ -111,6 +111,7 @@ rhi::image app::create_color_image(const rhi::impl& rhi, const ivec2& size, cons
         .format      = format,
         .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
         .usage_flags = rhi::image_usage::sampled | rhi::image_usage::storage,
+        .dbg_name    = "color_image",
     };
 
     return *rhi.create_image(ctx, info);
@@ -125,6 +126,7 @@ rhi::image app::create_depth_image(const rhi::impl& rhi, const ivec2& size, cons
         .format      = format,
         .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
         .usage_flags = rhi::image_usage::sampled | rhi::image_usage::transfer_dst | rhi::image_usage::attachment_ds,
+        .dbg_name    = "depth_image",
     };
 
     return *rhi.create_image(ctx, info);
@@ -151,6 +153,7 @@ rhi::image app::create_vis_buffer_image(const rhi::impl& rhi, const ivec2& size,
         .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
         .usage_flags = rhi::image_usage::sampled | rhi::image_usage::transfer_src | rhi::image_usage::transfer_dst
                      | rhi::image_usage::attachment_color | rhi::image_usage::storage,
+        .dbg_name = "vis_buffer_image",
     };
 
     return *rhi.create_image(ctx, info);
@@ -180,6 +183,7 @@ app::depth_pyramid_data app::create_depth_pyramid(const rhi::impl& rhi, const iv
         .mips_count  = depth_pyramid.pyramid_count,
         .dimensions  = {depth_pyramid.base_size.x, depth_pyramid.base_size.y, 1},
         .usage_flags = rhi::image_usage::sampled | rhi::image_usage::transfer_src | rhi::image_usage::storage,
+        .dbg_name    = "HiZB",
     };
 
     constexpr rhi::create_sampler_info sampler_info {
@@ -188,6 +192,7 @@ app::depth_pyramid_data app::create_depth_pyramid(const rhi::impl& rhi, const iv
 #endif
         .mipmap_mode  = rhi::sampler_mipmap_mode::nearest,
         .address_mode = rhi::sampler_address_mode::clamp_to_edge,
+        .dbg_name     = "HiZB sampler",
     };
 
     depth_pyramid.image   = *rhi.create_image(ctx, img_info);
@@ -195,9 +200,11 @@ app::depth_pyramid_data app::create_depth_pyramid(const rhi::impl& rhi, const iv
 
     for (u32 i = 0; i < depth_pyramid.pyramid_count; ++i)
     {
+        auto name = cpp::stack_string::make_formatted("depth_pyramid_mip_view #%d", i);
         const rhi::create_image_view_info view_info {
-            .range  = {.mips_range = {i, 1}},
-            .format = format,
+            .range    = {.mips_range = {i, 1}},
+            .format   = format,
+            .dbg_name = name.c_str(),
         };
 
         depth_pyramid.views[i] = *rhi.create_image_view(ctx, depth_pyramid.image, view_info);
@@ -228,8 +235,10 @@ rhi::image_barrier app::make_image_barrier(const rhi::image image, const rhi::im
 
 rhi::image_barrier app::make_image_barrier(const rhi::image image, const rhi::image_layout old_layout,
                                            const rhi::image_layout new_layout, const rhi::barrier_stage_bits src_stages,
-                                           const rhi::barrier_stage_bits dst_stages, const rhi::barrier_access_bits src_access,
-                                           const rhi::barrier_access_bits dst_access, const rhi::image_aspect_bits aspect)
+                                           const rhi::barrier_stage_bits dst_stages,
+                                           const rhi::barrier_access_bits src_access,
+                                           const rhi::barrier_access_bits dst_access,
+                                           const rhi::image_aspect_bits aspect)
 {
     ZoneScoped;
     return rhi::image_barrier {
