@@ -498,6 +498,29 @@ static u32 rate_device(VkPhysicalDevice physical_device)
     return score;
 }
 
+static void log_device_features_table(const char* name, const rendering_features_table& feat_table)
+{
+    LOG_DEBUG("{} features report:", name);
+    for (u32 i = 0; i < reflection::get_enum_values_count<render::feature_flag>() - 1; ++i)
+    {
+        const auto flag = reflection::get_enum_value_at<render::feature_flag>(i);
+
+        const bool supported = feat_table.supported(flag);
+        const bool wanted    = feat_table.requested(flag) || feat_table.required(flag);
+
+        if (supported || !wanted)
+        {
+            LOG_DEBUG("{}: {}",
+                      reflection::get_enum_name_at<render::feature_flag>(i),
+                      supported ? "supported" : "unsupported");
+        }
+        else if (wanted && flag != render::feature_flag::eValidation)  // validation is an instance-level flag tbh
+        {
+            LOG_WARNING("{}: feature requested but unsupported", reflection::get_enum_name_at<render::feature_flag>(i));
+        }
+    }
+}
+
 static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
                                              const ext_array& required_extensions,
                                              rendering_features_table& required_features, u32 wanted_index)
@@ -523,7 +546,8 @@ static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR s
                                                  .pNext = &driver_properties};
         vkGetPhysicalDeviceProperties2(device, &properties2);
 
-        LOG_DEBUG("Evaluating device: {} ({}). Driver: {} ({})",
+        LOG_DEBUG("Evaluating device #{}: {} ({}). Driver: {} ({})",
+                  i,
                   properties2.properties.deviceName,
                   device_type_to_str(properties2.properties.deviceType),
                   driver_properties.driverName,
@@ -531,19 +555,24 @@ static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR s
 
         if (!check_device_basic_features_support(device, surface, required_extensions, required_features))
         {
+            LOG_DEBUG("Device #{} does not support all required features", i);
+            log_device_features_table(properties2.properties.deviceName, required_features);
             continue;
         }
 
-        if (wanted_index > -1 && wanted_index == i)
+        if (wanted_index == i)
         {
             current_pick            = device;
             device_features_support = required_features;
+            LOG_DEBUG("Device #{} selected according to device id hint", i);
             break;
         }
 
         const auto rating = rate_device(device);
         if (rating > best_rating)
         {
+            LOG_DEBUG("Device #{} has the best rating ({} > {}) and is the best so far", i, rating, best_rating);
+
             best_rating             = rating;
             current_pick            = device;
             device_features_support = required_features;
@@ -556,26 +585,7 @@ static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR s
         vkGetPhysicalDeviceProperties(current_pick, &properties);
 
         LOG_INFO("selected physical device: {}", properties.deviceName);
-        LOG_DEBUG("device features report:");
-        for (u32 i = 0; i < reflection::get_enum_values_count<render::feature_flag>() - 1; ++i)
-        {
-            const auto flag = reflection::get_enum_value_at<render::feature_flag>(i);
-
-            const bool supported = device_features_support.supported(flag);
-            const bool wanted    = device_features_support.requested(flag) || device_features_support.required(flag);
-
-            if (supported || !wanted)
-            {
-                LOG_DEBUG("{}: {}",
-                          reflection::get_enum_name_at<render::feature_flag>(i),
-                          supported ? "supported" : "unsupported");
-            }
-            else if (wanted && flag != render::feature_flag::eValidation)  // validation is an instance-level flag tbh
-            {
-                LOG_WARNING("{}: feature requested but unsupported",
-                            reflection::get_enum_name_at<render::feature_flag>(i));
-            }
-        }
+        log_device_features_table(properties.deviceName, device_features_support);
     }
 
     assert2m(current_pick != VK_NULL_HANDLE, "No suitable physical device found");
