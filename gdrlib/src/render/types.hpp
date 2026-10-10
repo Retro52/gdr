@@ -453,6 +453,8 @@ namespace rhi
         vec2 lod_range                    = vec2(0.0F, 16.0F);
         compare_op compare_op             = compare_op::none;
         sampler_border_color border_color = sampler_border_color::black_transparent;
+
+        const char* dbg_name = nullptr;
     };
 
     struct create_image_info
@@ -463,6 +465,8 @@ namespace rhi
         u32 layer_count              = 1;
         uvec3 dimensions             = uvec3(1, 1, 1);
         image_usage_bits usage_flags = image_usage::sampled;
+
+        const char* dbg_name = nullptr;
     };
 
     struct create_image_view_info
@@ -471,6 +475,8 @@ namespace rhi
 
         image_format format  = image_format::none;
         image_view_kind kind = image_view_kind::flat_2d;
+
+        const char* dbg_name = nullptr;
     };
 
     struct create_buffer_info
@@ -479,6 +485,8 @@ namespace rhi
         u64 size      = 0;
 
         buffer_usage_bits usage_flags = buffer_usage::shader_rw | buffer_usage::copy_dst;
+
+        const char* dbg_name = nullptr;
     };
 
     struct blit_image_info

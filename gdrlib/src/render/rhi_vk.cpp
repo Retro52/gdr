@@ -41,6 +41,50 @@ struct vk_rhi_attachment_objects
     VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 };
 
+template<typename T>
+static void vk_rhi_set_object_name_if_needed(VkDevice device, T object, const char* name)
+{
+    if (!name || object == VK_NULL_HANDLE || !vkSetDebugUtilsObjectNameEXT)
+    {
+        return;
+    }
+
+    VkObjectType type = VK_OBJECT_TYPE_UNKNOWN;
+    if constexpr (std::is_same_v<T, VkImage>)
+    {
+        type = VK_OBJECT_TYPE_IMAGE;
+    }
+    else if constexpr (std::is_same_v<T, VkBuffer>)
+    {
+        type = VK_OBJECT_TYPE_BUFFER;
+    }
+    else if constexpr (std::is_same_v<T, VkPipeline>)
+    {
+        type = VK_OBJECT_TYPE_PIPELINE;
+    }
+    else if constexpr (std::is_same_v<T, VkSampler>)
+    {
+        type = VK_OBJECT_TYPE_SAMPLER;
+    }
+    else if constexpr (std::is_same_v<T, VkImageView>)
+    {
+        type = VK_OBJECT_TYPE_IMAGE_VIEW;
+    }
+    else
+    {
+        static_assert(sizeof(T) == 0, "unsupported object type");
+    }
+
+    const VkDebugUtilsObjectNameInfoEXT info {
+        .sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType   = type,
+        .objectHandle = reinterpret_cast<u64>(object),
+        .pObjectName  = name,
+    };
+
+    vkSetDebugUtilsObjectNameEXT(device, &info);
+}
+
 template<typename T, typename H>
 static T vk_rhi_vkobj_from_handle(H&& handle)
 {
@@ -487,6 +531,7 @@ auto rhi::vk_create_buffer(context context, const create_buffer_info& buffer_inf
         *buffer_info.mapped = vk_buffer->mapped;
     }
 
+    vk_rhi_set_object_name_if_needed(vk_ctx->device, vk_buffer->buffer, buffer_info.dbg_name);
     return create_handle<buffer>(*vk_buffer);
 }
 
@@ -541,6 +586,8 @@ auto rhi::vk_create_image(context context, const create_image_info& image_info) 
                                   vk_ctx->allocator);
     RESULT_FORWARD_IF_FAILED(vk_image);
 
+    vk_rhi_set_object_name_if_needed(vk_ctx->device, vk_image->image, image_info.dbg_name);
+    vk_rhi_set_object_name_if_needed(vk_ctx->device, vk_image->view, image_info.dbg_name);
     return create_handle<image>(*vk_image);
 }
 
@@ -588,6 +635,7 @@ auto rhi::vk_create_image_view(context context, image source, const create_image
     VkImageView vk_view;
     VK_RETURN_ON_FAIL(vkCreateImageView(vk_ctx->device, &image_view_create_info, nullptr, &vk_view));
 
+    vk_rhi_set_object_name_if_needed(vk_ctx->device, vk_image->image, view_info.dbg_name);
     return create_handle<image_view>(vk_rhi_image_view {.source = *vk_image, .view = vk_view});
 }
 
@@ -620,6 +668,8 @@ auto rhi::vk_create_sampler(context context, const create_sampler_info& sampler_
                                     platform::vk_rhi_parse_compare_op(sampler_info.compare_op),
                                     platform::vk_rhi_parse_sampler_border_color(sampler_info.border_color));
     RESULT_FORWARD_IF_FAILED(vk_sampler);
+
+    vk_rhi_set_object_name_if_needed(vk_ctx->device, *vk_sampler, sampler_info.dbg_name);
     return sampler {.id = reinterpret_cast<u64>(*vk_sampler)};
 }
 
