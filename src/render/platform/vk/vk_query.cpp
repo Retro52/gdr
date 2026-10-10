@@ -2,6 +2,11 @@
 #include <render/platform/vk/vk_query.hpp>
 #include <tracy/Tracy.hpp>
 
+void render::vk_query::end_and_advance(VkCommandBuffer cmd)
+{
+    end(cmd, ++index);
+}
+
 void render::vk_query::end(VkCommandBuffer cmd, u32 query) const
 {
     ZoneScoped;
@@ -11,11 +16,12 @@ void render::vk_query::end(VkCommandBuffer cmd, u32 query) const
     }
 }
 
-void render::vk_query::reset(VkCommandBuffer cmd, const u32 first, const u32 count) const
+void render::vk_query::reset(VkCommandBuffer cmd, const u32 first, const u32 count)
 {
     ZoneScoped;
     if (handle)
     {
+        index = 0;
         vkCmdResetQueryPool(cmd, handle, first, count);
     }
 }
@@ -27,6 +33,11 @@ void render::vk_query::begin(VkCommandBuffer cmd, const u32 query, const u32 fla
     {
         vkCmdBeginQuery(cmd, handle, query, flags);
     }
+}
+
+void render::vk_query::begin_next(VkCommandBuffer cmd, const u32 flags) const
+{
+    begin(cmd, index + 1, flags);
 }
 
 result<render::vk_query> render::create_query_pool(VkDevice device, u32 queries, VkQueryType type)
