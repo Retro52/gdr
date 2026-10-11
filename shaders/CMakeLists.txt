@@ -1,7 +1,15 @@
 project(shaders)
 
 function(parse_shader_profile SHADER_FILE)
-    get_filename_component(SHADER_EXTENSION "${SHADER_FILE}" LAST_EXT)
+    get_filename_component(SHADER_NAME "${SHADER_FILE}" NAME)
+    get_filename_component(SHADER_EXTENSION "${SHADER_NAME}" LAST_EXT)
+
+    set(IS_HLSL_LOCAL FALSE)
+    if (SHADER_EXTENSION STREQUAL ".hlsl")
+        set(IS_HLSL_LOCAL TRUE)
+        get_filename_component(SHADER_NAME "${SHADER_NAME}" NAME_WLE)
+        get_filename_component(SHADER_EXTENSION "${SHADER_NAME}" LAST_EXT)
+    endif ()
 
     if (SHADER_EXTENSION STREQUAL ".vert")
         set(SHADER_STAGE_LOCAL "vs")
@@ -18,6 +26,7 @@ function(parse_shader_profile SHADER_FILE)
     endif ()
 
     set(SHADER_PROFILE "${SHADER_STAGE_LOCAL}_6_8" PARENT_SCOPE)
+    set(SHADER_IS_HLSL ${IS_HLSL_LOCAL} PARENT_SCOPE)
 endfunction()
 
 function(collect_shader_deps_recursive FILE_PATH)
@@ -65,7 +74,7 @@ function(parse_shader_config SHADER_CONFIG)
     string(REGEX MATCH "-o +([^ ]+)" _MATCH "${SHADER_CONFIG}")
     set(SHADER_BIN_LOCAL "${CMAKE_MATCH_1}")
     if (NOT SHADER_BIN_LOCAL)
-        set(SHADER_BIN_LOCAL "${SHADER_LOCAL}")
+        string(REGEX REPLACE "\\.hlsl$" "" SHADER_BIN_LOCAL "${SHADER_LOCAL}")
     endif ()
 
     string(REGEX MATCH "-d +([^-|^\n]+)" _MATCH "${SHADER_CONFIG}")
@@ -81,19 +90,10 @@ endfunction()
 
 find_package(Vulkan REQUIRED COMPONENTS glslc glslangValidator)
 
-if (WIN32)
-    find_program(SPIRV_CROSS_EXECUTABLE
-            NAMES spirv-cross
-            HINTS "$ENV{VULKAN_SDK}/bin"
-            REQUIRED
-    )
-
-    find_program(DXC_EXECUTABLE
-            NAMES dxc
-            HINTS "$ENV{VULKAN_SDK}/bin"
-            REQUIRED
-    )
-endif ()
+find_program(DXC_EXECUTABLE
+        NAMES dxc
+        HINTS "$ENV{VULKAN_SDK}/bin"
+)
 
 file(READ "${PROJECT_SOURCE_DIR}/shaders.cfg" SHADERS_CONFIG)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/shaders.cfg")
@@ -105,11 +105,8 @@ string(REPLACE "\n" ";" SHADERS_CONFIG "${SHADERS_CONFIG}")
 set(SHADERS_BIN_FOLDER "${PROJECT_SOURCE_DIR}/bin")
 set(SHADERS_BIN_FOLDER "${SHADERS_BIN_FOLDER}" PARENT_SCOPE)
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(SHADER_OPT_FLAGS -g)
-else ()
-    set(SHADER_OPT_FLAGS -Os)
-endif ()
+set(DXC_SPIRV_CONFIG_FLAGS "$<IF:$<CONFIG:Debug>,-Zi,-O3>")
+set(DXC_DXIL_CONFIG_FLAGS "$<IF:$<CONFIG:Debug>,-Zi$<SEMICOLON>-Qembed_debug,-O3>")
 
 foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
     if (NOT SHADER_CONFIG)
@@ -127,35 +124,50 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
 
     set(SHADER_INPUT_PATH "${PROJECT_SOURCE_DIR}/${SHADER}")
     set(SHADER_BIN_OUTPUT "${SHADERS_BIN_FOLDER}/${SHADER_BIN}")
-    set(SHADER_HLSL_OUTPUT "${SHADERS_BIN_FOLDER}/__tmp_${SHADER_BIN}.hlsl")
 
     if (APPLE)
         list(APPEND SHADER_DEF "-DPLATFORM_MVK")
     endif ()
 
-    add_custom_command(
-            OUTPUT "${SHADER_BIN_OUTPUT}.spv"
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
-            COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER_INPUT_PATH}" -o "${SHADER_BIN_OUTPUT}.spv" --target-env vulkan1.3 --target-env spirv1.5 "$<IF:$<CONFIG:Debug>,-g,-Os>" ${SHADER_DEF}
-            DEPENDS ${SHADER_DEPENDENCIES}
-            COMMENT "Compiling shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.spv'"
-    )
-    list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.spv")
-
-    if (WIN32 AND GDR_ENABLE_DX12_BACKEND)
-        if (NOT DEFINED SPIRV_CROSS_EXECUTABLE OR NOT DEFINED DXC_EXECUTABLE)
-            message(FATAL_ERROR "windows compiles dx12 backend which requires spirv-cross and dxc executables")
+    if (SHADER_IS_HLSL)
+        if (NOT DXC_EXECUTABLE)
+            message(FATAL_ERROR "HLSL shader '${SHADER}' requires dxc, which was not found")
         endif ()
-        add_custom_command(
-                OUTPUT "${SHADER_BIN_OUTPUT}.dxl"
-                COMMAND ${SPIRV_CROSS_EXECUTABLE} "${SHADER_BIN_OUTPUT}.spv" --hlsl --shader-model 68 --hlsl-enable-16bit-types --output "${SHADER_HLSL_OUTPUT}"
-                COMMAND ${DXC_EXECUTABLE} -T ${SHADER_PROFILE} -E main -WX -Fo "${SHADER_BIN_OUTPUT}.dxl" "$<$<CONFIG:Debug>:-Zi>" "$<$<CONFIG:Debug>:-Qembed_debug>" "$<$<NOT:$<CONFIG:Debug>>:-O3>" "${SHADER_HLSL_OUTPUT}"
-#                COMMAND ${CMAKE_COMMAND} -E rm -f "${SHADER_HLSL_OUTPUT}"
-                DEPENDS "${SHADER_BIN_OUTPUT}.spv"
-                COMMENT "Converting shader from '${SHADER_BIN_OUTPUT}.spv' to '${SHADER_BIN_OUTPUT}.dxl'"
-        )
 
-        list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.dxl")
+        add_custom_command(
+                OUTPUT "${SHADER_BIN_OUTPUT}.spv"
+                COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
+                COMMAND ${DXC_EXECUTABLE} -spirv -fspv-target-env=vulkan1.3 -T ${SHADER_PROFILE} -E main -WX
+                ${DXC_SPIRV_CONFIG_FLAGS} ${SHADER_DEF}
+                -Fo "${SHADER_BIN_OUTPUT}.spv" "${SHADER_INPUT_PATH}"
+                DEPENDS ${SHADER_DEPENDENCIES}
+                COMMENT "Compiling HLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.spv'"
+                COMMAND_EXPAND_LISTS
+        )
+        list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.spv")
+
+        if (WIN32 AND GDR_ENABLE_DX12_BACKEND)
+            add_custom_command(
+                    OUTPUT "${SHADER_BIN_OUTPUT}.dxl"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
+                    COMMAND ${DXC_EXECUTABLE} -T ${SHADER_PROFILE} -E main -WX
+                    ${DXC_DXIL_CONFIG_FLAGS} ${SHADER_DEF}
+                    -Fo "${SHADER_BIN_OUTPUT}.dxl" "${SHADER_INPUT_PATH}"
+                    DEPENDS ${SHADER_DEPENDENCIES}
+                    COMMENT "Compiling HLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.dxl'"
+                    COMMAND_EXPAND_LISTS
+            )
+            list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.dxl")
+        endif ()
+    else ()
+        add_custom_command(
+                OUTPUT "${SHADER_BIN_OUTPUT}.spv"
+                COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
+                COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER_INPUT_PATH}" -o "${SHADER_BIN_OUTPUT}.spv" --target-env vulkan1.3 --target-env spirv1.5 "$<IF:$<CONFIG:Debug>,-g,-Os>" ${SHADER_DEF}
+                DEPENDS ${SHADER_DEPENDENCIES}
+                COMMENT "Compiling GLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.spv'"
+        )
+        list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.spv")
     endif ()
 endforeach ()
 

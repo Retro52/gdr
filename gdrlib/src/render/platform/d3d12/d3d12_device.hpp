@@ -19,8 +19,8 @@ namespace platform
 
     // clang-format off
     REGISTER_FLAGS(swapchain_flag,
-        eVsync   = 1 << 0,
-        eTearing = 1 << 1,
+        vsync   = 1 << 0,
+        tearing = 1 << 1,
         COUNT
     );
     // clang-format on

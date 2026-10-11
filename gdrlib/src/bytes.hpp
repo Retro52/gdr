@@ -3,6 +3,7 @@
 #include <assert2.hpp>
 #include <pod_types.hpp>
 #include <tracy/Tracy.hpp>
+#include <cstring>
 
 struct bytes
 {

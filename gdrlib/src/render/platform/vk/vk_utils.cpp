@@ -293,9 +293,8 @@ VkImageLayout platform::vk_rhi_parse_image_layout(const rhi::image_layout layout
     case rhi::image_layout::present :
         return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     case rhi::image_layout::render_target_color :
-        return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     case rhi::image_layout::render_target_depth_stencil :
-        return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+        return VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
     default :
     case rhi::image_layout::common :
         return VK_IMAGE_LAYOUT_GENERAL;

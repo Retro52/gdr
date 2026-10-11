@@ -25,7 +25,7 @@ void platform::d3d12_destroy_shader(d3d12_shader& shader)
 }
 
 auto platform::d3d12_create_pipeline_compute(ID3D12Device2* device, const d3d12_shader& shader, bool debug,
-                                           const d3d12_descriptor_set* desc_set, u32 desc_set_count)
+                                             const d3d12_descriptor_set* desc_set, u32 desc_set_count)
     -> result<d3d12_pipeline>
 {
     // D3D12_COMPUTE_PIPELINE_STATE_DESC desc {
@@ -43,9 +43,10 @@ auto platform::d3d12_create_pipeline_compute(ID3D12Device2* device, const d3d12_
     return error("not implemented");
 }
 
-auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12_shader* shaders, const u32 shaders_count,
-                                            const d3d12_descriptor_set* desc_set, u32 desc_set_count,
-                                            const rhi::pso_options& options) -> result<d3d12_pipeline>
+auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12_shader* shaders,
+                                              const u32 shaders_count, const d3d12_descriptor_set* desc_set,
+                                              u32 desc_set_count, const rhi::pso_options& options)
+    -> result<d3d12_pipeline>
 {
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
     root_signature_desc.Init_1_1(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
@@ -88,13 +89,14 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
     desc.pRootSignature                 = root_signature.Get();
 
     desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    desc.DSVFormat             = static_cast<DXGI_FORMAT>(d3d12_format_from_vk(options.depth_format));
+    desc.DSVFormat = static_cast<DXGI_FORMAT>(d3d12_format_from_vk(static_cast<VkFormat>(options.depth_format)));
 
     assert2(options.color_attachments_count < COUNT_OF(options.color_formats));
     D3D12_RT_FORMAT_ARRAY rt_format_array = {.NumRenderTargets = options.color_attachments_count};
     for (u32 i = 0; i < options.color_attachments_count; ++i)
     {
-        rt_format_array.RTFormats[i] = static_cast<DXGI_FORMAT>(d3d12_format_from_vk(options.color_formats[i]));
+        rt_format_array.RTFormats[i] =
+            static_cast<DXGI_FORMAT>(d3d12_format_from_vk(static_cast<VkFormat>(options.color_formats[i])));
     }
 
     desc.RTVFormats = rt_format_array;
@@ -105,12 +107,12 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
 
     desc.RasterizerState = raster;
 
-    const bool has_depth = options.depth_format != VK_FORMAT_UNDEFINED;
+    const bool has_depth = options.depth_format != rhi::image_format::none;
     CD3DX12_DEPTH_STENCIL_DESC1 depth(D3D12_DEFAULT);
-    depth.DepthFunc        = D3D12_COMPARISON_FUNC_GREATER;
-    depth.DepthEnable      = has_depth && options.flags & rhi::pso_flag::eDepthTest;
-    depth.DepthWriteMask   = has_depth && options.flags & rhi::pso_flag::eDepthWrite ? D3D12_DEPTH_WRITE_MASK_ALL
-                                                                                     : D3D12_DEPTH_WRITE_MASK_ZERO;
+    depth.DepthFunc   = D3D12_COMPARISON_FUNC_GREATER;
+    depth.DepthEnable = has_depth && options.depth_test_enable;
+    depth.DepthWriteMask =
+        has_depth && options.depth_write_enable ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
     desc.DepthStencilState = depth;
 
     for (u32 i = 0; i < shaders_count; ++i)

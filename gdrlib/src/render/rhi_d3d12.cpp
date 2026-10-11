@@ -1,5 +1,6 @@
 #if GDR_ENABLE_DX12_BACKEND
 
+#include <cpp/containers/local_array.hpp>
 #include <render/platform/d3d12/d3d12.hpp>
 #include <render/platform/d3d12/d3d12_command_list.hpp>
 #include <render/platform/d3d12/d3d12_device.hpp>
@@ -34,11 +35,66 @@ static D3D12_RESOURCE_STATES d3d12_rhi_prase_image_layout(const rhi::image_layou
     }
 }
 
-static platform::com_ptr<ID3D12GraphicsCommandList> d3d12_rhi_get_gfx_command_list(
-    const platform::d3d12_command_list* cmd)
+static D3D12_GLOBAL_BARRIER d3d12_rhi_parse_global_barrier(const rhi::global_barrier global_barrier)
+{
+    return D3D12_GLOBAL_BARRIER {
+        .SyncBefore   = platform::d3d12_rhi_parse_stage_flags(global_barrier.before.stages),
+        .SyncAfter    = platform::d3d12_rhi_parse_stage_flags(global_barrier.after.stages),
+        .AccessBefore = platform::d3d12_rhi_parse_access_flags(global_barrier.before.access),
+        .AccessAfter  = platform::d3d12_rhi_parse_access_flags(global_barrier.after.access),
+    };
+}
+
+static D3D12_TEXTURE_BARRIER d3d12_rhi_parse_image_barrier(const rhi::image_barrier& image_barrier)
+{
+    auto* d3d12_image = rhi::cast_from_handle<platform::d3d12_image>(image_barrier.image);
+    assert2(d3d12_image);
+    if (!d3d12_image)
+    {
+        return {};
+    }
+
+    const auto old_layout = image_barrier.layout_before == rhi::image_layout::current
+                              ? d3d12_image->layout
+                              : platform::d3d12_rhi_parse_image_layout(image_barrier.layout_before);
+
+    const auto new_layout = image_barrier.layout_after == rhi::image_layout::current
+                              ? d3d12_image->layout
+                              : platform::d3d12_rhi_parse_image_layout(image_barrier.layout_after);
+
+    d3d12_image->layout = new_layout;
+    return D3D12_TEXTURE_BARRIER {
+        .SyncBefore   = platform::d3d12_rhi_parse_stage_flags(image_barrier.before.stages),
+        .SyncAfter    = platform::d3d12_rhi_parse_stage_flags(image_barrier.after.stages),
+        .AccessBefore = platform::d3d12_rhi_parse_access_flags(image_barrier.before.access),
+        .AccessAfter  = platform::d3d12_rhi_parse_access_flags(image_barrier.after.access),
+        .LayoutBefore = old_layout,
+        .LayoutAfter  = new_layout,
+        .pResource    = d3d12_image->resource.Get(),
+        .Subresources = platform::d3d12_rhi_parse_image_range(image_barrier.range),
+        .Flags        = image_barrier.layout_after == rhi::image_layout::discard ? D3D12_TEXTURE_BARRIER_FLAG_DISCARD
+                                                                                 : D3D12_TEXTURE_BARRIER_FLAG_NONE,
+    };
+}
+
+static D3D12_BUFFER_BARRIER d3d12_rhi_parse_buffer_barrier(const rhi::buffer_barrier& buffer_barrier)
+{
+    return D3D12_BUFFER_BARRIER {
+        .SyncBefore   = platform::d3d12_rhi_parse_stage_flags(buffer_barrier.before.stages),
+        .SyncAfter    = platform::d3d12_rhi_parse_stage_flags(buffer_barrier.after.stages),
+        .AccessBefore = platform::d3d12_rhi_parse_access_flags(buffer_barrier.before.access),
+        .AccessAfter  = platform::d3d12_rhi_parse_access_flags(buffer_barrier.after.access),
+        // .pResource    = nullptr,
+        .Offset = 0,
+        .Size   = buffer_barrier.data_range.y == rhi::kBufferAll ? UINT64_MAX : buffer_barrier.data_range.y,
+    };
+}
+
+template<typename T = ID3D12GraphicsCommandList>
+static platform::com_ptr<T> d3d12_rhi_get_gfx_command_list(const platform::d3d12_command_list* cmd)
 {
     ZoneScoped;
-    platform::com_ptr<ID3D12GraphicsCommandList> gfx_command_list;
+    platform::com_ptr<T> gfx_command_list;
     D3D12_ASSERT_ON_FAIL(cmd->command_list.As(&gfx_command_list));
 
     return gfx_command_list;
@@ -93,7 +149,7 @@ auto rhi::d3d12_resize_swapchain(context context, swapchain swapchain, const cre
         return error("failed to access the context or the swapchain");
     }
 
-    const bool tearing_supported = d3d12_sc->flags & platform::swapchain_flag::eTearing;
+    const bool tearing_supported = d3d12_sc->flags & platform::swapchain_flag::tearing;
     const UINT new_flags         = (!desc.vsync && tearing_supported) ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0U;
 
     for (auto& back_buffer : d3d12_sc->back_buffers)
@@ -113,8 +169,8 @@ auto rhi::d3d12_resize_swapchain(context context, swapchain swapchain, const cre
         platform::d3d12_update_back_buffers(*d3d12_ctx, d3d12_sc->swapchain.Get(), desc.frames_in_flight);
     RESULT_FORWARD_IF_FAILED(new_buffers);
 
-    d3d12_sc->flags        = desc.vsync ? d3d12_sc->flags | platform::swapchain_flag::eVsync
-                                        : (d3d12_sc->flags & ~platform::swapchain_flag::eVsync);
+    d3d12_sc->flags        = desc.vsync ? d3d12_sc->flags | platform::swapchain_flag::vsync
+                                        : (d3d12_sc->flags & ~platform::swapchain_flag::vsync);
     d3d12_sc->back_buffers = std::move(*new_buffers);
     return reference_handle<rhi::swapchain>(d3d12_sc);
 }
@@ -185,6 +241,33 @@ auto rhi::d3d12_create_bindless_set(context context, u32 resource_count) -> resu
 void rhi::d3d12_destroy_bindless_set(context context, bindless_set& set)
 {
     ZoneScoped;
+}
+
+auto rhi::d3d12_create_fence(context context, const u64 initial_value) -> result<fence>
+{
+    ZoneScoped;
+    const auto* d3d12_ctx = cast_from_handle<platform::d3d12_context>(context);
+    if (!d3d12_ctx)
+    {
+        return error("failed to access context");
+    }
+
+    const auto d3d12_fence = platform::d3d12_create_fence(d3d12_ctx->device.Get(), initial_value);
+    RESULT_FORWARD_IF_FAILED(d3d12_fence);
+
+    return create_handle<fence>(*d3d12_fence);
+}
+
+void rhi::d3d12_destroy_fence(context context, fence& fence)
+{
+    const auto* d3d12_ctx = cast_from_handle<platform::d3d12_context>(context);
+    auto* d3d12_fence     = cast_from_handle<platform::d3d12_fence>(fence);
+
+    if (d3d12_ctx && d3d12_fence)
+    {
+        platform::d3d12_destroy_fence(*d3d12_fence);
+        clear_handle(d3d12_fence, fence);
+    }
 }
 
 auto rhi::d3d12_create_shader(context /* context */, const fs::path& path) -> result<shader>
@@ -266,12 +349,12 @@ void rhi::d3d12_destroy_pso(context context, pipeline& pso)
     }
 }
 
-result<VkShaderStageFlagBits> rhi::d3d12_query_shader_stage(shader shader)
+auto rhi::d3d12_query_shader_stage(shader shader) -> result<shader_stage>
 {
     ZoneScoped;
     if (const auto d3d12_shader = cast_from_handle<platform::d3d12_shader>(shader))
     {
-        return d3d12_shader->spv_meta.stage;
+        return platform::vk_rhi_translate_shader_stage(d3d12_shader->spv_meta.stage);
     }
 
     return error("Failed to query shader stage");
@@ -301,14 +384,14 @@ result<u32> rhi::d3d12_query_current_frame_index(swapchain swapchain)
     return d3d12_sc->swapchain->GetCurrentBackBufferIndex();
 }
 
-result<VkFormat> rhi::d3d12_query_swapchain_color_format(swapchain swapchain)
+auto rhi::d3d12_query_swapchain_color_format(swapchain swapchain) -> result<image_format>
 {
     if (const auto* d3d12_sc = cast_from_handle<platform::d3d12_swapchain>(swapchain))
     {
         DXGI_SWAP_CHAIN_DESC1 desc = {};
         D3D12_RETURN_ON_FAIL(d3d12_sc->swapchain->GetDesc1(&desc));
 
-        return platform::vk_format_from_dxgi(desc.Format);
+        return static_cast<image_format>(platform::vk_format_from_dxgi(desc.Format));
     }
 
     return error("Failed to access swapchain");
@@ -458,55 +541,85 @@ void rhi::d3d12_cmd_end_recording(command_buffer cmd)
     }
 }
 
-void rhi::d3d12_cmd_transition_image(command_buffer cmd, image dst, const image_layout dst_layout)
+void rhi::d3d12_cmd_reset(command_buffer cmd)
 {
     ZoneScoped;
-    auto* d3d12_img       = cast_from_handle<platform::d3d12_image>(dst);
-    const auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd);
-    if (!d3d12_cmd || !d3d12_img)
+    auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd);
+    if (!d3d12_cmd)
     {
         return;
     }
 
     if (const auto gfx_command_list = d3d12_rhi_get_gfx_command_list(d3d12_cmd))
     {
-        const D3D12_RESOURCE_BARRIER barrier {
-            .Type       = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-            .Flags      = D3D12_RESOURCE_BARRIER_FLAG_NONE,
-            .Transition = {.pResource   = d3d12_img->resource.Get(),
-                           .StateBefore = d3d12_img->current_state,
-                           .StateAfter  = d3d12_rhi_prase_image_layout(dst_layout)}
-        };
-
-        d3d12_img->current_state = barrier.Transition.StateAfter;
-        gfx_command_list->ResourceBarrier(1, &barrier);
+        D3D12_ASSERT_ON_FAIL(gfx_command_list->Close());
     }
 }
 
-void rhi::d3d12_cmd_present_image(command_buffer cmd, swapchain swapchain, queue submit, queue present)
+void rhi::d3d12_cmd_barriers(command_buffer cmd, const barrier_batch& barriers)
 {
     ZoneScoped;
-    auto* d3d12_sc        = cast_from_handle<platform::d3d12_swapchain>(swapchain);
-    auto* d3d12_queue     = d3d12_rhi_object_from_handle<ID3D12CommandQueue>(submit);
     const auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd);
 
-    assert2(d3d12_queue == d3d12_rhi_object_from_handle<ID3D12CommandQueue>(present));
-    if (!d3d12_cmd || !d3d12_sc)
+    assert2(d3d12_cmd);
+    if (!d3d12_cmd)
     {
         return;
     }
 
-    ID3D12CommandList* const command_lists[] = {d3d12_cmd->command_list.Get()};
-    d3d12_queue->ExecuteCommandLists(COUNT_OF(command_lists), command_lists);
+    const auto gfx_command_list = d3d12_rhi_get_gfx_command_list<ID3D12GraphicsCommandList7>(d3d12_cmd);
+    assert2(gfx_command_list);
+    if (!gfx_command_list)
+    {
+        return;
+    }
 
-    const auto bb_index      = d3d12_sc->swapchain->GetCurrentBackBufferIndex();
-    const auto sync_interval = d3d12_sc->flags & platform::swapchain_flag::eVsync ? 1 : 0;
-    const auto present_flags =
-        d3d12_sc->flags & platform::swapchain_flag::eTearing && !sync_interval ? DXGI_PRESENT_ALLOW_TEARING : 0;
+    cpp::local_array<D3D12_GLOBAL_BARRIER, 8> global_barriers(barriers.globals.size());
+    cpp::local_array<D3D12_TEXTURE_BARRIER, 8> image_barriers(barriers.images.size());
+    cpp::local_array<D3D12_BUFFER_BARRIER, 8> buffer_barriers(barriers.buffers.size());
 
-    D3D12_ASSERT_ON_FAIL(d3d12_sc->swapchain->Present(sync_interval, present_flags));
-    d3d12_signal_fence(d3d12_sc->sc_sync_fence, d3d12_queue, ++d3d12_sc->frame_counter);
-    d3d12_sc->back_buffers[bb_index].wait_value = d3d12_sc->frame_counter;
+    for (u32 i = 0; i < barriers.globals.size(); ++i)
+    {
+        global_barriers[i] = d3d12_rhi_parse_global_barrier(barriers.globals[i]);
+    }
+
+    for (u32 i = 0; i < barriers.images.size(); ++i)
+    {
+        image_barriers[i] = d3d12_rhi_parse_image_barrier(barriers.images[i]);
+    }
+
+    for (u32 i = 0; i < barriers.buffers.size(); ++i)
+    {
+        buffer_barriers[i] = d3d12_rhi_parse_buffer_barrier(barriers.buffers[i]);
+    }
+
+    cpp::local_array<D3D12_BARRIER_GROUP, 3> d3d12_barrier_groups;
+    if (!global_barriers.empty())
+    {
+        d3d12_barrier_groups.emplace_back(D3D12_BARRIER_GROUP {
+            .Type            = D3D12_BARRIER_TYPE_GLOBAL,
+            .NumBarriers     = static_cast<u32>(global_barriers.size()),
+            .pGlobalBarriers = global_barriers.data(),
+        });
+    }
+    if (!image_barriers.empty())
+    {
+        d3d12_barrier_groups.emplace_back(D3D12_BARRIER_GROUP {
+            .Type             = D3D12_BARRIER_TYPE_TEXTURE,
+            .NumBarriers      = static_cast<u32>(image_barriers.size()),
+            .pTextureBarriers = image_barriers.data(),
+        });
+    }
+    if (!buffer_barriers.empty())
+    {
+        d3d12_barrier_groups.emplace_back(D3D12_BARRIER_GROUP {
+            .Type            = D3D12_BARRIER_TYPE_BUFFER,
+            .NumBarriers     = static_cast<u32>(buffer_barriers.size()),
+            .pBufferBarriers = buffer_barriers.data(),
+        });
+    }
+
+    gfx_command_list->Barrier(d3d12_barrier_groups.size(), d3d12_barrier_groups.data());
 }
 
 void rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const attachment_state_info> color_attachments,
@@ -629,8 +742,8 @@ void rhi::d3d12_cmd_bind_pso(command_buffer cmd, pipeline pso)
     }
 }
 
-void rhi::d3d12_cmd_draw_instanced(command_buffer cmd, const u32 vtx_count, const u32 instance_count,
-                                   const u32 first_vertex, const u32 first_instance)
+void rhi::d3d12_cmd_draw(command_buffer cmd, const u32 vtx_count, const u32 instance_count, const u32 first_vertex,
+                         const u32 first_instance)
 {
     ZoneScoped;
     const auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd);
@@ -643,6 +756,32 @@ void rhi::d3d12_cmd_draw_instanced(command_buffer cmd, const u32 vtx_count, cons
     {
         gfx_command_list->DrawInstanced(vtx_count, instance_count, first_vertex, first_instance);
     }
+}
+
+void rhi::d3d12_present(command_buffer cmd, swapchain swapchain, queue submit, queue present)
+{
+    ZoneScoped;
+    auto* d3d12_sc        = cast_from_handle<platform::d3d12_swapchain>(swapchain);
+    auto* d3d12_queue     = d3d12_rhi_object_from_handle<ID3D12CommandQueue>(submit);
+    const auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd);
+
+    assert2(d3d12_queue == d3d12_rhi_object_from_handle<ID3D12CommandQueue>(present));
+    if (!d3d12_cmd || !d3d12_sc)
+    {
+        return;
+    }
+
+    ID3D12CommandList* const command_lists[] = {d3d12_cmd->command_list.Get()};
+    d3d12_queue->ExecuteCommandLists(COUNT_OF(command_lists), command_lists);
+
+    const auto bb_index      = d3d12_sc->swapchain->GetCurrentBackBufferIndex();
+    const auto sync_interval = d3d12_sc->flags & platform::swapchain_flag::vsync ? 1 : 0;
+    const auto present_flags =
+        d3d12_sc->flags & platform::swapchain_flag::tearing && !sync_interval ? DXGI_PRESENT_ALLOW_TEARING : 0;
+
+    D3D12_ASSERT_ON_FAIL(d3d12_sc->swapchain->Present(sync_interval, present_flags));
+    d3d12_signal_fence(d3d12_sc->sc_sync_fence, d3d12_queue, ++d3d12_sc->frame_counter);
+    d3d12_sc->back_buffers[bb_index].wait_value = d3d12_sc->frame_counter;
 }
 
 #endif
