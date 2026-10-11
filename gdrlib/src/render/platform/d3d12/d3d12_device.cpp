@@ -522,8 +522,8 @@ auto platform::d3d12_create_swapchain(d3d12_context& d3d12_context, const u32 fo
     RESULT_FORWARD_IF_FAILED(fence);
 
     result.sc_sync_fence = std::move(*fence);
-    result.flags         = vsync ? (result.flags | swapchain_flag::eVsync) : result.flags;
-    result.flags         = tearing_supported ? (result.flags | swapchain_flag::eTearing) : result.flags;
+    result.flags         = vsync ? (result.flags | swapchain_flag::vsync) : result.flags;
+    result.flags         = tearing_supported ? (result.flags | swapchain_flag::tearing) : result.flags;
 
     auto back_buffers = d3d12_update_back_buffers(d3d12_context, result.swapchain.Get(), frames_in_flight);
     RESULT_FORWARD_IF_FAILED(back_buffers);

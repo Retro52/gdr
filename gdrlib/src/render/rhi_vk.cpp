@@ -92,7 +92,7 @@ static T vk_rhi_vkobj_from_handle(H&& handle)
     return reinterpret_cast<T>(handle.id);
 }
 
-static VkMemoryBarrier2 vk_rhi_parse_global_barrier(const rhi::global_barrier global_barrier)
+static VkMemoryBarrier2 vk_rhi_parse_global_barrier(const rhi::global_barrier& global_barrier)
 {
     return VkMemoryBarrier2 {
         .sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
@@ -147,7 +147,7 @@ static VkImageMemoryBarrier2 vk_rhi_parse_image_barrier(const rhi::image_barrier
     return barrier;
 }
 
-static VkBufferMemoryBarrier2 vk_rhi_parse_buffer_barrier(rhi::buffer_barrier buffer_barrier)
+static VkBufferMemoryBarrier2 vk_rhi_parse_buffer_barrier(const rhi::buffer_barrier& buffer_barrier)
 {
     auto* vk_buffer = rhi::cast_from_handle<platform::vk_buffer>(buffer_barrier.buffer);
     if (!vk_buffer)
@@ -982,9 +982,9 @@ void rhi::vk_cmd_barriers(command_buffer cmd, const barrier_batch& barriers)
         return;
     }
 
-    cpp::local_array<VkMemoryBarrier2> global_barriers(barriers.globals.size());
-    cpp::local_array<VkImageMemoryBarrier2> image_barriers(barriers.images.size());
-    cpp::local_array<VkBufferMemoryBarrier2> buffer_barriers(barriers.buffers.size());
+    cpp::local_array<VkMemoryBarrier2, 8> global_barriers(barriers.globals.size());
+    cpp::local_array<VkImageMemoryBarrier2, 8> image_barriers(barriers.images.size());
+    cpp::local_array<VkBufferMemoryBarrier2, 8> buffer_barriers(barriers.buffers.size());
 
     for (u32 i = 0; i < barriers.globals.size(); ++i)
     {

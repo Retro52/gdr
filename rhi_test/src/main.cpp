@@ -211,13 +211,14 @@ int main(const int argc, char* argv[])
                  .image = *frame_image,
 
                  .before = rhi::barrier_scope {.stages = rhi::barrier_stage::color_attachment,
-                                                  .access = rhi::barrier_access::color_attachment_write},
+                                                  .access = rhi::barrier_access::none},
                  .after  = rhi::barrier_scope {.stages = rhi::barrier_stage::color_attachment,
                                                   .access = rhi::barrier_access::color_attachment_read
                                                          | rhi::barrier_access::color_attachment_write},
 
-                 .layout_after = rhi::image_layout::render_target_color,
-                 .range        = rhi::image_subresource_range {.aspects = rhi::image_aspect::color},
+                 .layout_before = rhi::image_layout::discard,
+                 .layout_after  = rhi::image_layout::render_target_color,
+                 .range         = rhi::image_subresource_range {.aspects = rhi::image_aspect::color},
                  }
             };
 
@@ -247,8 +248,8 @@ int main(const int argc, char* argv[])
 
                  .before = rhi::barrier_scope {.stages = rhi::barrier_stage::color_attachment,
                                                   .access = rhi::barrier_access::color_attachment_write},
-                 .after  = rhi::barrier_scope {.stages = rhi::barrier_stage::color_attachment,
-                                                  .access = rhi::barrier_access::color_attachment_read},
+                 .after =
+                        rhi::barrier_scope {.stages = rhi::barrier_stage::none, .access = rhi::barrier_access::none},
 
                  .layout_after = rhi::image_layout::present,
                  .range        = rhi::image_subresource_range {.aspects = rhi::image_aspect::color},

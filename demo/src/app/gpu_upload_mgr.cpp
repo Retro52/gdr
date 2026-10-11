@@ -55,7 +55,7 @@ rhi::image app::gpu_upload_mgr::create_texture(const loader::texture_desc& textu
                                                  rhi::barrier_stage::none,
                                                  rhi::barrier_stage::copy,
                                                  rhi::barrier_access::none,
-                                                 rhi::barrier_access::copy_read,
+                                                 rhi::barrier_access::copy_write,
                                                  rhi::image_aspect::color);
 
     rhi::image_barrier barriers[] = {barrier};

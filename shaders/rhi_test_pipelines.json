@@ -1,0 +1,8 @@
+{
+  "triangle": {
+    "shaders": [
+      "triangle.vert.spv",
+      "triangle.frag.spv"
+    ]
+  }
+}

@@ -14,7 +14,7 @@ void pso_data::load(const rhi::impl& impl, rhi::context context, rhi::swapchain 
                     rhi::bindless_set textures_set)
 {
     ZoneScoped;
-    auto data = fs::read_file("../shaders/pipelines.json");
+    auto data = fs::read_file("../shaders/rhi_test_pipelines.json");
     if (!data)
     {
         assert2m(false, data.message);

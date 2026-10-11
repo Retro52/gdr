@@ -233,3 +233,170 @@ u32 platform::d3d12_format_from_vk(const VkFormat vk_format)
         return ddspp::UNKNOWN;
     }
 }
+
+uvec2 platform::d3d12_rhi_parse_aspect_flags(const rhi::image_aspect_bits aspects)
+{
+    assert2(!(aspects & rhi::image_aspect::format));
+
+    const bool color   = aspects & rhi::image_aspect::color;
+    const bool depth   = aspects & rhi::image_aspect::depth;
+    const bool stencil = aspects & rhi::image_aspect::stencil;
+
+    assert2(!(color && (depth || stencil)));
+
+    constexpr u32 kStencilPlane    = 1;
+    constexpr u32 kColorDepthPlane = 0;
+
+    if (depth && stencil)
+    {
+        return {kColorDepthPlane, 2};
+    }
+    if (stencil)
+    {
+        return {kStencilPlane, 1};
+    }
+
+    return {kColorDepthPlane, 1};
+}
+
+D3D12_BARRIER_LAYOUT platform::d3d12_rhi_parse_image_layout(const rhi::image_layout layout)
+{
+    switch (layout)
+    {
+    case rhi::image_layout::discard :
+        return D3D12_BARRIER_LAYOUT_UNDEFINED;
+    case rhi::image_layout::present :
+        return D3D12_BARRIER_LAYOUT_PRESENT;
+    case rhi::image_layout::render_target_color :
+        return D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+    case rhi::image_layout::render_target_depth_stencil :
+        return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
+    default :
+    case rhi::image_layout::common :
+        return D3D12_BARRIER_LAYOUT_COMMON;
+    }
+}
+
+D3D12_BARRIER_SUBRESOURCE_RANGE platform::d3d12_rhi_parse_image_range(const rhi::image_subresource_range& range)
+{
+    const uvec2 planes = d3d12_rhi_parse_aspect_flags(range.aspects);
+    return D3D12_BARRIER_SUBRESOURCE_RANGE {
+        .IndexOrFirstMipLevel = range.mips_range.x,
+        .NumMipLevels         = 1,
+        .FirstArraySlice      = range.layers_range.x,
+        .NumArraySlices       = 1,
+        .FirstPlane           = planes.x,
+        .NumPlanes            = planes.y,
+    };
+}
+
+D3D12_BARRIER_SYNC platform::d3d12_rhi_parse_stage_flags(const rhi::barrier_stage_bits stages)
+{
+    D3D12_BARRIER_SYNC result = D3D12_BARRIER_SYNC_NONE;
+    for (u32 i = 0; i < reflection::get_enum_values_count<rhi::barrier_stage>(); i++)
+    {
+        const auto flag = reflection::get_enum_value_at<rhi::barrier_stage>(i);
+        if (!(flag & stages))
+        {
+            continue;
+        }
+
+        switch (flag)
+        {
+        case rhi::barrier_stage::indirect :
+            result |= D3D12_BARRIER_SYNC_EXECUTE_INDIRECT;
+            break;
+        case rhi::barrier_stage::vertex_input :
+            result |= D3D12_BARRIER_SYNC_INDEX_INPUT | D3D12_BARRIER_SYNC_VERTEX_SHADING;
+            break;
+        case rhi::barrier_stage::task_shader :
+        case rhi::barrier_stage::mesh_shader :
+        case rhi::barrier_stage::vertex_shader :
+            result |= D3D12_BARRIER_SYNC_VERTEX_SHADING;
+            break;
+        case rhi::barrier_stage::fragment_shader :
+            result |= D3D12_BARRIER_SYNC_PIXEL_SHADING;
+            break;
+        case rhi::barrier_stage::compute_shader :
+            result |= D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+            break;
+        case rhi::barrier_stage::late_depth_stencil :
+        case rhi::barrier_stage::early_depth_stencil :
+            result |= D3D12_BARRIER_SYNC_DEPTH_STENCIL;
+            break;
+        case rhi::barrier_stage::color_attachment :
+            result |= D3D12_BARRIER_SYNC_RENDER_TARGET;
+            break;
+        case rhi::barrier_stage::copy :
+            result |= D3D12_BARRIER_SYNC_COPY;
+            break;
+        case rhi::barrier_stage::all_graphics :
+            result |= D3D12_BARRIER_SYNC_DRAW | D3D12_BARRIER_SYNC_EXECUTE_INDIRECT;
+            break;
+        case rhi::barrier_stage::all_commands :
+            result |= D3D12_BARRIER_SYNC_ALL;
+            break;
+        default :
+        case rhi::barrier_stage::none :
+            break;
+        }
+    }
+    return result;
+}
+
+D3D12_BARRIER_ACCESS platform::d3d12_rhi_parse_access_flags(const rhi::barrier_access_bits access)
+{
+    D3D12_BARRIER_ACCESS result = D3D12_BARRIER_ACCESS_COMMON;
+    for (u32 i = 0; i < reflection::get_enum_values_count<rhi::barrier_access>(); i++)
+    {
+        const auto flag = reflection::get_enum_value_at<rhi::barrier_access>(i);
+        if (!(flag & access))
+        {
+            continue;
+        }
+
+        switch (flag)
+        {
+        case rhi::barrier_access::indirect_read :
+            result |= D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT;
+            break;
+        case rhi::barrier_access::index_read :
+            result |= D3D12_BARRIER_ACCESS_INDEX_BUFFER;
+            break;
+        case rhi::barrier_access::vertex_read :
+            result |= D3D12_BARRIER_ACCESS_VERTEX_BUFFER;
+            break;
+        case rhi::barrier_access::uniform_read :
+            result |= D3D12_BARRIER_ACCESS_CONSTANT_BUFFER;
+            break;
+        case rhi::barrier_access::sampled_read :
+            result |= D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
+            break;
+        case rhi::barrier_access::storage_read :
+        case rhi::barrier_access::storage_write :
+            result |= D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+            break;
+        case rhi::barrier_access::color_attachment_read :
+        case rhi::barrier_access::color_attachment_write :
+            result |= D3D12_BARRIER_ACCESS_RENDER_TARGET;
+            break;
+        case rhi::barrier_access::depth_stencil_read :
+            result |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ;
+            break;
+        case rhi::barrier_access::depth_stencil_write :
+            result |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
+            break;
+        case rhi::barrier_access::copy_read :
+            result |= D3D12_BARRIER_ACCESS_COPY_SOURCE;
+            break;
+        case rhi::barrier_access::copy_write :
+            result |= D3D12_BARRIER_ACCESS_COPY_DEST;
+            break;
+        default :
+        case rhi::barrier_access::none :
+            break;
+        }
+    }
+
+    return result == D3D12_BARRIER_ACCESS_COMMON ? D3D12_BARRIER_ACCESS_NO_ACCESS : result;
+}

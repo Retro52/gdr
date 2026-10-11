@@ -9,7 +9,6 @@
 #include <app/pso.hpp>
 #include <app/render.hpp>
 #include <camera_controller.hpp>
-#include <codegen/render_settings.hpp>
 #include <debug/frustum_renderer.hpp>
 #include <editor/hierarchy.hpp>
 #include <editor/info.hpp>
@@ -19,6 +18,7 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <log.hpp>
+#include <render_settings.hpp>
 #include <scene/components.hpp>
 #include <scene/entity.hpp>
 #include <scene/loader.hpp>
@@ -830,6 +830,18 @@ int app::instance::run()
     bool enable_fullscreen        = m_window.get_fullscreen();
     bool enable_meshlets_pipeline = mesh_shading_supported;
 
+    m_events_queue.add_watcher(
+        event_type::key_pressed,
+        [](const event_payload& payload, void* user_data)
+        {
+            if (payload.keyboard.key == keycode::m)
+            {
+                bool& var = *static_cast<bool*>(user_data);
+                var       = !var;
+            }
+        },
+        &enable_meshlets_pipeline);
+
     auto get_time = []<typename T = f64>()
     {
         return static_cast<T>(SDL_GetPerformanceCounter()) / static_cast<T>(SDL_GetPerformanceFrequency());
@@ -1250,7 +1262,34 @@ int app::instance::run()
 
                 app::zero_buffer(m_rhi, buffer, indexed_count_buffer);
 
+                const rhi::image_barrier cms_pre_clear[] {
+                    app::make_image_barrier(csm.shadow_map,
+                                            rhi::image_layout::current,
+                                            rhi::image_layout::current,
+                                            rhi::barrier_stage::early_depth_stencil
+                                                | rhi::barrier_stage::late_depth_stencil,
+                                            rhi::barrier_stage::copy,
+                                            rhi::barrier_access::depth_stencil_write,
+                                            rhi::barrier_access::copy_write,
+                                            rhi::image_aspect::depth),
+                };
+                m_rhi.cmd_barriers(buffer, {.images = std::span {cms_pre_clear}});
+
                 m_rhi.cmd_clear_depth_attachment(buffer, csm.shadow_map, {.depth = 0.0F, .stencil = 0});
+
+                const rhi::image_barrier csm_post_clear[] {
+                    app::make_image_barrier(csm.shadow_map,
+                                            rhi::image_layout::current,
+                                            rhi::image_layout::current,
+                                            rhi::barrier_stage::copy,
+                                            rhi::barrier_stage::early_depth_stencil,
+                                            rhi::barrier_access::copy_write,
+                                            rhi::barrier_access::depth_stencil_read
+                                                | rhi::barrier_access::depth_stencil_write,
+                                            rhi::image_aspect::depth),
+                };
+                m_rhi.cmd_barriers(buffer, {.images = std::span {csm_post_clear}});
+
                 for (u32 c = 0; c < shader_constants::kMaxShadowCascades; ++c)
                 {
                     // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "cull cascade meshes"));
@@ -1361,8 +1400,30 @@ int app::instance::run()
                     m_rhi, buffer, depth_image, rhi::image_layout::common, rhi::image_aspect::depth);
 
                 m_rhi.cmd_clear_depth_attachment(buffer, depth_image, ds_clear);
-
                 m_rhi.cmd_clear_color_attachment(buffer, vis_buffer, vb_clear);
+
+                const rhi::image_barrier clear_barriers[] {
+                    app::make_image_barrier(depth_image,
+                                            rhi::image_layout::current,
+                                            rhi::image_layout::current,
+                                            rhi::barrier_stage::copy,
+                                            rhi::barrier_stage::early_depth_stencil,
+                                            rhi::barrier_access::copy_write,
+                                            rhi::barrier_access::depth_stencil_read
+                                                | rhi::barrier_access::depth_stencil_write,
+                                            rhi::image_aspect::depth),
+                    app::make_image_barrier(vis_buffer,
+                                            rhi::image_layout::current,
+                                            rhi::image_layout::current,
+                                            rhi::barrier_stage::copy,
+                                            rhi::barrier_stage::color_attachment,
+                                            rhi::barrier_access::copy_write,
+                                            rhi::barrier_access::color_attachment_read
+                                                | rhi::barrier_access::color_attachment_write,
+                                            rhi::image_aspect::color),
+
+                };
+                m_rhi.cmd_barriers(buffer, {.images = std::span {clear_barriers}});
 
                 app::zero_buffer(m_rhi, buffer, indexed_count_buffer);
                 for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
