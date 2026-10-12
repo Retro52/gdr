@@ -49,3 +49,6 @@
 [submodule "vendors/dx-headers"]
 	path = vendors/dx-headers
 	url = https://github.com/microsoft/DirectX-Headers.git
+[submodule "vendors/fidelity-fx-sdk"]
+	path = vendors/fidelity-fx-sdk
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK
