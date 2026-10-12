@@ -12,8 +12,6 @@
 #include <render/rhi_util.hpp>
 #include <render/rhi_vk.hpp>
 
-#include "entt/core/any.hpp"
-
 struct vk_swapchain_sync_objects
 {
     VkFence fence {VK_NULL_HANDLE};
@@ -44,6 +42,7 @@ struct vk_rhi_attachment_objects
 template<typename T>
 static void vk_rhi_set_object_name_if_needed(VkDevice device, T object, const char* name)
 {
+    ZoneScoped;
     if (!name || object == VK_NULL_HANDLE || !vkSetDebugUtilsObjectNameEXT)
     {
         return;
@@ -94,6 +93,7 @@ static T vk_rhi_vkobj_from_handle(H&& handle)
 
 static VkMemoryBarrier2 vk_rhi_parse_global_barrier(const rhi::global_barrier& global_barrier)
 {
+    ZoneScoped;
     return VkMemoryBarrier2 {
         .sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
         .pNext         = nullptr,
@@ -106,6 +106,7 @@ static VkMemoryBarrier2 vk_rhi_parse_global_barrier(const rhi::global_barrier& g
 
 static VkImageMemoryBarrier2 vk_rhi_parse_image_barrier(const rhi::image_barrier& image_barrier)
 {
+    ZoneScoped;
     auto* vk_image = rhi::cast_from_handle<platform::vk_image>(image_barrier.image);
     if (!vk_image)
     {
@@ -149,6 +150,7 @@ static VkImageMemoryBarrier2 vk_rhi_parse_image_barrier(const rhi::image_barrier
 
 static VkBufferMemoryBarrier2 vk_rhi_parse_buffer_barrier(const rhi::buffer_barrier& buffer_barrier)
 {
+    ZoneScoped;
     auto* vk_buffer = rhi::cast_from_handle<platform::vk_buffer>(buffer_barrier.buffer);
     if (!vk_buffer)
     {
@@ -193,6 +195,7 @@ static cpp::heap_array<vk_swapchain_sync_objects> vk_rhi_create_sc_sync(VkDevice
 
 static result<vk_rhi_attachment_objects> vk_rhi_parse_attachment_objects(const rhi::attachment attachment)
 {
+    ZoneScoped;
     vk_rhi_attachment_objects result;
 
     if (attachment.is_image_view())
@@ -224,6 +227,7 @@ static result<vk_rhi_attachment_objects> vk_rhi_parse_attachment_objects(const r
 static result<VkRenderingAttachmentInfo> vk_rhi_parse_attachment_info(const rhi::attachment_state_info& info,
                                                                       const bool is_depth)
 {
+    ZoneScoped;
     auto data = vk_rhi_parse_attachment_objects(info.attachment);
     RESULT_FORWARD_IF_FAILED(data);
 
@@ -240,6 +244,7 @@ static result<VkRenderingAttachmentInfo> vk_rhi_parse_attachment_info(const rhi:
 
 static platform::vk_descriptor_info vk_rhi_parse_descriptor_info(const rhi::binding binding)
 {
+    ZoneScoped;
     if (binding.has_buffer())
     {
         auto* vk_buffer = rhi::cast_from_handle<platform::vk_buffer>(binding.get_buffer());
@@ -986,19 +991,22 @@ void rhi::vk_cmd_barriers(command_buffer cmd, const barrier_batch& barriers)
     cpp::local_array<VkImageMemoryBarrier2, 8> image_barriers(barriers.images.size());
     cpp::local_array<VkBufferMemoryBarrier2, 8> buffer_barriers(barriers.buffers.size());
 
-    for (u32 i = 0; i < barriers.globals.size(); ++i)
     {
-        global_barriers[i] = vk_rhi_parse_global_barrier(barriers.globals[i]);
-    }
+        ZoneScopedN("rhi::vk_cmd_barriers::parse_barriers");
+        for (u32 i = 0; i < barriers.globals.size(); ++i)
+        {
+            global_barriers[i] = vk_rhi_parse_global_barrier(barriers.globals[i]);
+        }
 
-    for (u32 i = 0; i < barriers.images.size(); ++i)
-    {
-        image_barriers[i] = vk_rhi_parse_image_barrier(barriers.images[i]);
-    }
+        for (u32 i = 0; i < barriers.images.size(); ++i)
+        {
+            image_barriers[i] = vk_rhi_parse_image_barrier(barriers.images[i]);
+        }
 
-    for (u32 i = 0; i < barriers.buffers.size(); ++i)
-    {
-        buffer_barriers[i] = vk_rhi_parse_buffer_barrier(barriers.buffers[i]);
+        for (u32 i = 0; i < barriers.buffers.size(); ++i)
+        {
+            buffer_barriers[i] = vk_rhi_parse_buffer_barrier(barriers.buffers[i]);
+        }
     }
 
     const VkDependencyInfo dependency_info {
@@ -1012,7 +1020,10 @@ void rhi::vk_cmd_barriers(command_buffer cmd, const barrier_batch& barriers)
         .pImageMemoryBarriers     = image_barriers.data(),
     };
 
-    vkCmdPipelineBarrier2(vk_cmd->cmd_buffer, &dependency_info);
+    {
+        ZoneScopedN("rhi::vk_cmd_barriers::vkCmdPipelineBarrier2");
+        vkCmdPipelineBarrier2(vk_cmd->cmd_buffer, &dependency_info);
+    }
 }
 
 void rhi::vk_cmd_image_blit(command_buffer cmd, image src, image dst, const blit_image_info& info)

@@ -1,5 +1,6 @@
 #include <ddspp.h>
 #include <render/platform/vk/vk_utils.hpp>
+#include <tracy/Tracy.hpp>
 
 #define COLOR_SPACE_PAIR(linear_format, srgb_format)                     \
     case linear_format :                                                 \
@@ -11,6 +12,7 @@ VkFormat platform::vk_format_from_dxgi(const u32 dx_format)
 {
     using ddspp::DXGIFormat;
 
+    ZoneScoped;
     switch (dx_format)
     {
     case ddspp::R32G32B32A32_FLOAT :
@@ -244,6 +246,7 @@ VkFormat platform::vk_format_from_dxgi(const u32 dx_format)
 
 VkFormat platform::vk_format_force_color_space(const VkFormat vk_format, const color_space space)
 {
+    ZoneScoped;
     switch (vk_format)
     {
         COLOR_SPACE_PAIR(VK_FORMAT_R8_UNORM, VK_FORMAT_R8_SRGB);
@@ -286,6 +289,7 @@ VkFormat platform::vk_format_force_color_space(const VkFormat vk_format, const c
 
 VkImageLayout platform::vk_rhi_parse_image_layout(const rhi::image_layout layout)
 {
+    ZoneScoped;
     switch (layout)
     {
     case rhi::image_layout::discard :
@@ -303,6 +307,7 @@ VkImageLayout platform::vk_rhi_parse_image_layout(const rhi::image_layout layout
 
 VkImageViewType platform::vk_rhi_parse_image_view_type(const rhi::image_view_kind kind)
 {
+    ZoneScoped;
     switch (kind)
     {
     case rhi::image_view_kind::flat_1d :
@@ -328,6 +333,7 @@ VkImageViewType platform::vk_rhi_parse_image_view_type(const rhi::image_view_kin
 
 VkImageAspectFlags platform::vk_rhi_parse_aspect_flags(const rhi::image_aspect_bits aspects)
 {
+    ZoneScoped;
     VkImageAspectFlags result = 0;
     assert2(!(aspects & rhi::image_aspect::format));
 
@@ -340,6 +346,7 @@ VkImageAspectFlags platform::vk_rhi_parse_aspect_flags(const rhi::image_aspect_b
 
 VkImageAspectFlags platform::vk_rhi_parse_format_aspect_flags(const VkFormat format)
 {
+    ZoneScoped;
     switch (format)
     {
     case VK_FORMAT_S8_UINT :
@@ -359,6 +366,7 @@ VkImageAspectFlags platform::vk_rhi_parse_format_aspect_flags(const VkFormat for
 
 rhi::shader_stage platform::vk_rhi_translate_shader_stage(const VkShaderStageFlagBits stage)
 {
+    ZoneScoped;
     switch (stage)
     {
     case VK_SHADER_STAGE_TASK_BIT_EXT :
@@ -377,6 +385,7 @@ rhi::shader_stage platform::vk_rhi_translate_shader_stage(const VkShaderStageFla
 
 VkImageUsageFlags platform::vk_rhi_parse_image_usage_flags(const rhi::image_usage_bits usage)
 {
+    ZoneScoped;
     VkImageUsageFlags result = 0;
     for (u32 i = 0; i < reflection::get_enum_values_count<rhi::image_usage>(); i++)
     {
@@ -416,6 +425,7 @@ VkImageUsageFlags platform::vk_rhi_parse_image_usage_flags(const rhi::image_usag
 
 VkBufferUsageFlags platform::vk_rhi_parse_buffer_usage_flags(const rhi::buffer_usage_bits usage)
 {
+    ZoneScoped;
     VkBufferUsageFlags result = 0;
     for (u32 i = 0; i < reflection::get_enum_values_count<rhi::buffer_usage>(); i++)
     {
@@ -452,6 +462,7 @@ VkBufferUsageFlags platform::vk_rhi_parse_buffer_usage_flags(const rhi::buffer_u
 
 VkFilter platform::vk_rhi_parse_sampler_filter(const rhi::sampler_filter sampler_filter)
 {
+    ZoneScoped;
     switch (sampler_filter)
     {
     case rhi::sampler_filter::nearest :
@@ -464,6 +475,7 @@ VkFilter platform::vk_rhi_parse_sampler_filter(const rhi::sampler_filter sampler
 
 VkBorderColor platform::vk_rhi_parse_sampler_border_color(const rhi::sampler_border_color sampler_border_color)
 {
+    ZoneScoped;
     switch (sampler_border_color)
     {
     case rhi::sampler_border_color::white :
@@ -478,6 +490,7 @@ VkBorderColor platform::vk_rhi_parse_sampler_border_color(const rhi::sampler_bor
 
 VkSamplerReductionMode platform::vk_rhi_parse_sampler_reduction(const rhi::sampler_reduction sampler_reduction)
 {
+    ZoneScoped;
     switch (sampler_reduction)
     {
     case rhi::sampler_reduction::min :
@@ -492,6 +505,7 @@ VkSamplerReductionMode platform::vk_rhi_parse_sampler_reduction(const rhi::sampl
 
 VkSamplerMipmapMode platform::vk_rhi_parse_sampler_mipmap_mode(const rhi::sampler_mipmap_mode sampler_mipmap_mode)
 {
+    ZoneScoped;
     switch (sampler_mipmap_mode)
     {
     case rhi::sampler_mipmap_mode::nearest :
@@ -504,6 +518,7 @@ VkSamplerMipmapMode platform::vk_rhi_parse_sampler_mipmap_mode(const rhi::sample
 
 VkSamplerAddressMode platform::vk_rhi_parse_sampler_address_mode(const rhi::sampler_address_mode sampler_address_mode)
 {
+    ZoneScoped;
     switch (sampler_address_mode)
     {
     case rhi::sampler_address_mode::clamp_to_edge :
@@ -522,6 +537,7 @@ VkSamplerAddressMode platform::vk_rhi_parse_sampler_address_mode(const rhi::samp
 
 VkCompareOp platform::vk_rhi_parse_compare_op(const rhi::compare_op compare_op)
 {
+    ZoneScoped;
     switch (compare_op)
     {
     case rhi::compare_op::always :
@@ -547,6 +563,7 @@ VkCompareOp platform::vk_rhi_parse_compare_op(const rhi::compare_op compare_op)
 
 VkClearValue platform::vk_rhi_parse_color_clear_value(rhi::clear_value cv)
 {
+    ZoneScoped;
     VkClearValue value;
     cpp::cx_memcpy(value.color.float32, &cv.color.f4.x, COUNT_OF(value.color.float32) * sizeof(cv.color.f4[0]));
     return value;
@@ -554,6 +571,7 @@ VkClearValue platform::vk_rhi_parse_color_clear_value(rhi::clear_value cv)
 
 VkClearValue platform::vk_rhi_parse_depth_clear_value(const rhi::clear_value cv)
 {
+    ZoneScoped;
     return {
         .depthStencil = {.depth = cv.ds.depth, .stencil = cv.ds.stencil}
     };
@@ -561,6 +579,7 @@ VkClearValue platform::vk_rhi_parse_depth_clear_value(const rhi::clear_value cv)
 
 VkPrimitiveTopology platform::vk_rhi_parse_topology(const rhi::topology topology)
 {
+    ZoneScoped;
     switch (topology)
     {
     case rhi::topology::list_points :
@@ -592,6 +611,7 @@ VkPrimitiveTopology platform::vk_rhi_parse_topology(const rhi::topology topology
 
 VkBlendOp platform::vk_rhi_parse_blend_op(const rhi::blend_op blend_op)
 {
+    ZoneScoped;
     switch (blend_op)
     {
     case rhi::blend_op::max :
@@ -610,6 +630,7 @@ VkBlendOp platform::vk_rhi_parse_blend_op(const rhi::blend_op blend_op)
 
 VkBlendFactor platform::vk_rhi_parse_blend_factor(const rhi::blend_factor blend_factor)
 {
+    ZoneScoped;
     switch (blend_factor)
     {
     case rhi::blend_factor::one :
@@ -638,6 +659,7 @@ VkBlendFactor platform::vk_rhi_parse_blend_factor(const rhi::blend_factor blend_
 
 VkAttachmentLoadOp platform::vk_rhi_parse_load_op(const rhi::resource_load_op load_op)
 {
+    ZoneScoped;
     switch (load_op)
     {
     case rhi::resource_load_op::load :
@@ -655,6 +677,7 @@ VkAttachmentLoadOp platform::vk_rhi_parse_load_op(const rhi::resource_load_op lo
 
 VkAttachmentStoreOp platform::vk_rhi_parse_store_op(const rhi::resource_store_op store_op)
 {
+    ZoneScoped;
     switch (store_op)
     {
     case rhi::resource_store_op::store :
@@ -669,10 +692,11 @@ VkAttachmentStoreOp platform::vk_rhi_parse_store_op(const rhi::resource_store_op
 
 VkAccessFlags2 platform::vk_rhi_parse_access_flags(const rhi::barrier_access_bits access)
 {
+    ZoneScoped;
     VkAccessFlags2 result = 0;
-    for (u32 i = 0; i < reflection::get_enum_values_count<rhi::barrier_access>(); i++)
+    for (u32 i = 0; i < reflection::get_enum_values_count<rhi::barrier_access>() - 1; i++)
     {
-        const auto flag = reflection::get_enum_value_at<rhi::barrier_access>(i);
+        const auto flag = static_cast<rhi::barrier_access>(1 << i);
         if (!(flag & access))
         {
             continue;
@@ -730,10 +754,11 @@ VkAccessFlags2 platform::vk_rhi_parse_access_flags(const rhi::barrier_access_bit
 
 VkPipelineStageFlags2 platform::vk_rhi_parse_stage_flags(const rhi::barrier_stage_bits stages)
 {
+    ZoneScoped;
     VkAccessFlags2 result = 0;
-    for (u32 i = 0; i < reflection::get_enum_values_count<rhi::barrier_stage>(); i++)
+    for (u32 i = 0; i < reflection::get_enum_values_count<rhi::barrier_stage>() - 1; i++)
     {
-        const auto flag = reflection::get_enum_value_at<rhi::barrier_stage>(i);
+        const auto flag = static_cast<rhi::barrier_stage>(1 << i);
         if (!(flag & stages))
         {
             continue;
