@@ -95,6 +95,12 @@ find_program(DXC_EXECUTABLE
         HINTS "$ENV{VULKAN_SDK}/bin"
 )
 
+find_program(SPIRV_CROSS_EXECUTABLE
+        NAMES spirv-cross
+        HINTS "$ENV{VULKAN_SDK}/bin"
+        REQUIRED
+)
+
 file(READ "${PROJECT_SOURCE_DIR}/shaders.cfg" SHADERS_CONFIG)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/shaders.cfg")
 
@@ -138,6 +144,7 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
                 OUTPUT "${SHADER_BIN_OUTPUT}.spv"
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
                 COMMAND ${DXC_EXECUTABLE} -spirv -fspv-target-env=vulkan1.3 -T ${SHADER_PROFILE} -E main -WX
+                -enable-16bit-types -fvk-use-dx-layout -fvk-support-nonzero-base-vertex -fvk-support-nonzero-base-instance
                 ${DXC_SPIRV_CONFIG_FLAGS} ${SHADER_DEF}
                 -Fo "${SHADER_BIN_OUTPUT}.spv" "${SHADER_INPUT_PATH}"
                 DEPENDS ${SHADER_DEPENDENCIES}
@@ -151,6 +158,7 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
                     OUTPUT "${SHADER_BIN_OUTPUT}.dxl"
                     COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
                     COMMAND ${DXC_EXECUTABLE} -T ${SHADER_PROFILE} -E main -WX
+                    -enable-16bit-types -Wno-ignored-attributes
                     ${DXC_DXIL_CONFIG_FLAGS} ${SHADER_DEF}
                     -Fo "${SHADER_BIN_OUTPUT}.dxl" "${SHADER_INPUT_PATH}"
                     DEPENDS ${SHADER_DEPENDENCIES}
