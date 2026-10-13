@@ -2,13 +2,12 @@
 #include "utils/math.hlsl"
 #include "include/shaders/types.hlsl"
 
-[[vk::image_format("unknown")]] RWTexture2D<float4> o_color: register(u0);
+[[vk::combinedImageSampler]] Texture2D    color_texture:         register(t0);
+[[vk::combinedImageSampler]] SamplerState color_texture_sampler: register(s0);
+[[vk::combinedImageSampler]] Texture2D    depth_texture:         register(t1);
+[[vk::combinedImageSampler]] SamplerState depth_texture_sampler: register(s1);
 
-// TODO(dx12): D3D12 has no combined image samplers, textures and their samplers are bound separately there (tN + sN)
-[[vk::combinedImageSampler]] Texture2D    color_texture:         register(t1);
-[[vk::combinedImageSampler]] SamplerState color_texture_sampler: register(s1);
-[[vk::combinedImageSampler]] Texture2D    depth_texture:         register(t2);
-[[vk::combinedImageSampler]] SamplerState depth_texture_sampler: register(s2);
+[[vk::image_format("unknown")]] RWTexture2D<float4> o_color: register(u2);
 
 struct PushConstants
 {
@@ -27,7 +26,7 @@ static const float kTextureEdgeBlend   = 0.5F;
 
 float fxaa_luma(float3 rgb)
 {
-    return dot(rgb, float3(0.299F, 0.587F, 0.114F));
+    return dot(tonemap(rgb), float3(0.299F, 0.587F, 0.114F));
 }
 
 float linearize_depth(float depth)

@@ -17,7 +17,8 @@
       "frustum.vert.spv"
     ],
     "options": {
-      "topology": "list_lines"
+      "topology": "list_lines",
+      "depth_format": "d32sf"
     }
   },
   "task_cull_pipeline": {
@@ -245,6 +246,16 @@
   "shadow_cull": {
     "shaders": [
       "shadow_cull.comp.spv"
+    ]
+  },
+  "tonemap_pipeline": {
+    "shaders": [
+      "tonemap.comp.spv"
+    ]
+  },
+  "mv_from_depth_pipeline": {
+    "shaders": [
+      "mv_from_depth.comp.spv"
     ]
   },
   "triangle": {

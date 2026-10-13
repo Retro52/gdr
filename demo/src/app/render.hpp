@@ -23,7 +23,8 @@ namespace app
 
     void reset_draw_count_buffer(const rhi::impl& rhi, rhi::command_buffer cmd, const rhi::buffer& draw_count_buffer);
 
-    rhi::image create_color_image(const rhi::impl& rhi, const ivec2& size, rhi::image_format format, rhi::context ctx);
+    rhi::image create_color_image(const rhi::impl& rhi, const ivec2& size, rhi::image_format format, rhi::context ctx,
+                                  rhi::image_usage extra_usage = rhi::image_usage::sampled);
 
     rhi::image create_depth_image(const rhi::impl& rhi, const ivec2& size, rhi::image_format format, rhi::context ctx);
 

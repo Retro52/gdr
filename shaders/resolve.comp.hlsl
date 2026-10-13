@@ -1,12 +1,10 @@
 #include "include/shaders/types.hlsl"
 
 #include "utils/pbr.hlsl"
-#include "utils/post.hlsl"
 #include "utils/math.hlsl"
 
 [[vk::image_format("unknown")]] RWTexture2D<float4> o_color:  register(u0);
-// TODO(dx12): typed UAV loads from R32G32_UINT need D3D12_FEATURE_DATA_D3D12_OPTIONS::TypedUAVLoadAdditionalFormats
-[[vk::image_format("rg32ui")]]  RWTexture2D<uint2>  i_visbuf: register(u1);
+[[vk::image_format("unknown")]] RWTexture2D<uint2>  i_visbuf: register(u1);
 
 StructuredBuffer<uint>   indices:  register(t2);
 StructuredBuffer<Vertex> vertices: register(t3);
@@ -22,7 +20,6 @@ StructuredBuffer<ShadowCascadesData> shadow_cascades: register(t10);
 
 SamplerState textures_sampler: register(s11);
 
-// TODO(dx12): D3D12 has no combined image samplers, textures and their samplers are bound separately there (tN + sN)
 [[vk::combinedImageSampler]] Texture2D    depth_texture:         register(t12);
 [[vk::combinedImageSampler]] SamplerState depth_texture_sampler: register(s12);
 
@@ -40,28 +37,6 @@ SamplerState textures_sampler: register(s11);
 Texture2D textures[]: register(t0, space1);
 
 [[vk::push_constant]] ConstantBuffer<ResolvePassPushConstants> pc: register(b0);
-
-static const uint draw_debug_shaded           = 0;
-static const uint draw_debug_lit              = 1;
-static const uint draw_debug_lit_diffuse      = 2;
-static const uint draw_debug_lit_ambient      = 3;
-static const uint draw_debug_lit_specular     = 4;
-static const uint draw_debug_uv               = 5;
-static const uint draw_debug_normal           = 6;
-static const uint draw_debug_tangent          = 7;
-static const uint draw_debug_depth            = 8;
-static const uint draw_debug_world_pos        = 9;
-static const uint draw_debug_color            = 10;
-static const uint draw_debug_metallic         = 11;
-static const uint draw_debug_roughness        = 12;
-static const uint draw_debug_albedo_texture   = 13;
-static const uint draw_debug_normal_texture   = 14;
-static const uint draw_debug_omr_texture      = 15;
-static const uint draw_debug_triangle_id      = 16;
-static const uint draw_debug_instance_id      = 17;
-static const uint draw_debug_triangle_face    = 18;
-static const uint draw_debug_shadow           = 19;
-static const uint draw_debug_shadow_cascades  = 20;
 
 #define TEXTURE2DG(id, uv, dfdx, dfdy) textures[NonUniformResourceIndex(id)].SampleGrad(textures_sampler, uv, dfdx, dfdy)
 #define DTEXTURE2D(id, uv, dfdx, dfdy) (id > 0 ? textures[NonUniformResourceIndex(id)].SampleGrad(textures_sampler, uv, dfdx, dfdy) : float4(1.0F, 0.25F, 0.95F, 1.0F))
@@ -269,7 +244,7 @@ void main(uint3 global_id: SV_DispatchThreadID)
         float disc_coverage = get_sun_disc_coverage(dir, world[0].sun_direction, kSunHalfAngle, pixel_angle);
 
         float3 color = sky + sun_tint * disc_luminance * disc_coverage;
-        o_color[pixel] = from_linear(float4(tonemap(color * exposure), 1.0F));
+        o_color[pixel] = float4(color * exposure, 1.0F);
         return;
     }
 
@@ -334,10 +309,10 @@ void main(uint3 global_id: SV_DispatchThreadID)
     float3 albedo;
     switch (world[0].debug_mode)
     {
-        case draw_debug_lit:
-        case draw_debug_lit_diffuse:
-        case draw_debug_lit_ambient:
-        case draw_debug_lit_specular:
+        case kDebugModeLit:
+        case kDebugModeLitDiffuse:
+        case kDebugModeLitAmbient:
+        case kDebugModeLitSpecular:
             albedo = 1.0F.xxx;
             break;
         default:
@@ -422,31 +397,31 @@ void main(uint3 global_id: SV_DispatchThreadID)
     float3 ambient_specular =  env_prefiltered_color * (f0 * env_brdf.x + 1.0.xxx * env_brdf.y) * world[0].envmap_scale;
 
     float3 color = (direct + ambient_diffuse + ambient_specular) * exposure;
-    float4 result = from_linear(float4(tonemap(color), 1.0F));
+    float4 result = float4(color, 1.0F);
 
 #if SHADERS_DEBUG
-    if (world[0].debug_mode != draw_debug_shaded)
+    if (world[0].debug_mode != kDebugModeShaded)
     {
-        if (world[0].debug_mode == draw_debug_lit_diffuse)     { color = tonemap(direct * exposure); }
-        if (world[0].debug_mode == draw_debug_lit_ambient)     { color = tonemap(ambient_diffuse * exposure); }
-        if (world[0].debug_mode == draw_debug_lit_specular)    { color = tonemap(ambient_specular * exposure); }
-        if (world[0].debug_mode == draw_debug_uv)              { color = float3(uv, 0.0F); }
-        if (world[0].debug_mode == draw_debug_normal)          { color = nrm; }
-        if (world[0].debug_mode == draw_debug_tangent)         { color = tangent.xyz; }
-        if (world[0].debug_mode == draw_debug_depth)           { color = depth_texture.SampleLevel(depth_texture_sampler, px / float2(image_size), 0.0F).rgb; }
-        if (world[0].debug_mode == draw_debug_world_pos)       { color = normalize(view_pos); }
-        if (world[0].debug_mode == draw_debug_color)           { color = diffuse_factor.rgb; }
-        if (world[0].debug_mode == draw_debug_metallic)        { color = metallic.xxx; }
-        if (world[0].debug_mode == draw_debug_roughness)       { color = roughness.xxx; }
-        if (world[0].debug_mode == draw_debug_albedo_texture)  { color = DTEXTURE2D(albedo_idx, uv, dfdx, dfdy).rgb; }
-        if (world[0].debug_mode == draw_debug_normal_texture)  { color = DTEXTURE2D(normal_idx, uv, dfdx, dfdy).rgb; }
-        if (world[0].debug_mode == draw_debug_omr_texture)     { color = DTEXTURE2D(met_roughness_idx, uv, dfdx, dfdy).rgb; }
-        if (world[0].debug_mode == draw_debug_triangle_id)     { color = hash_color(i0); }
-        if (world[0].debug_mode == draw_debug_instance_id)     { color = hash_color(instance_id); }
-        if (world[0].debug_mode == draw_debug_triangle_face)   { color = hash_color(uint(is_front_face)); }
-        if (world[0].debug_mode == draw_debug_shadow)          { color = shadow_factor.xxx; }
-        if (world[0].debug_mode == draw_debug_shadow_cascades) { color = lerp(color, hash_color(view_depth >= shadow_cascades[0].max_range ? kMaxShadowCascades : get_shadow_cascade_index(view_depth)), 0.5F); }
-        result = from_linear(float4(color, 1.0F));
+        if (world[0].debug_mode == kDebugModeLitDiffuse)     { color = direct * exposure; }
+        if (world[0].debug_mode == kDebugModeLitAmbient)     { color = ambient_diffuse * exposure; }
+        if (world[0].debug_mode == kDebugModeLitSpecular)    { color = ambient_specular * exposure; }
+        if (world[0].debug_mode == kDebugModeUV)             { color = float3(uv, 0.0F); }
+        if (world[0].debug_mode == kDebugModeNormal)         { color = nrm; }
+        if (world[0].debug_mode == kDebugModeTangent)        { color = tangent.xyz; }
+        if (world[0].debug_mode == kDebugModeDepth)          { color = depth_texture.SampleLevel(depth_texture_sampler, px / float2(image_size), 0.0F).rgb; }
+        if (world[0].debug_mode == kDebugModeWorldPos)       { color = normalize(view_pos); }
+        if (world[0].debug_mode == kDebugModeColor)          { color = diffuse_factor.rgb; }
+        if (world[0].debug_mode == kDebugModeMetallic)       { color = metallic.xxx; }
+        if (world[0].debug_mode == kDebugModeRoughness)      { color = roughness.xxx; }
+        if (world[0].debug_mode == kDebugModeAlbedoTexture)  { color = DTEXTURE2D(albedo_idx, uv, dfdx, dfdy).rgb; }
+        if (world[0].debug_mode == kDebugModeNormalTexture)  { color = DTEXTURE2D(normal_idx, uv, dfdx, dfdy).rgb; }
+        if (world[0].debug_mode == kDebugModeOmrTexture)     { color = DTEXTURE2D(met_roughness_idx, uv, dfdx, dfdy).rgb; }
+        if (world[0].debug_mode == kDebugModeTriangleId)     { color = hash_color(i0); }
+        if (world[0].debug_mode == kDebugModeInstanceId)     { color = hash_color(instance_id); }
+        if (world[0].debug_mode == kDebugModeTriangleFace)   { color = hash_color(uint(is_front_face)); }
+        if (world[0].debug_mode == kDebugModeShadow)         { color = shadow_factor.xxx; }
+        if (world[0].debug_mode == kDebugModeShadowCascades) { color = lerp(color, hash_color(view_depth >= shadow_cascades[0].max_range ? kMaxShadowCascades : get_shadow_cascade_index(view_depth)), 0.5F); }
+        result = float4(color, 1.0F);
     }
 #endif
 

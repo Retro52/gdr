@@ -82,7 +82,6 @@ Output main(Input input)
     float far = frame_cull[0].frustum[5];
     float near = frame_cull[0].frustum[4];
 
-    // HLSL matrix constructors take rows, this is the transpose of the column-major GLSL mat4(...) layout
     float4x4 proj = float4x4(
         frame_cull[0].p00, 0.0, 0.0, 0.0,
         0.0, frame_cull[0].p11, 0.0, 0.0,

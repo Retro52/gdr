@@ -14,6 +14,10 @@ using ivec2 = glm::ivec2;
 using ivec3 = glm::ivec3;
 using ivec4 = glm::ivec4;
 
+using u16vec2 = glm::u16vec2;
+using u16vec3 = glm::u16vec3;
+using u16vec4 = glm::u16vec4;
+
 using uvec2 = glm::uvec2;
 using uvec3 = glm::uvec3;
 using uvec4 = glm::uvec4;

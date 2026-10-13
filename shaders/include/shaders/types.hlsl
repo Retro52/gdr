@@ -2,9 +2,6 @@
 
 #include "constants.hlsl"
 
-// TODO(dx12): 16-bit types need -enable-16bit-types, i.e. native 16-bit ops on D3D12 (SM 6.2+). DXC also declares
-// Int16/Float16 SPIR-V capabilities for them (even for storage-only use), so Vulkan needs shaderInt16 + shaderFloat16
-
 struct Vertex
 {
     float px, py, pz;
@@ -20,8 +17,7 @@ struct Meshlet
     float16_t cone_cutoff;
     float16_t sphere_center[3];
     float16_t sphere_radius;
-    // TODO(dx12): HLSL has no 8-bit types, so uint8_t vertices_count (low byte) and uint8_t triangles_count (high byte)
-    // are read as a single u16
+
     uint16_t packed_counts;
 
     uint vertices_count() { return uint(packed_counts) & 0xFFu; }
@@ -114,6 +110,13 @@ struct ResolvePassPushConstants
 {
     float4x4 vp;
     float4x4 vp_inverse;
+};
+
+// jittered world matrices
+struct MotionVectorsData
+{
+    float4x4 inv_frame_vp;
+    float4x4 prev_frame_vp;
 };
 
 struct FrameWorldData

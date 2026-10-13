@@ -104,4 +104,13 @@ namespace rhi
 
     void vk_submit(context context, queue queue, const submit_info& info);
     void vk_present(command_buffer cmd, swapchain swapchain, queue submit, queue present);
+
+    result<ffx_context> vk_ffx_create_upscale_context(context ctx, const ffx_upscale_desc& desc);
+    void vk_ffx_destroy_context(ffx_context& ffx_ctx);
+
+    result<vec2> vk_ffx_upscale_query_jitter(ffx_context ffx_ctx, u32 render_width, u32 display_width,
+                                             i32 jitter_index);
+    void vk_ffx_upscale_dispatch(ffx_context ffx_ctx, command_buffer cmd, const ffx_upscale_params& params,
+                                 const ffx_upscale_resources& resources);
+
 }

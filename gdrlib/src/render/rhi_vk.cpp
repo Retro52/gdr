@@ -6,11 +6,16 @@
 #include <render/platform/vk/vk_descriptor_set.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
+#include <render/platform/vk/vk_ffx.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_timeline_semaphore.hpp>
 #include <render/platform/vk/vk_utils.hpp>
 #include <render/rhi_util.hpp>
 #include <render/rhi_vk.hpp>
+
+// clang-format off
+#include <ffx_api/vk/ffx_api_vk.hpp>
+// clang-format on
 
 struct vk_swapchain_sync_objects
 {
@@ -81,7 +86,7 @@ static void vk_rhi_set_object_name_if_needed(VkDevice device, T object, const ch
         .pObjectName  = name,
     };
 
-    vkSetDebugUtilsObjectNameEXT(device, &info);
+    // vkSetDebugUtilsObjectNameEXT(device, &info);
 }
 
 template<typename T, typename H>
@@ -114,7 +119,7 @@ static VkImageMemoryBarrier2 vk_rhi_parse_image_barrier(const rhi::image_barrier
     }
 
     const auto new_layout = image_barrier.layout_after == rhi::image_layout::current
-                              ? vk_image->layout
+                              ? vk_image->meta.layout
                               : platform::vk_rhi_parse_image_layout(image_barrier.layout_after);
     const auto range      = platform::vk_image_subresource_range(
         platform::vk_rhi_parse_aspect_flags(image_barrier.range.aspects),
@@ -133,7 +138,7 @@ static VkImageMemoryBarrier2 vk_rhi_parse_image_barrier(const rhi::image_barrier
         .dstAccessMask = platform::vk_rhi_parse_access_flags(image_barrier.after.access),
 
         .oldLayout = image_barrier.layout_before == rhi::image_layout::current
-                       ? vk_image->layout
+                       ? vk_image->meta.layout
                        : platform::vk_rhi_parse_image_layout(image_barrier.layout_before),
         .newLayout = new_layout,
 
@@ -144,7 +149,7 @@ static VkImageMemoryBarrier2 vk_rhi_parse_image_barrier(const rhi::image_barrier
         .subresourceRange = range,
     };
 
-    vk_image->layout = new_layout;
+    vk_image->meta.layout = new_layout;
     return barrier;
 }
 
@@ -207,7 +212,7 @@ static result<vk_rhi_attachment_objects> vk_rhi_parse_attachment_objects(const r
         }
 
         result.view   = vk_view->view;
-        result.layout = vk_view->source.layout;
+        result.layout = vk_view->source.meta.layout;
     }
     else
     {
@@ -218,7 +223,7 @@ static result<vk_rhi_attachment_objects> vk_rhi_parse_attachment_objects(const r
         }
 
         result.view   = vk_image->view;
-        result.layout = vk_image->layout;
+        result.layout = vk_image->meta.layout;
     }
 
     return result;
@@ -1058,9 +1063,9 @@ void rhi::vk_cmd_image_blit(command_buffer cmd, image src, image dst, const blit
 
     vkCmdBlitImage(vk_cmd->cmd_buffer,
                    vk_src_image->image,
-                   vk_src_image->layout,
+                   vk_src_image->meta.layout,
                    vk_dst_image->image,
-                   vk_dst_image->layout,
+                   vk_dst_image->meta.layout,
                    1,
                    &blit,
                    platform::vk_rhi_parse_sampler_filter(info.filter));
@@ -1189,7 +1194,7 @@ void rhi::vk_cmd_clear_depth_attachment(command_buffer cmd, image image, const d
     const VkClearDepthStencilValue vk_value {.depth = value.depth, .stencil = value.stencil};
     const auto range = platform::vk_image_subresource_range(VK_IMAGE_ASPECT_DEPTH_BIT);
 
-    vkCmdClearDepthStencilImage(vk_cmd->cmd_buffer, vk_image->image, vk_image->layout, &vk_value, 1, &range);
+    vkCmdClearDepthStencilImage(vk_cmd->cmd_buffer, vk_image->image, vk_image->meta.layout, &vk_value, 1, &range);
 }
 
 void rhi::vk_cmd_clear_color_attachment(command_buffer cmd, image image, const color_clear_value value)
@@ -1209,7 +1214,7 @@ void rhi::vk_cmd_clear_color_attachment(command_buffer cmd, image image, const c
     };
 
     const auto range = platform::vk_image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
-    vkCmdClearColorImage(vk_cmd->cmd_buffer, vk_image->image, vk_image->layout, &vk_color, 1, &range);
+    vkCmdClearColorImage(vk_cmd->cmd_buffer, vk_image->image, vk_image->meta.layout, &vk_color, 1, &range);
 }
 
 void rhi::vk_cmd_set_draw_state(command_buffer cmd, std::span<const attachment_state_info> color_attachments,
@@ -1272,7 +1277,6 @@ void rhi::vk_cmd_set_draw_state(command_buffer cmd, std::span<const attachment_s
                            .minDepth = 0.0F,
                            .maxDepth = 1.0F};
 
-    vkCmdSetCullMode(vk_cmd->cmd_buffer, VK_CULL_MODE_NONE);
     vkCmdSetScissor(vk_cmd->cmd_buffer, 0, 1, &vp);
     vkCmdSetViewport(vk_cmd->cmd_buffer, 0, 1, &vkvp);
 }
@@ -1291,7 +1295,7 @@ void rhi::vk_cmd_clear_draw_state(command_buffer cmd)
     vkCmdEndRendering(vk_cmd->cmd_buffer);
 }
 
-void rhi::vk_cmd_set_cull_mode(command_buffer cmd, cull_mode mode)
+void rhi::vk_cmd_set_cull_mode(command_buffer cmd, const cull_mode mode)
 {
     ZoneScoped;
     const auto* vk_cmd = cast_from_handle<platform::vk_command_buffer>(cmd);
@@ -1690,4 +1694,83 @@ void rhi::vk_present(command_buffer cmd, swapchain swapchain, queue submit, queu
     }
 
     vk_sc->frame_index = (vk_sc->frame_index + 1) % vk_sc->sync_objects.size();
+}
+
+auto rhi::vk_ffx_create_upscale_context(context ctx, const ffx_upscale_desc& desc) -> result<ffx_context>
+{
+    ZoneScoped;
+    const auto* vk_ctx = cast_from_handle<platform::vk_context>(ctx);
+
+    assert2(vk_ctx);
+    if (!vk_ctx)
+    {
+        return error("failed to access context");
+    }
+
+    auto vk_ffx_ctx = platform::vk_ffx_create_upscale_context(vk_ctx->device, vk_ctx->physical_device, desc);
+    RESULT_FORWARD_IF_FAILED(vk_ffx_ctx);
+
+    return create_handle<ffx_context>(*vk_ffx_ctx);
+}
+
+void rhi::vk_ffx_destroy_context(ffx_context& ffx_ctx)
+{
+    ZoneScoped;
+    auto* vk_ffx_ctx = cast_from_handle<ffx::Context>(ffx_ctx);
+
+    assert2(vk_ffx_ctx);
+    if (vk_ffx_ctx)
+    {
+        ffx::DestroyContext(*vk_ffx_ctx);
+        clear_handle(vk_ffx_ctx, ffx_ctx);
+    }
+}
+
+auto rhi::vk_ffx_upscale_query_jitter(ffx_context ffx_ctx, const u32 render_width, const u32 display_width,
+                                      const i32 jitter_index) -> result<vec2>
+{
+    ZoneScoped;
+    const auto* vk_ffx_ctx = cast_from_handle<ffx::Context>(ffx_ctx);
+
+    assert2(vk_ffx_ctx);
+    if (!vk_ffx_ctx)
+    {
+        return error("failed to access context");
+    }
+
+    return platform::vk_ffx_get_jitter_offset(*vk_ffx_ctx, render_width, display_width, jitter_index);
+}
+
+void rhi::vk_ffx_upscale_dispatch(ffx_context ffx_ctx, command_buffer cmd, const ffx_upscale_params& params,
+                                  const ffx_upscale_resources& resources)
+{
+    ZoneScoped;
+    const auto* vk_ffx_ctx = cast_from_handle<ffx::Context>(ffx_ctx);
+    const auto* vk_cmd     = cast_from_handle<platform::vk_command_buffer>(cmd);
+
+    assert2(vk_ffx_ctx && vk_cmd);
+    if (!vk_ffx_ctx || !vk_cmd)
+    {
+        return;
+    }
+
+    auto query = [](const rhi::image attachment) -> FfxApiResource
+    {
+        if (attachment == null_image)
+        {
+            return {};
+        }
+
+        return platform::vk_ffx_get_resource_wrapper(*cast_from_handle<platform::vk_image>(attachment));
+    };
+
+    const platform::ffx_upscale_resources vk_resources {
+        .color                        = query(resources.color),
+        .depth                        = query(resources.depth),
+        .motion_vectors               = query(resources.motion_vectors),
+        .output                       = query(resources.output),
+        .reactive                     = query(resources.reactive),
+        .transparency_and_composition = query(resources.transparency_and_composition),
+    };
+    platform::vk_ffx_dispatch_upscale(*vk_ffx_ctx, vk_cmd->cmd_buffer, params, vk_resources);
 }

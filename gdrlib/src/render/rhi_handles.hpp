@@ -39,6 +39,8 @@ namespace rhi
     RHI_REGISTER_HANDLE(swapchain);
     RHI_REGISTER_HANDLE(bindless_set);
     RHI_REGISTER_HANDLE(command_buffer);
+
+    RHI_REGISTER_HANDLE(ffx_context);
 }
 
 #undef RHI_REGISTER_HANDLE

@@ -1,17 +1,32 @@
 #pragma once
 
+#include <types.hpp>
+
 #include <pod_types.hpp>
 #include <render/platform/vk/vma.hpp>
 #include <result.hpp>
 
 namespace platform
 {
+    struct vk_image_meta
+    {
+        u16vec3 dimensions;
+        u16 mips_count   = 0;
+        u16 layers_count = 0;
+        u16 type         = 0;
+
+        VkFormat format         = VK_FORMAT_UNDEFINED;
+        VkImageLayout layout    = VK_IMAGE_LAYOUT_UNDEFINED;
+        VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+    };
+
     struct vk_image
     {
         VkImage image            = VK_NULL_HANDLE;
         VkImageView view         = VK_NULL_HANDLE;
         VmaAllocation allocation = VK_NULL_HANDLE;
-        VkImageLayout layout     = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        vk_image_meta meta;
     };
 
     VkImageSubresourceRange vk_image_subresource_range(VkImageAspectFlags aspect_flag);

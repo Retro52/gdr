@@ -24,12 +24,13 @@
 #include <scene/loader.hpp>
 #include <scene/mesh_load.hpp>
 #include <scene/scene.hpp>
-#include <shaders/bindings/draw.h>
 #include <shaders/bindings/fill.h>
 #include <shaders/bindings/shadow_cull.h>
 #include <shaders/bindings/shadow_draw.h>
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
+
+#include <shaders/bindings/draw.hlsl>
 
 #define NO_EDITOR        1
 #define NO_PERF_QUERY    1
@@ -56,7 +57,7 @@
 
 namespace
 {
-    REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_ambient, lit_specular, uv, normal, tangent, depth,
+    REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_ambient, lit_specular, uv, normal, tangent, depth, velocity,
                   world_pos, color, metallic, roughness, albedo_texture, normal_texture, omr_texture, triangle_id,
                   instance_id, triangle_face, shadow, shadow_cascades);
 
@@ -482,7 +483,7 @@ int app::instance::run()
     RESULT_EXIT_IF_FAILED(context);
 
     constexpr auto kFramesInFlight  = 2;
-    constexpr auto kSwapchainVsync  = true;
+    constexpr auto kSwapchainVsync  = false;
     constexpr auto kSwapchainFormat = rhi::image_format::r8g8b8a8un;
     rhi::create_swapchain_info create_swapchain_info {
         .size             = m_window.get_size_in_px(),
@@ -494,10 +495,26 @@ int app::instance::run()
     auto swapchain = m_rhi.create_swapchain(*context, create_swapchain_info);
     RESULT_EXIT_IF_FAILED(swapchain);
 
+    auto ffx_upscale_context = m_rhi.ffx_create_upscale_context(*context,
+                                                                rhi::ffx_upscale_desc {
+                                                                    .display_size    = m_window.get_size_in_px(),
+                                                                    .max_render_size = m_window.get_size_in_px(),
+                                                                });
+    RESULT_EXIT_IF_FAILED(ffx_upscale_context);
+
     rhi::image depth_image = create_depth_image(m_rhi, m_window.get_size_in_px(), rhi::image_format::d32sf, *context);
 
-    rhi::image render_target =
-        create_color_image(m_rhi, m_window.get_size_in_px(), rhi::image_format::r8g8b8a8un, *context);
+    rhi::image motion_vectors_target = create_color_image(
+        m_rhi, m_window.get_size_in_px(), rhi::image_format::r16g16sf, *context, rhi::image_usage::transfer_src);
+
+    rhi::image aa_render_target =
+        create_color_image(m_rhi, m_window.get_size_in_px(), rhi::image_format::b10g11r11uf, *context);
+
+    rhi::image hdr_render_target =
+        create_color_image(m_rhi, m_window.get_size_in_px(), rhi::image_format::b10g11r11uf, *context);
+
+    rhi::image post_process_target = create_color_image(
+        m_rhi, m_window.get_size_in_px(), rhi::image_format::r8g8b8a8un, *context, rhi::image_usage::transfer_src);
 
     rhi::image vis_buffer = create_vis_buffer_image(m_rhi, m_window.get_size_in_px(), *context);
 
@@ -543,12 +560,26 @@ int app::instance::run()
         rhi::impl& rhi;
         rhi::context& context;
         rhi::swapchain& swapchain;
+        rhi::ffx_context& ffx_upscale_context;
 
         rhi::image& vis_buffer;
         rhi::image& depth_image;
-        rhi::image& render_target;
+        rhi::image& aa_render_target;
+        rhi::image& hdr_render_target;
+        rhi::image& post_process_target;
+        rhi::image& motion_vectors_target;
         depth_pyramid_data& depth_pyramid;
-    } resize_ctx(m_rhi, *context, *swapchain, vis_buffer, depth_image, render_target, depth_pyramid);
+    } resize_ctx(m_rhi,
+                 *context,
+                 *swapchain,
+                 *ffx_upscale_context,
+                 vis_buffer,
+                 depth_image,
+                 aa_render_target,
+                 hdr_render_target,
+                 post_process_target,
+                 motion_vectors_target,
+                 depth_pyramid);
 
     m_events_queue.add_watcher(
         event_type::window_size_changed,
@@ -566,14 +597,39 @@ int app::instance::run()
             };
 
             ctx.swapchain = *ctx.rhi.resize_swapchain(ctx.context, ctx.swapchain, update_swapchain_info);
-            ctx.rhi.destroy_image(ctx.context, ctx.depth_image);
-            ctx.rhi.destroy_image(ctx.context, ctx.render_target);
 
+            ctx.rhi.destroy_image(ctx.context, ctx.depth_image);
+            ctx.rhi.destroy_image(ctx.context, ctx.aa_render_target);
+            ctx.rhi.destroy_image(ctx.context, ctx.hdr_render_target);
+            ctx.rhi.destroy_image(ctx.context, ctx.post_process_target);
+            ctx.rhi.destroy_image(ctx.context, ctx.motion_vectors_target);
+
+            ctx.rhi.ffx_destroy_context(ctx.ffx_upscale_context);
+            ctx.ffx_upscale_context = *ctx.rhi.ffx_create_upscale_context(ctx.context,
+                                                                          rhi::ffx_upscale_desc {
+                                                                              .display_size    = payload.window.size_px,
+                                                                              .max_render_size = payload.window.size_px,
+                                                                          });
             ctx.depth_image =
                 create_depth_image(ctx.rhi, payload.window.size_px, rhi::image_format::d32sf, ctx.context);
 
-            ctx.render_target =
-                create_color_image(ctx.rhi, payload.window.size_px, rhi::image_format::r8g8b8a8un, ctx.context);
+            ctx.aa_render_target =
+                create_color_image(ctx.rhi, payload.window.size_px, rhi::image_format::b10g11r11uf, ctx.context);
+
+            ctx.hdr_render_target =
+                create_color_image(ctx.rhi, payload.window.size_px, rhi::image_format::b10g11r11uf, ctx.context);
+
+            ctx.motion_vectors_target = create_color_image(ctx.rhi,
+                                                           payload.window.size_px,
+                                                           rhi::image_format::r16g16sf,
+                                                           ctx.context,
+                                                           rhi::image_usage::transfer_src);
+
+            ctx.post_process_target = create_color_image(ctx.rhi,
+                                                         payload.window.size_px,
+                                                         rhi::image_format::r8g8b8a8un,
+                                                         ctx.context,
+                                                         rhi::image_usage::transfer_src);
 
             destroy_depth_pyramid(ctx.rhi, ctx.depth_pyramid, ctx.context);
             ctx.depth_pyramid =
@@ -597,7 +653,7 @@ int app::instance::run()
                                                          .dbg_name    = "shadow_alpha_sampler",
                                                      });
 
-    auto color_sampler = m_rhi.create_sampler(*context, {.mipmap_mode = rhi::sampler_mipmap_mode::nearest});
+    auto fxaa_sampler = m_rhi.create_sampler(*context, {.mipmap_mode = rhi::sampler_mipmap_mode::nearest});
 
     auto depth_texture_sampler = m_rhi.create_sampler(*context,
                                                       {
@@ -781,6 +837,7 @@ int app::instance::run()
 
     cpp::heap_array<mapped_buffer> world_data_buffers(*m_rhi.query_swapchain_images_count(*swapchain));
     cpp::heap_array<mapped_buffer> frame_cull_data_buffers(*m_rhi.query_swapchain_images_count(*swapchain));
+    cpp::heap_array<mapped_buffer> motion_vector_data_buffers(*m_rhi.query_swapchain_images_count(*swapchain));
     cpp::heap_array<mapped_buffer> shadow_cascades_data_buffers(*m_rhi.query_swapchain_images_count(*swapchain));
 
     for (u32 i = 0; i < *m_rhi.query_swapchain_images_count(*swapchain); i++)
@@ -792,19 +849,26 @@ int app::instance::run()
                                                           .usage_flags = rhi::buffer_usage::shader_rw,
                                                       });
 
-        shadow_cascades_data_buffers[i] = mapped_buffer::create(m_rhi,
-                                                                *context,
-                                                                rhi::create_buffer_info {
-                                                                    .size = sizeof(shader_types::ShadowCascadesData),
-                                                                    .usage_flags = rhi::buffer_usage::shader_rw,
-                                                                });
-
         frame_cull_data_buffers[i] = mapped_buffer::create(m_rhi,
                                                            *context,
                                                            rhi::create_buffer_info {
                                                                .size        = sizeof(shader_types::FrameCullData),
                                                                .usage_flags = rhi::buffer_usage::shader_rw,
                                                            });
+
+        motion_vector_data_buffers[i] = mapped_buffer::create(m_rhi,
+                                                              *context,
+                                                              rhi::create_buffer_info {
+                                                                  .size = sizeof(shader_types::MotionVectorsData),
+                                                                  .usage_flags = rhi::buffer_usage::shader_rw,
+                                                              });
+
+        shadow_cascades_data_buffers[i] = mapped_buffer::create(m_rhi,
+                                                                *context,
+                                                                rhi::create_buffer_info {
+                                                                    .size = sizeof(shader_types::ShadowCascadesData),
+                                                                    .usage_flags = rhi::buffer_usage::shader_rw,
+                                                                });
     }
 
     gpu_profile_data profile_data;
@@ -814,9 +878,11 @@ int app::instance::run()
 #endif
 
     glm::mat4 camera_proj;
+    glm::mat4 camera_proj_jittered;
+
     glm::mat4 camera_view;
-    glm::mat4 camera_proj_view;
     glm::mat4 debug_camera_view;
+    glm::mat4 mv_pref_frame_view_proj;
 
     u32 draw_materials_mask = 0xFFFF;
     debug_mode draw_debug_mode {debug_mode::shaded};
@@ -825,10 +891,26 @@ int app::instance::run()
     f32 envmap_compensation_ev = 0.0f;
     f32 envmap_intensity       = 1250.0f;
 
-    bool freeze_cull_data = false;
     // bool enable_vsync             = m_renderer.get_vsync();
+
+    bool enable_fsr_aa            = true;
+    bool fsr_aa_rcas              = false;
+    bool fsr_aa_reset             = false;
+    bool freeze_cull_data         = false;
     bool enable_fullscreen        = m_window.get_fullscreen();
     bool enable_meshlets_pipeline = mesh_shading_supported;
+
+    struct keyboard_controls_context
+    {
+        bool& fsr_aa_rcas;
+        bool& fsr_aa_reset;
+        bool& enable_fsr_aa;
+        bool& freeze_cull_data;
+        bool& enable_meshlets_pipeline;
+
+        debug_mode& draw_debug_mode;
+    } keyboard_controls_ctx(
+        fsr_aa_rcas, fsr_aa_reset, enable_fsr_aa, freeze_cull_data, enable_meshlets_pipeline, draw_debug_mode);
 
     m_events_queue.add_watcher(
         event_type::key_pressed,
@@ -836,11 +918,58 @@ int app::instance::run()
         {
             if (payload.keyboard.key == keycode::m)
             {
-                bool& var = *static_cast<bool*>(user_data);
+                bool& var = static_cast<keyboard_controls_context*>(user_data)->enable_meshlets_pipeline;
                 var       = !var;
+
+                LOG_INFO("Mesh shading is now: {}", var ? "enabled" : "disabled");
+            }
+
+            if (payload.keyboard.key == keycode::r)
+            {
+                bool& var = static_cast<keyboard_controls_context*>(user_data)->fsr_aa_reset;
+                var       = true;
+                LOG_INFO("FSR reset");
+            }
+            if (payload.keyboard.key == keycode::t)
+            {
+                bool& var = static_cast<keyboard_controls_context*>(user_data)->enable_fsr_aa;
+                var       = !var;
+
+                static_cast<keyboard_controls_context*>(user_data)->fsr_aa_reset = true;
+                LOG_INFO("FSR is now: {}", var ? "enabled" : "disabled");
+            }
+            if (payload.keyboard.key == keycode::y)
+            {
+                bool& var = static_cast<keyboard_controls_context*>(user_data)->fsr_aa_rcas;
+                var       = !var;
+
+                LOG_INFO("FSR RCAS is now: {}", var ? "enabled" : "disabled");
+            }
+
+            if (payload.keyboard.key == keycode::f)
+            {
+                bool& var = static_cast<keyboard_controls_context*>(user_data)->freeze_cull_data;
+                var       = !var;
+
+                LOG_INFO("Freeze cull data is now: {}", var ? "enabled" : "disabled");
+            }
+            if (payload.keyboard.key == keycode::sc_up)
+            {
+                debug_mode& var = static_cast<keyboard_controls_context*>(user_data)->draw_debug_mode;
+                var             = static_cast<debug_mode>(cpp::min(
+                    static_cast<u32>(var) + 1, static_cast<u32>(reflection::get_enum_values_count<debug_mode>() - 1)));
+
+                LOG_INFO("New debug view mode: {}", reflection::get_enum_name_at<debug_mode>(static_cast<u32>(var)));
+            }
+            if (payload.keyboard.key == keycode::sc_down)
+            {
+                debug_mode& var = static_cast<keyboard_controls_context*>(user_data)->draw_debug_mode;
+                var             = static_cast<debug_mode>(cpp::max(static_cast<u32>(var), 1U) - 1);
+
+                LOG_INFO("New debug view mode: {}", reflection::get_enum_name_at<debug_mode>(static_cast<u32>(var)));
             }
         },
-        &enable_meshlets_pipeline);
+        &keyboard_controls_ctx);
 
     auto get_time = []<typename T = f64>()
     {
@@ -958,7 +1087,7 @@ int app::instance::run()
         m_rhi.cmd_barriers(cmd, barriers);
     };
 
-    auto draw_scene = [&](rhi::command_buffer cmd, const rhi::pipeline& pipeline, const u32 material_class)
+    auto draw_scene = [&](const rhi::command_buffer cmd, const rhi::pipeline& pipeline, const u32 material_class)
     {
         ZoneScopedN("app.instance.run.draw_scene");
         // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "draw scene"));
@@ -998,20 +1127,21 @@ int app::instance::run()
             m_rhi.cmd_push_bindless_set(cmd, pipeline, *bindless_textures_desc_set, 1);
         }
 
+        const u32 image_index = *m_rhi.query_current_frame_index(*swapchain);
         descriptor_bindings bindings;
         bindings.bind_at(geometry_pool.vertex, shader_bindings::draw::kVertexBinding);
         bindings.bind_at(geometry_pool.materials, shader_bindings::draw::kMaterialBinding);
-        bindings.bind_at(rhi::binding(*bindless_textures_sampler), shader_bindings::draw::kTextureBinding);
         bindings.bind_at(geometry_pool.meshlets, shader_bindings::draw::kMeshletBinding);
         bindings.bind_at(geometry_pool.meshlets_payload, shader_bindings::draw::kMeshletDataBinding);
         bindings.bind_at(geometry_pool.primitives, shader_bindings::draw::kPrimitiveBinding);
         bindings.bind_at(geometry_pool.instances, shader_bindings::draw::kInstanceBinding);
+        bindings.bind_at(motion_vector_data_buffers[image_index].buffer, shader_bindings::draw::kMotVecBinding);
+        bindings.bind_at(rhi::binding(*bindless_textures_sampler), shader_bindings::draw::kTextureBinding);
 
         if (enable_meshlets_pipeline)
         {
             bindings.bind_at(meshlets_draw_indirect_buffer, shader_bindings::draw::kDrawBinding);
-            bindings.bind_at(frame_cull_data_buffers[*m_rhi.query_current_frame_index(*swapchain)].buffer,
-                             shader_bindings::draw::kCullBinding);
+            bindings.bind_at(frame_cull_data_buffers[image_index].buffer, shader_bindings::draw::kCullBinding);
             bindings.bind_at(meshlets_visibility_buffer, shader_bindings::draw::kVisibilityBinding);
             bindings.bind_at(rhi::binding(depth_pyramid.image, depth_pyramid.sampler),
                              shader_bindings::draw::kHiZBinding);
@@ -1232,7 +1362,6 @@ int app::instance::run()
 
                 camera_proj = camera_data.get_projection_matrix();
                 camera_view = camera_component::get_view_matrix(camera_transform.position, camera_transform.rotation);
-                camera_proj_view = camera_proj * camera_view;
 
                 auto& sun_transform = sun.get_component<transform_component>();
                 auto& sun_data      = sun.get_component<directional_light_component>();
@@ -1249,6 +1378,28 @@ int app::instance::run()
                     .envmap_scale      = envmap_intensity * glm::exp2(envmap_compensation_ev),
                     .render_resolution = m_window.get_size_in_px(),
                 };
+
+                auto& motion_vectors_buffer = motion_vector_data_buffers[*m_rhi.query_current_frame_index(*swapchain)];
+                (*static_cast<shader_types::MotionVectorsData*>(motion_vectors_buffer.mapped)) =
+                    shader_types::MotionVectorsData {
+                        .this_frame_vp = glm::inverse(freeze_cull_data ? camera_proj * debug_camera_view
+                                                                       : camera_proj * camera_view),
+                        .prev_frame_vp = mv_pref_frame_view_proj,
+                    };
+                mv_pref_frame_view_proj =
+                    freeze_cull_data ? camera_proj * debug_camera_view : camera_proj * camera_view;
+
+                vec2 frame_jitter = [](const auto& rhi, const auto& window, const auto& ffx_context)
+                {
+                    static u32 index      = 0;
+                    const u32 width       = window.get_size_in_px().x;
+                    const vec2 raw_jitter = *rhi.ffx_upscale_query_jitter(ffx_context, width, width, index++);
+                    return raw_jitter * vec2(2.0F, -2.0F) / vec2(window.get_size_in_px());
+                }(m_rhi, m_window, *ffx_upscale_context);
+
+                camera_proj_jittered = enable_fsr_aa
+                                         ? glm::translate(glm::mat4(1.0f), vec3(frame_jitter, 0.0f)) * camera_proj
+                                         : camera_proj;
 
                 auto& shadow_cascades_data_buffer =
                     shadow_cascades_data_buffers[*m_rhi.query_current_frame_index(*swapchain)];
@@ -1390,7 +1541,9 @@ int app::instance::run()
                     };
                     m_rhi.cmd_barriers(buffer, barriers);
                 }
-                app_cmd_transition_image(m_rhi, buffer, render_target, rhi::image_layout::common);
+                app_cmd_transition_image(m_rhi, buffer, aa_render_target, rhi::image_layout::common);
+                app_cmd_transition_image(m_rhi, buffer, hdr_render_target, rhi::image_layout::common);
+                app_cmd_transition_image(m_rhi, buffer, post_process_target, rhi::image_layout::common);
 
                 app_cmd_transition_image(m_rhi, buffer, *frame_image, rhi::image_layout::common);
 
@@ -1437,8 +1590,10 @@ int app::instance::run()
                     const auto& render_pipeline = get_render_pipeline(pipelines, i, false, enable_meshlets_pipeline);
 
                     m_rhi.cmd_bind_pso(buffer, render_pipeline);
-                    const auto push_constants = shader_types::DrawPushConstants {
-                        freeze_cull_data ? camera_proj * debug_camera_view : camera_proj_view, offset_table[i]};
+                    const auto push_constants =
+                        shader_types::DrawPushConstants {freeze_cull_data ? camera_proj_jittered * debug_camera_view
+                                                                          : camera_proj_jittered * camera_view,
+                                                         offset_table[i]};
                     m_rhi.cmd_push_constants(buffer, render_pipeline, &push_constants, sizeof(push_constants), 0);
 
                     m_rhi.cmd_set_cull_mode(
@@ -1506,7 +1661,6 @@ int app::instance::run()
                 if (freeze_cull_data)
                 {
                     m_rhi.cmd_clear_depth_attachment(buffer, depth_image, ds_clear);
-
                     m_rhi.cmd_clear_color_attachment(buffer, vis_buffer, vb_clear);
 
                     for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
@@ -1521,7 +1675,8 @@ int app::instance::run()
                             get_render_pipeline(pipelines, i, false, enable_meshlets_pipeline);
 
                         m_rhi.cmd_bind_pso(buffer, render_pipeline);
-                        const auto push_constants = shader_types::DrawPushConstants(camera_proj_view, offset_table[i]);
+                        const auto push_constants =
+                            shader_types::DrawPushConstants(camera_proj_jittered * camera_view, offset_table[i]);
                         m_rhi.cmd_push_constants(buffer, render_pipeline, &push_constants, sizeof(push_constants), 0);
                         m_rhi.cmd_set_cull_mode(buffer,
                                                 i == shader_constants::kMatClassOpaque ? rhi::cull_mode::back
@@ -1582,7 +1737,8 @@ int app::instance::run()
                     const auto& render_pipeline = get_render_pipeline(pipelines, i, true, enable_meshlets_pipeline);
 
                     m_rhi.cmd_bind_pso(buffer, render_pipeline);
-                    const auto push_constants = shader_types::DrawPushConstants(camera_proj_view, offset_table[i]);
+                    const auto push_constants =
+                        shader_types::DrawPushConstants(camera_proj_jittered * camera_view, offset_table[i]);
                     m_rhi.cmd_push_constants(buffer, render_pipeline, &push_constants, sizeof(push_constants), 0);
 
                     m_rhi.cmd_set_cull_mode(
@@ -1612,7 +1768,7 @@ int app::instance::run()
                     }
 
                     const rhi::binding resolve_pass_bindings[] = {
-                        rhi::binding(rhi::attachment(render_target)),
+                        rhi::binding(rhi::attachment(hdr_render_target)),
                         rhi::binding(rhi::attachment(vis_buffer)),
                         indexed_indices_buffer,
                         geometry_pool.vertex,
@@ -1640,7 +1796,8 @@ int app::instance::run()
                     m_rhi.cmd_push_bindings(buffer, resolve_pass, std::span {resolve_pass_bindings});
                     m_rhi.cmd_push_bindless_set(buffer, resolve_pass, *bindless_textures_desc_set, 1);
 
-                    const auto push_constants = shader_types::ResolvePassPushConstants(camera_view, camera_proj);
+                    const auto push_constants =
+                        shader_types::ResolvePassPushConstants(camera_view, camera_proj_jittered);
                     m_rhi.cmd_push_constants(buffer, resolve_pass, &push_constants, sizeof(push_constants), 0);
 
                     m_rhi.cmd_dispatch(
@@ -1662,14 +1819,64 @@ int app::instance::run()
                     }
                 }
 
+                if (enable_fsr_aa)
+                {
+                    ZoneScopedN("FSR pass");
+                    app_cmd_transition_image(m_rhi, buffer, motion_vectors_target, rhi::image_layout::common);
+                    m_rhi.cmd_clear_color_attachment(
+                        buffer, motion_vectors_target, rhi::color_clear_value {.f4 = vec4(0.0F)});
+                    app_cmd_transition_image(m_rhi, buffer, motion_vectors_target, rhi::image_layout::common);
+
+                    auto& mv_pass = pipelines[pso_id::mv_from_depth_pipeline];
+                    m_rhi.cmd_bind_pso(buffer, mv_pass);
+
+                    const rhi::binding mv_bindings[] = {
+                        rhi::binding(depth_image, *depth_texture_sampler),
+                        rhi::binding(motion_vectors_buffer.buffer),
+                        rhi::binding(motion_vectors_target),
+                    };
+
+                    uvec2 resolution = m_window.get_size_in_px();
+                    m_rhi.cmd_push_bindings(buffer, mv_pass, std::span {mv_bindings});
+                    m_rhi.cmd_push_constants(buffer, mv_pass, &resolution, sizeof(resolution), 0);
+                    m_rhi.cmd_push_constants(buffer, mv_pass, &frame_jitter, sizeof(frame_jitter), sizeof(resolution));
+                    m_rhi.cmd_dispatch(buffer, mv_pass, uvec3(resolution, 1));
+
+                    app_cmd_transition_image(m_rhi, buffer, motion_vectors_target, rhi::image_layout::common);
+
+                    rhi::ffx_upscale_params params {
+                        .render_size      = m_window.get_size_in_px(),
+                        .display_size     = m_window.get_size_in_px(),
+                        .reset            = fsr_aa_reset,
+                        .reverse_z        = true,
+                        .enable_sharpness = fsr_aa_rcas,
+                        .sharpness        = 1.0F,
+
+                        .dt_ms              = static_cast<f32>(dt * 1000.0F),
+                        .camera_far_plane   = FLT_MAX,
+                        .camera_near_plane  = camera_data.near_plane,
+                        .camera_fov_radians = camera_data.horizontal_fov,
+                    };
+
+                    rhi::ffx_upscale_resources resources {
+                        .color          = hdr_render_target,
+                        .depth          = depth_image,
+                        .motion_vectors = motion_vectors_target,
+                        .output         = aa_render_target,
+                    };
+
+                    fsr_aa_reset = false;
+                    m_rhi.ffx_upscale_dispatch(*ffx_upscale_context, buffer, params, resources);
+                }
+                else
                 {
                     ZoneScopedN("FXAA pass");
                     // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "vb resolve"));
 
                     const rhi::binding fxaa_pass_bindings[] = {
-                        rhi::binding(*frame_image),
-                        rhi::binding(render_target, *color_sampler),
+                        rhi::binding(hdr_render_target, *fxaa_sampler),
                         rhi::binding(depth_image, *depth_texture_sampler),
+                        rhi::binding(aa_render_target),
                     };
 
                     const rhi::pipeline& fxaa_pass = pipelines[pso_id::fxaa_pipeline];
@@ -1701,13 +1908,49 @@ int app::instance::run()
                     m_rhi.cmd_barriers(buffer, barriers);
                 }
 
+                {
+                    ZoneScopedN("Tonemap pass");
+                    // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "vb resolve"));
+
+                    const rhi::binding tonemap_pass_bindings[] = {
+                        rhi::binding(aa_render_target),
+                        rhi::binding(post_process_target),
+                    };
+
+                    const uvec2 viewport_size         = m_window.get_size_in_px();
+                    const rhi::pipeline& tonemap_pass = pipelines[pso_id::tonemap_pipeline];
+
+                    m_rhi.cmd_bind_pso(buffer, tonemap_pass);
+                    m_rhi.cmd_push_bindings(buffer, tonemap_pass, std::span {tonemap_pass_bindings});
+                    m_rhi.cmd_push_constants(buffer, tonemap_pass, &viewport_size, sizeof(viewport_size), 0);
+                    m_rhi.cmd_push_constants(
+                        buffer, tonemap_pass, &draw_debug_mode, sizeof(draw_debug_mode), sizeof(viewport_size));
+
+                    m_rhi.cmd_dispatch(
+                        buffer, tonemap_pass, {m_window.get_size_in_px().x, m_window.get_size_in_px().y, 1});
+
+                    constexpr rhi::global_barrier barrier {
+                        .before = {.stages = rhi::barrier_stage::compute_shader,
+                                   .access = rhi::barrier_access::storage_write         },
+                        .after  = {.stages = rhi::barrier_stage::color_attachment,
+                                   .access = rhi::barrier_access::color_attachment_read
+                                           | rhi::barrier_access::color_attachment_write},
+                    };
+
+                    const rhi::barrier_batch barriers {
+                        .globals = {&barrier, 1}
+                    };
+
+                    m_rhi.cmd_barriers(buffer, barriers);
+                }
+
                 if (freeze_cull_data)
                 {
                     ZoneScopedN("Frustum debug render pass");
                     // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), buffer, "frustum debug"));
 
                     const rhi::attachment_state_info color_attachments[] = {
-                        {.attachment = *frame_image,
+                        {.attachment = post_process_target,
                          .load_op    = rhi::resource_load_op::load,
                          .store_op   = rhi::resource_store_op::store},
                     };
@@ -1719,7 +1962,7 @@ int app::instance::run()
                                               .store_op   = rhi::resource_store_op::store},
                                              {0, 0, m_window.get_size_in_px().x, m_window.get_size_in_px().y});
 
-                    frustum_renderer.draw(m_rhi, buffer, camera_proj_view, frame_cull_data_buffer.buffer);
+                    frustum_renderer.draw(m_rhi, buffer, camera_proj * camera_view, frame_cull_data_buffer.buffer);
                     m_rhi.cmd_clear_draw_state(buffer);
                 }
 
@@ -1957,6 +2200,16 @@ int app::instance::run()
                 }
 #endif
 
+                const auto present_blit_size = m_window.get_size_in_px();
+                m_rhi.cmd_image_blit(buffer,
+                                     draw_debug_mode == debug_mode::velocity ? motion_vectors_target
+                                                                             : post_process_target,
+                                     *frame_image,
+                                     rhi::blit_image_info {
+                                         .src_extent = ivec3(present_blit_size.x, present_blit_size.y, 1),
+                                         .dst_extent = ivec3(present_blit_size.x, present_blit_size.y, 1),
+                                         .aspects    = rhi::image_aspect::color,
+                                     });
                 app_cmd_transition_image(m_rhi, buffer, *frame_image, rhi::image_layout::present);
 #if !NO_PERF_QUERY
                 vkCmdWriteTimestamp(buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool.handle, 1);
@@ -1990,7 +2243,7 @@ int app::instance::run()
                                     static_cast<f64>(frame_stats.frame_end) * props.limits.timestampPeriod * 1e-6,
                                     tris_total_reported,
                                     scene_info.triangles);
-
+#endif
                 TracyPlotConfig("Total GPU time", tracy::PlotFormatType::Number, false, true, 0);
                 TracyPlot("Total GPU time", profile_data.gpu_render_time);
 
@@ -2000,12 +2253,13 @@ int app::instance::run()
                 TracyPlotConfig("Total tris drawn", tracy::PlotFormatType::Number, false, true, 0);
                 TracyPlot("Total tris drawn", static_cast<i64>(profile_data.tris_in_scene_total));
 
+                static f64 accumulated_time = 0.0;
+                accumulated_time            = accumulated_time * 0.95 + dt * 0.05;
                 const auto str = cpp::stack_string::make_formatted("CPU: %.3lfms; GPU: %.3lfms; Tris/s (B): %lf",
-                                                                   dt * 1000.0F,
+                                                                   accumulated_time * 1000.0F,
                                                                    profile_data.gpu_render_time,
                                                                    profile_data.tris_per_second);
                 SDL_SetWindowTitle(m_window.get_native_handle().window, str.c_str());
-#endif
 
                 FrameMark;
             });
@@ -2033,9 +2287,12 @@ int app::instance::run()
     watcher.shutdown();
     pipelines.shutdown(m_rhi, *context);
 
-    m_rhi.destroy_image(*context, depth_image);
-    m_rhi.destroy_image(*context, render_target);
     m_rhi.destroy_image(*context, vis_buffer);
+    m_rhi.destroy_image(*context, depth_image);
+    m_rhi.destroy_image(*context, aa_render_target);
+    m_rhi.destroy_image(*context, hdr_render_target);
+    m_rhi.destroy_image(*context, post_process_target);
+    m_rhi.destroy_image(*context, motion_vectors_target);
     destroy_depth_pyramid(m_rhi, depth_pyramid, *context);
 
 #if !NO_PERF_QUERY
@@ -2060,11 +2317,15 @@ int app::instance::run()
 
     m_rhi.destroy_bindless_set(*context, *bindless_textures_desc_set);
 
+    for (auto& buffer : world_data_buffers)
+    {
+        m_rhi.destroy_buffer(*context, buffer.buffer);
+    }
     for (auto& buffer : frame_cull_data_buffers)
     {
         m_rhi.destroy_buffer(*context, buffer.buffer);
     }
-    for (auto& buffer : world_data_buffers)
+    for (auto& buffer : motion_vector_data_buffers)
     {
         m_rhi.destroy_buffer(*context, buffer.buffer);
     }
@@ -2073,9 +2334,9 @@ int app::instance::run()
         m_rhi.destroy_buffer(*context, buffer.buffer);
     }
 
-    m_rhi.destroy_sampler(*context, *color_sampler);
-    m_rhi.destroy_sampler(*context, *depth_texture_sampler);
+    m_rhi.destroy_sampler(*context, *fxaa_sampler);
     m_rhi.destroy_sampler(*context, *shadow_alpha_sampler);
+    m_rhi.destroy_sampler(*context, *depth_texture_sampler);
     m_rhi.destroy_sampler(*context, *bindless_textures_sampler);
 
     for (auto& texture : textures)
