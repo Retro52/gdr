@@ -1,19 +1,12 @@
 #include "utils/math.hlsl"
 #include "include/shaders/types.hlsl"
-
-// TODO(dx12): binding constants (include/shaders/bindings/draw.h) can't be pasted into register(), keep these in sync
-StructuredBuffer<Vertex>       vertices:       register(t0);
-StructuredBuffer<Meshlet>      meshlets:       register(t3);
-ByteAddressBuffer              meshlet_data:   register(t4);  // u32 vertices followed by u8 indices
-StructuredBuffer<MeshInstance> mesh_instances: register(t6);
-
-[[vk::push_constant]] ConstantBuffer<DrawPushConstants> pc: register(b0);
+#include "include/shaders/bindings/draw.hlsl"
 
 struct VertexOutput
 {
     float4 position: SV_Position;
     [[vk::location(0)]] float2 uv: TEXCOORD0;
-    [[vk::location(1)]] nointerpolation uint instance_id: TEXCOORD1;
+    [[vk::location(1)]] nointerpolation uint instance_id: INSTANCE_ID;
 };
 
 struct PrimitiveOutput
@@ -42,15 +35,15 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID, in paylo
     for (uint i = t_idx; i < vertex_count; i += kMeshWorkGroups)
     {
         const uint vid = meshlet_task.base_vertex + meshlet_data.Load((base_vertex + i) * 4);
-        float3 world_pos = transform_vec3(
+        float4 world_pos = float4(transform_vec3(
             float3(vertices[vid].px, vertices[vid].py, vertices[vid].pz),
             mesh_instances[meshlet_task.instance_id].pos_and_scale,
-            mesh_instances[meshlet_task.instance_id].rotation_quat);
+            mesh_instances[meshlet_task.instance_id].rotation_quat), 1.0F);
 
         vs_out[i].instance_id = meshlet_task.instance_id;
         vs_out[i].uv = float2(vertices[vid].ux, vertices[vid].uy);
 
-        vs_out[i].position = mul(pc.vp, float4(world_pos, 1.0F));
+        vs_out[i].position = mul(pc.vp, world_pos);
     }
 
     // Same for triangles

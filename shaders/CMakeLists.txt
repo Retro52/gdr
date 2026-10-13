@@ -133,6 +133,8 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
 
     if (APPLE)
         list(APPEND SHADER_DEF "-DPLATFORM_MVK")
+        list(APPEND SHADER_DEF "-DEMULATE_DRAW_ID")
+        list(APPEND SHADER_DEF "-DEMULATE_SAMPLER_REDUCE")
     endif ()
 
     if (SHADER_IS_HLSL)
@@ -159,7 +161,7 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
                     COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
                     COMMAND ${DXC_EXECUTABLE} -T ${SHADER_PROFILE} -E main -WX
                     -enable-16bit-types -Wno-ignored-attributes
-                    ${DXC_DXIL_CONFIG_FLAGS} ${SHADER_DEF}
+                    ${DXC_DXIL_CONFIG_FLAGS} ${SHADER_DEF} -DEMULATE_DRAW_ID
                     -Fo "${SHADER_BIN_OUTPUT}.dxl" "${SHADER_INPUT_PATH}"
                     DEPENDS ${SHADER_DEPENDENCIES}
                     COMMENT "Compiling HLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.dxl'"

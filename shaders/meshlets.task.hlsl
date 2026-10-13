@@ -1,25 +1,6 @@
 #include "utils/math.hlsl"
 #include "include/shaders/types.hlsl"
-
-// TODO(dx12): binding constants (include/shaders/bindings/draw.h) can't be pasted into register(), keep these in sync
-StructuredBuffer<Meshlet>      meshlets:       register(t3);
-StructuredBuffer<MeshData>     meshes_data:    register(t5);
-StructuredBuffer<MeshInstance> mesh_instances: register(t6);
-
-StructuredBuffer<DrawTaskCommandIndirect> draw_mesh_cmds: register(t7);
-StructuredBuffer<FrameCullData>           frame_cull:     register(t8);
-
-#ifdef FOR_LATE_OCCLUSION_TEST
-RWStructuredBuffer<uint> meshlets_visibility_buffer: register(u9);
-
-// TODO(dx12): D3D12 has no combined image samplers, the texture and its sampler are bound separately there (t10 + s10)
-[[vk::combinedImageSampler]] Texture2D    depth_pyramid:         register(t10);
-[[vk::combinedImageSampler]] SamplerState depth_pyramid_sampler: register(s10);
-#else
-StructuredBuffer<uint> meshlets_visibility_buffer: register(t9);
-#endif
-
-[[vk::push_constant]] ConstantBuffer<DrawPushConstants> pc: register(b0);
+#include "include/shaders/bindings/draw.hlsl"
 
 groupshared uint meshlets_count;
 groupshared DrawMeshletsTask meshlet_task;
@@ -90,8 +71,6 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
         float2 pmd_size = float2(p_aabb.z - p_aabb.x, p_aabb.w - p_aabb.y) * frame_cull[0].pyramid_size;
         float level = ceil(log2(max(pmd_size.x, pmd_size.y)));
 
-        // TODO(dx12): unlike the compute culling passes there is no PLATFORM_MVK gather fallback here, so D3D12 (which
-        // is built with PLATFORM_MVK) needs a min-reduction sampler (D3D12_FILTER_MINIMUM_*) bound to depth_pyramid
         float pmd_depth = depth_pyramid.SampleLevel(depth_pyramid_sampler, (p_aabb.xy + p_aabb.zw) * 0.5, level).x;
         float spr_depth = -frame_cull[0].frustum[4] / (view_center.z + sphere_radius);
 

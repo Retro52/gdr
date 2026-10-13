@@ -179,6 +179,12 @@ namespace shader_types
         mat4 vp_inverse;
     };
 
+    struct MotionVectorsData
+    {
+        mat4 this_frame_vp;
+        mat4 prev_frame_vp;
+    };
+
     struct FrameWorldData
     {
         vec4 sun_color;

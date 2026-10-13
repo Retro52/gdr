@@ -11,15 +11,15 @@ VkImageSubresourceRange platform::vk_image_subresource_range(VkImageAspectFlags 
 }
 
 VkImageSubresourceRange platform::vk_image_subresource_range(const VkImageAspectFlags aspect_flag, const u32 mip_level,
-                                                           const u32 levels_count)
+                                                             const u32 levels_count)
 {
     ZoneScoped;
     return platform::vk_image_subresource_range(aspect_flag, mip_level, levels_count, 0, VK_REMAINING_ARRAY_LAYERS);
 }
 
 VkImageSubresourceRange platform::vk_image_subresource_range(const VkImageAspectFlags aspect_flag, const u32 mip_level,
-                                                           const u32 levels_count, const u32 array_layer,
-                                                           const u32 layer_count)
+                                                             const u32 levels_count, const u32 array_layer,
+                                                             const u32 layer_count)
 {
     ZoneScoped;
     return VkImageSubresourceRange {
@@ -32,7 +32,7 @@ VkImageSubresourceRange platform::vk_image_subresource_range(const VkImageAspect
 }
 
 void platform::vk_transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout current_layout,
-                                 VkImageLayout new_layout)
+                                   VkImageLayout new_layout)
 {
     ZoneScoped;
     const VkImageAspectFlags aspect_flag = (new_layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
@@ -43,7 +43,7 @@ void platform::vk_transition_image(VkCommandBuffer cmd, VkImage image, VkImageLa
 }
 
 void platform::vk_transition_image(VkCommandBuffer cmd, VkImage image, const VkImageLayout current_layout,
-                                 VkImageLayout new_layout, const VkImageAspectFlags aspect_flags)
+                                   const VkImageLayout new_layout, const VkImageAspectFlags aspect_flags)
 {
     ZoneScoped;
     vk_transition_image(cmd,
@@ -58,9 +58,9 @@ void platform::vk_transition_image(VkCommandBuffer cmd, VkImage image, const VkI
 }
 
 void platform::vk_transition_image(VkCommandBuffer cmd, VkImage image, const VkImageLayout current_layout,
-                                 const VkImageLayout new_layout, const VkPipelineStageFlags2 src_stage_flags,
-                                 const VkPipelineStageFlags2 dst_stage_flags, const VkAccessFlags2 src_access_mask,
-                                 const VkAccessFlags2 dst_access_mask, const VkImageAspectFlags aspect_flags)
+                                   const VkImageLayout new_layout, const VkPipelineStageFlags2 src_stage_flags,
+                                   const VkPipelineStageFlags2 dst_stage_flags, const VkAccessFlags2 src_access_mask,
+                                   const VkAccessFlags2 dst_access_mask, const VkImageAspectFlags aspect_flags)
 {
     ZoneScoped;
     const VkImageMemoryBarrier2 image_barrier {
@@ -94,7 +94,7 @@ void platform::vk_destroy_image(VkDevice device, VmaAllocator allocator, const v
 }
 
 result<platform::vk_image> platform::vk_create_image(VkDevice device, const VkImageCreateInfo& image_create_info,
-                                                 const VkImageAspectFlags aspect_flags, VmaAllocator allocator)
+                                                     const VkImageAspectFlags aspect_flags, VmaAllocator allocator)
 {
     ZoneScoped;
     vk_image image;
@@ -103,19 +103,31 @@ result<platform::vk_image> platform::vk_create_image(VkDevice device, const VkIm
         vmaCreateImage(allocator, &image_create_info, &alloc_info, &image.image, &image.allocation, nullptr));
 
     image.view = *platform::vk_create_image_view(device,
-                                               image.image,
-                                               image_create_info.arrayLayers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY
-                                                                                 : VK_IMAGE_VIEW_TYPE_2D,
-                                               image_create_info.format,
-                                               aspect_flags,
-                                               0,
-                                               VK_REMAINING_MIP_LEVELS);
+                                                 image.image,
+                                                 image_create_info.arrayLayers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY
+                                                                                   : VK_IMAGE_VIEW_TYPE_2D,
+                                                 image_create_info.format,
+                                                 aspect_flags,
+                                                 0,
+                                                 VK_REMAINING_MIP_LEVELS);
+
+    image.meta = vk_image_meta {
+        .dimensions =
+            u16vec3(image_create_info.extent.width, image_create_info.extent.height, image_create_info.extent.depth),
+        .mips_count   = static_cast<u16>(image_create_info.mipLevels),
+        .layers_count = static_cast<u16>(image_create_info.arrayLayers),
+        .type         = static_cast<u16>(image_create_info.imageType),
+
+        .format = image_create_info.format,
+        .layout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .usage  = image_create_info.usage,
+    };
 
     return image;
 }
 
 result<VkImageView> platform::vk_create_image_view(VkDevice device, VkImage image, const VkFormat format,
-                                                 const VkImageAspectFlags aspect_flags)
+                                                   const VkImageAspectFlags aspect_flags)
 {
     ZoneScoped;
     return platform::vk_create_image_view(
@@ -123,8 +135,8 @@ result<VkImageView> platform::vk_create_image_view(VkDevice device, VkImage imag
 }
 
 result<VkImageView> platform::vk_create_image_array_view(VkDevice device, VkImage image, const VkImageViewType type,
-                                                       const VkFormat format, const VkImageAspectFlags aspect_flags,
-                                                       const u32 array_layer, const u32 layer_count)
+                                                         const VkFormat format, const VkImageAspectFlags aspect_flags,
+                                                         const u32 array_layer, const u32 layer_count)
 {
     ZoneScoped;
     const VkImageViewCreateInfo image_view_create_info {
@@ -143,8 +155,8 @@ result<VkImageView> platform::vk_create_image_array_view(VkDevice device, VkImag
 }
 
 result<VkImageView> platform::vk_create_image_view(VkDevice device, VkImage image, const VkImageViewType type,
-                                                 const VkFormat format, const VkImageAspectFlags aspect_flags,
-                                                 const u32 mip_level, const u32 levels_count)
+                                                   const VkFormat format, const VkImageAspectFlags aspect_flags,
+                                                   const u32 mip_level, const u32 levels_count)
 {
     ZoneScoped;
     const VkImageViewCreateInfo image_view_create_info {
@@ -162,11 +174,11 @@ result<VkImageView> platform::vk_create_image_view(VkDevice device, VkImage imag
 }
 
 result<VkSampler> platform::vk_create_sampler(VkDevice device, const VkFilter filter,
-                                            const VkSamplerMipmapMode mipmap_mode,
-                                            const VkSamplerAddressMode sampler_address_mode,
-                                            const VkSamplerReductionMode reduction_mode,
-                                            const f32 anisotropic_filtering_factor, const VkCompareOp compare_op,
-                                            const VkBorderColor border_color)
+                                              const VkSamplerMipmapMode mipmap_mode,
+                                              const VkSamplerAddressMode sampler_address_mode,
+                                              const VkSamplerReductionMode reduction_mode,
+                                              const f32 anisotropic_filtering_factor, const VkCompareOp compare_op,
+                                              const VkBorderColor border_color)
 {
     ZoneScoped;
     VkSamplerCreateInfo sampler_info {

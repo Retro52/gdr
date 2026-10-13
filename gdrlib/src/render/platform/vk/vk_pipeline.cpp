@@ -6,6 +6,7 @@
 #include <render/platform/vk/vk_utils.hpp>
 
 #define SPV_ENABLE_UTILITY_CODE
+#include <cpp/containers/local_array.hpp>
 #include <spirv/unified1/spirv.h>
 #include <tracy/Tracy.hpp>
 
@@ -613,10 +614,13 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
             VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
     };
 
-    const VkPipelineColorBlendStateCreateInfo color_blend_state_create_info {
+    const cpp::local_array<VkPipelineColorBlendAttachmentState> color_blend_attachment_states(
+        options.color_attachments_count, color_blend_attachment_state);
+
+    VkPipelineColorBlendStateCreateInfo color_blend_state_create_info {
         .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .attachmentCount = 1,
-        .pAttachments    = &color_blend_attachment_state,
+        .attachmentCount = options.color_attachments_count,
+        .pAttachments    = color_blend_attachment_states.data(),
     };
 
     const VkPipelineRenderingCreateInfo pipeline_rendering_create_info {

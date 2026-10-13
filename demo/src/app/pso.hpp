@@ -14,8 +14,10 @@ namespace app
         blit_sampler2d_pipeline       = "blit_sampler2d_pipeline"_crc32,
         blit_sampler2d_array_pipeline = "blit_sampler2d_array_pipeline"_crc32,
 
-        frustum_debug = "frustum_debug"_crc32,
-        fxaa_pipeline = "fxaa_pipeline"_crc32,
+        frustum_debug          = "frustum_debug"_crc32,
+        fxaa_pipeline          = "fxaa_pipeline"_crc32,
+        tonemap_pipeline       = "tonemap_pipeline"_crc32,
+        mv_from_depth_pipeline = "mv_from_depth_pipeline"_crc32,
 
         mesh_resolve_pipeline = "mesh_resolve_pipeline"_crc32,
         vert_resolve_pipeline = "vert_resolve_pipeline"_crc32,
@@ -59,8 +61,7 @@ namespace app
     public:
         rhi::pipeline& operator[](const pso_id id) { return m_pipelines[static_cast<u32>(id)]; }
 
-        void load(const rhi::impl& rhi, rhi::context context, rhi::swapchain swapchain,
-                  rhi::bindless_set textures_set);
+        void load(const rhi::impl& rhi, rhi::context context, rhi::swapchain swapchain, rhi::bindless_set textures_set);
 
         void destroy(const rhi::impl& rhi, rhi::context context, pso_id id);
 
@@ -81,8 +82,7 @@ namespace app
         const rhi::impl& m_rhi;
 
     public:
-        pso_watcher(pso_data& pipelines, rhi::impl& rhi, rhi::context context,
-                    rhi::bindless_set textures_set);
+        pso_watcher(pso_data& pipelines, rhi::impl& rhi, rhi::context context, rhi::bindless_set textures_set);
 
         void shutdown();
     };

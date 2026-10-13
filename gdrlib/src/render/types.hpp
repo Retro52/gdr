@@ -687,6 +687,42 @@ namespace rhi
         feature_flag_bits supported_features;
     };
 
+    struct ffx_upscale_desc
+    {
+        uvec2 display_size;
+        uvec2 max_render_size;
+    };
+
+    struct ffx_upscale_params
+    {
+        vec2 jitter;
+        uvec2 render_size;
+        uvec2 display_size;
+
+        u32 reset            : 1 = 0;
+        u32 reverse_z        : 1 = 1;
+        u32 enable_sharpness : 1 = 0;
+
+        f32 sharpness = 0.0F;
+
+        f32 dt_ms              = 0.0F;
+        f32 camera_far_plane   = 0.0F;
+        f32 camera_near_plane  = 0.0F;
+        f32 camera_fov_radians = 0.0F;
+    };
+
+    struct ffx_upscale_resources
+    {
+        image color          = null_image;
+        image depth          = null_image;
+        image motion_vectors = null_image;
+
+        image reactive                     = null_image;
+        image transparency_and_composition = null_image;
+
+        image output = null_image;
+    };
+
     struct instance_desc
     {
         const char* app_name = "";

@@ -443,16 +443,23 @@ static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfa
                                      && vk12_features.descriptorBindingSampledImageUpdateAfterBind);
 
     features_table.set_supported(rhi::feature_flag::types_16bit,
-                                 vk11_features.storageBuffer16BitAccess
+                                 device_features2.features.shaderInt16 && vk12_features.shaderFloat16
+                                     && vk11_features.storageBuffer16BitAccess
                                      && vk11_features.uniformAndStorageBuffer16BitAccess);
 
-    return not_found_extensions.empty() && features_table.all_required_supported() && vk12_features.timelineSemaphore
-        && vk14_features.maintenance5 && vk14_features.maintenance6 && device_features2.features.samplerAnisotropy
+    // clang-format off
+    return not_found_extensions.empty() && features_table.all_required_supported()
+        && vk12_features.timelineSemaphore
+        && vk13_features.shaderDemoteToHelperInvocation
+        && vk14_features.maintenance5
+        && vk14_features.maintenance6
+        && device_features2.features.samplerAnisotropy
         && device_features2.features.shaderStorageImageWriteWithoutFormat;
+    // clang-format on
 }
 
 static ext_array build_extensions_from_feature_table(const rhi::rendering_features_table& features_table,
-                                                     bool required_only = false)
+                                                     const bool required_only = false)
 {
     ext_array array;
     array.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
@@ -721,10 +728,12 @@ static VkResult create_vulkan_device(const rhi::rendering_features_table& render
     };
 
     VkPhysicalDeviceVulkan13Features vk13_features {
-        .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        .synchronization2 = rendering_features.wanted(rhi::feature_flag::synchronization2),
-        .dynamicRendering = rendering_features.wanted(rhi::feature_flag::dynamic_render),
-        .maintenance4     = rendering_features.wanted(rhi::feature_flag::mesh_shading)};
+        .sType                          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+        .shaderDemoteToHelperInvocation = VK_TRUE,
+        .synchronization2               = rendering_features.wanted(rhi::feature_flag::synchronization2),
+        .dynamicRendering               = rendering_features.wanted(rhi::feature_flag::dynamic_render),
+        .maintenance4                   = rendering_features.wanted(rhi::feature_flag::mesh_shading),
+    };
 
     VkPhysicalDeviceVulkan12Features vk12_features {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
@@ -732,6 +741,7 @@ static VkResult create_vulkan_device(const rhi::rendering_features_table& render
         .drawIndirectCount = rendering_features.wanted(rhi::feature_flag::draw_indirect),
 #endif
         .storageBuffer8BitAccess                      = rendering_features.wanted(rhi::feature_flag::types_int8),
+        .shaderFloat16                                = rendering_features.wanted(rhi::feature_flag::types_16bit),
         .descriptorIndexing                           = rendering_features.wanted(rhi::feature_flag::bindless_textures),
         .shaderSampledImageArrayNonUniformIndexing    = rendering_features.wanted(rhi::feature_flag::bindless_textures),
         .descriptorBindingSampledImageUpdateAfterBind = rendering_features.wanted(rhi::feature_flag::bindless_textures),
@@ -761,6 +771,7 @@ static VkResult create_vulkan_device(const rhi::rendering_features_table& render
                      .samplerAnisotropy                    = VK_TRUE,
                      .pipelineStatisticsQuery              = rendering_features.wanted(rhi::feature_flag::pipeline_stats),
                      .shaderStorageImageWriteWithoutFormat = VK_TRUE,
+                     .shaderInt16                          = rendering_features.wanted(rhi::feature_flag::types_16bit),
                      }
     };
 

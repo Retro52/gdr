@@ -24,7 +24,7 @@ namespace platform
         {
             m_image.sampler     = sampler;
             m_image.imageView   = image.view;
-            m_image.imageLayout = image.layout;
+            m_image.imageLayout = image.meta.layout;
         }
 
         vk_descriptor_info(VkSampler sampler, VkImageView view, VkImageLayout layout)

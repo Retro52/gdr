@@ -104,14 +104,15 @@ void app::reset_draw_count_buffer(const rhi::impl& rhi, rhi::command_buffer cmd,
 }
 
 rhi::image app::create_color_image(const rhi::impl& rhi, const ivec2& size, const rhi::image_format format,
-                                   const rhi::context ctx)
+                                   const rhi::context ctx, const rhi::image_usage extra_usage)
 {
     ZoneScoped;
     const rhi::create_image_info info {
         .format      = format,
         .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
-        .usage_flags = rhi::image_usage::sampled | rhi::image_usage::storage,
-        .dbg_name    = "color_image",
+        .usage_flags = rhi::image_usage::sampled | rhi::image_usage::storage | rhi::image_usage::transfer_dst
+                     | rhi::image_usage::attachment_color | extra_usage,
+        .dbg_name = "color_image",
     };
 
     return *rhi.create_image(ctx, info);

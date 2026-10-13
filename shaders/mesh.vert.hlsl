@@ -1,22 +1,15 @@
 #include "utils/math.hlsl"
-#include "include/shaders/types.hlsl"
+#include "include/shaders/bindings/draw.hlsl"
 
-// TODO(dx12): binding constants (include/shaders/bindings/draw.h) can't be pasted into register(), keep these in sync
-StructuredBuffer<Vertex>              vertices:       register(t0);
-StructuredBuffer<MeshInstance>        mesh_instances: register(t6);
-StructuredBuffer<DrawIndexedIndirect> draw_cmds:      register(t7);
-
-[[vk::push_constant]] ConstantBuffer<DrawPushConstants> pc: register(b0);
-
-#if !defined(PLATFORM_MVK) && !defined(__spirv__)
-#error "TODO(dx12): D3D12 has no gl_DrawID equivalent, only the PLATFORM_MVK (base instance) path is supported"
+#if !defined(EMULATE_DRAW_ID) && !defined(__spirv__)
+#error "TODO(dx12): D3D12 has no gl_DrawID equivalent, enable EMULATE_DRAW_ID to use SV_StartInstanceLocation instead"
 #endif
 
 struct Input
 {
     uint vertex_id: SV_VertexID;
     uint base_vertex: SV_StartVertexLocation;
-#ifdef PLATFORM_MVK
+#ifdef EMULATE_DRAW_ID
     uint base_instance: SV_StartInstanceLocation;
 #else
     [[vk::builtin("DrawIndex")]] uint draw_id: DRAW_ID;
@@ -27,14 +20,14 @@ struct Output
 {
     float4 position: SV_Position;
     [[vk::location(0)]] float2 uv: TEXCOORD0;
-    [[vk::location(1)]] nointerpolation uint instance_id: TEXCOORD1;
-    [[vk::location(2)]] nointerpolation uint base_index: TEXCOORD2;
+    [[vk::location(1)]] nointerpolation uint instance_id: INSTANCE_ID;
+    [[vk::location(2)]] nointerpolation uint first_index: FIRST_INDEX;
 };
 
 [shader("vertex")]
 Output main(Input input)
 {
-#ifdef PLATFORM_MVK
+#ifdef EMULATE_DRAW_ID
     uint cid = input.base_instance;
 #else
     uint cid = input.draw_id;
@@ -44,12 +37,13 @@ Output main(Input input)
     uint vid = input.vertex_id + input.base_vertex;
 
     Output vs_out;
-    vs_out.base_index = draw_cmds[cid].first_index;
+    vs_out.first_index = draw_cmds[cid].first_index;
     vs_out.instance_id = draw_cmds[cid].instance_id;
     vs_out.uv = float2(vertices[vid].ux, vertices[vid].uy);
 
     float3 vpos = float3(vertices[vid].px, vertices[vid].py, vertices[vid].pz);
-    vs_out.position = mul(pc.vp, float4(transform_vec3(vpos, mesh_instances[vs_out.instance_id].pos_and_scale, mesh_instances[vs_out.instance_id].rotation_quat), 1.0F));
+    float4 world_pos = float4(transform_vec3(vpos, mesh_instances[vs_out.instance_id].pos_and_scale, mesh_instances[vs_out.instance_id].rotation_quat), 1.0F);
 
+    vs_out.position = mul(pc.vp, world_pos);
     return vs_out;
 }

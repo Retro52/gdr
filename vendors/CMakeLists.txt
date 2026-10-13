@@ -65,3 +65,32 @@ target_include_directories(cgltf INTERFACE cgltf)
 
 add_library(ddspp INTERFACE)
 target_include_directories(ddspp INTERFACE ddspp)
+
+add_library(ffx_api INTERFACE)
+add_library(ffx::ffx_api ALIAS ffx_api)
+target_include_directories(ffx_api INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/fidelity-fx-sdk/ffx-api/include)
+
+function(add_ffx_dependency_vk TARGET)
+    if (WIN32)
+        get_target_property(FFX_API_SOURCE_DIR ffx::ffx_api SOURCE_DIR)
+        target_link_libraries(${TARGET}
+                PRIVATE
+                ${FFX_API_SOURCE_DIR}/fidelity-fx-sdk/PrebuiltSignedDLL/amd_fidelityfx_vk.lib)
+        add_custom_command(TARGET ${TARGET} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${FFX_API_SOURCE_DIR}/fidelity-fx-sdk/PrebuiltSignedDLL/amd_fidelityfx_vk.dll $<TARGET_FILE_DIR:${TARGET}>)
+    endif ()
+endfunction()
+
+function(add_ffx_dependency_d3d12 TARGET)
+    if (WIN32)
+        get_target_property(FFX_API_SOURCE_DIR ffx::ffx_api SOURCE_DIR)
+        target_link_libraries(${TARGET}
+                PRIVATE
+                ${FFX_API_SOURCE_DIR}/fidelity-fx-sdk/PrebuiltSignedDLL/amd_fidelityfx_dx12.lib)
+
+        add_custom_command(TARGET ${TARGET} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${FFX_API_SOURCE_DIR}/fidelity-fx-sdk/PrebuiltSignedDLL/amd_fidelityfx_dx12.dll $<TARGET_FILE_DIR:${TARGET}>)
+    endif ()
+endfunction()

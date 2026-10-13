@@ -143,6 +143,14 @@ namespace rhi
     using submit_pfn  = void (*)(context context, queue queue, const submit_info& info);
     using present_pfn = void (*)(command_buffer cmd, swapchain swapchain, queue submit, queue present);
 
+    using ffx_create_upscale_context_pfn = result<ffx_context> (*)(context ctx, const ffx_upscale_desc& desc);
+    using ffx_destroy_context_pfn        = void (*)(ffx_context& ffx_ctx);
+
+    using ffx_upscale_query_jitter_pfn = result<vec2> (*)(ffx_context ffx_ctx, u32 render_width, u32 display_width,
+                                                          i32 jitter_index);
+    using ffx_upscale_dispatch_pfn = void (*)(ffx_context ffx_ctx, command_buffer cmd, const ffx_upscale_params& params,
+                                              const ffx_upscale_resources& resources);
+
     struct impl
     {
         create_context_pfn create_context;
@@ -236,6 +244,12 @@ namespace rhi
 
         submit_pfn submit;
         present_pfn present;
+
+        ffx_create_upscale_context_pfn ffx_create_upscale_context;
+        ffx_destroy_context_pfn ffx_destroy_context;
+
+        ffx_upscale_query_jitter_pfn ffx_upscale_query_jitter;
+        ffx_upscale_dispatch_pfn ffx_upscale_dispatch;
     };
 
     impl create_for_vk();

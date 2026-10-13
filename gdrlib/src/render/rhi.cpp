@@ -194,6 +194,12 @@ rhi::impl rhi::create_for_vk()
 
         .submit  = vk_submit,
         .present = vk_present,
+
+        .ffx_create_upscale_context = vk_ffx_create_upscale_context,
+        .ffx_destroy_context        = vk_ffx_destroy_context,
+
+        .ffx_upscale_query_jitter   = vk_ffx_upscale_query_jitter,
+        .ffx_upscale_dispatch       = vk_ffx_upscale_dispatch,
     };
 
     return result;
