@@ -1,10 +1,9 @@
 #include "utils/math.hlsl"
 #include "utils/gather.hlsl"
-#include "include/shaders/types.hlsl"
+#include "include/shaders/types.hlsl.h"
 
-// TODO(dx12): binding constants (include/shaders/bindings/fill.h) can't be pasted into register(), keep these in sync
 StructuredBuffer<Meshlet>      meshlets:       register(t0);
-ByteAddressBuffer              meshlet_data:   register(t1);  // u32 vertices followed by u8 indices
+ByteAddressBuffer              meshlet_data:   register(t1);
 StructuredBuffer<MeshData>     meshes_data:    register(t2);
 StructuredBuffer<MeshInstance> mesh_instances: register(t3);
 
@@ -18,7 +17,6 @@ RWStructuredBuffer<uint>                indexed_draw_counts: register(u8);
 #ifdef FOR_LATE_OCCLUSION_TEST
 RWStructuredBuffer<uint> meshlets_visibility_buffer: register(u9);
 
-// TODO(dx12): D3D12 has no combined image samplers, the texture and its sampler are bound separately there (t10 + s10)
 [[vk::combinedImageSampler]] Texture2D    depth_pyramid:         register(t10);
 [[vk::combinedImageSampler]] SamplerState depth_pyramid_sampler: register(s10);
 #else
@@ -106,8 +104,8 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
         float level = ceil(log2(max(pmd_size.x, pmd_size.y)));
         float spr_depth = -frame_cull[0].frustum[4] / (view_center.z + sphere_radius);
 
-#ifndef PLATFORM_MVK
-        float pmd_depth = depth_pyramid.SampleLevel(depth_pyramid_sampler, (p_aabb.xy + p_aabb.zw) * 0.5, level).x;
+#ifdef EMULATE_SAMPLER_REDUCE
+        float pmd_depth = textureGatherLodMin(depth_pyramid, depth_pyramid_sampler, (p_aabb.xy + p_aabb.zw) * 0.5, level, 0);
 #else
         float pmd_depth = textureGatherLodMin(depth_pyramid, depth_pyramid_sampler, (p_aabb.xy + p_aabb.zw) * 0.5, level, 0);
 #endif
@@ -144,10 +142,10 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
         uint dci;
         InterlockedAdd(indexed_draw_counts[1], 1, dci);
 
-#ifndef PLATFORM_MVK
-        draw_indirects[dci].first_instance = 0;
-#else
+#ifdef EMULATE_DRAW_ID
         draw_indirects[dci].first_instance = dci;
+#else
+        draw_indirects[dci].first_instance = 0;
 #endif
         draw_indirects[dci].instance_count = 1;
         draw_indirects[dci].instance_id = instance_id;

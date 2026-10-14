@@ -1,5 +1,5 @@
 #include "utils/pbr.hlsl"
-#include "include/shaders/types.hlsl"
+#include "include/shaders/types.hlsl.h"
 
 [[vk::image_format("unknown")]] RWTexture2D<float4> o_lut: register(u0);
 

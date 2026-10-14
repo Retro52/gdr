@@ -1,6 +1,6 @@
 #include "utils/post.hlsl"
 #include "utils/math.hlsl"
-#include "include/shaders/types.hlsl"
+#include "include/shaders/types.hlsl.h"
 
 [[vk::combinedImageSampler]] Texture2D    color_texture:         register(t0);
 [[vk::combinedImageSampler]] SamplerState color_texture_sampler: register(s0);

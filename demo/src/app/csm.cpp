@@ -7,7 +7,7 @@
 #include <glm/geometric.hpp>
 #include <glm/mat4x4.hpp>
 #include <scene/matrix_common.hpp>
-#include <shaders/types.h>
+#include <shaders/types.hlsl.h>
 
 #include <array>
 
@@ -49,6 +49,7 @@ app::csm::csm(const rhi::impl& rhi, const rhi::context ctx, const rhi::image_for
     , max_range(cfg.max_range)
     , split_lambda(cfg.split_lambda)
 {
+#if 0
     sampler = *rhi.create_sampler(ctx,
                                   {
                                       .address_mode = rhi::sampler_address_mode::clamp_to_border,
@@ -77,10 +78,12 @@ app::csm::csm(const rhi::impl& rhi, const rhi::context ctx, const rhi::image_for
         };
         cascade_views[i] = *rhi.create_image_view(ctx, shadow_map, image_view_info);
     }
+#endif
 }
 
 void app::csm::init(const rhi::impl& rhi, const rhi::command_buffer cmd)
 {
+#if 0
     const rhi::image_barrier barrier =
         app::make_image_barrier(shadow_map, rhi::image_layout::common, rhi::image_aspect::depth);
 
@@ -89,6 +92,7 @@ void app::csm::init(const rhi::impl& rhi, const rhi::command_buffer cmd)
     };
 
     rhi.cmd_barriers(cmd, barriers);
+#endif
 }
 
 void app::csm::shutdown(const rhi::impl& rhi, const rhi::context ctx)
@@ -111,11 +115,14 @@ rhi::binding app::csm::get_descriptor_info() const
 
 [[nodiscard]] f32 app::csm::get_cascade_range(const f32 near, const u32 index) const
 {
+#if 0
     const f32 p           = static_cast<f32>(index + 1) / static_cast<f32>(shader_constants::kMaxShadowCascades);
     const f32 logarithmic = near * std::pow(max_range / near, p);
     const f32 uniform     = near + (max_range - near) * p;
 
     return glm::mix(uniform, logarithmic, split_lambda);
+#endif
+    return 0.0F;
 }
 
 [[nodiscard]] glm::mat4 app::csm::get_light_view_matrix(const vec3& light_dir) const

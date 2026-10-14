@@ -1,5 +1,5 @@
 #include <app/render.hpp>
-#include <shaders/constants.h>
+#include <shaders/constants.hlsl.h>
 #include <tracy/Tracy.hpp>
 
 #include <cmath>
@@ -165,8 +165,8 @@ app::depth_pyramid_data app::create_depth_pyramid(const rhi::impl& rhi, const iv
 {
     ZoneScoped;
     depth_pyramid_data depth_pyramid {
-        .base_size     = {1 << static_cast<i32>(std::log2(size.x)), 1 << static_cast<i32>(std::log2(size.y))},
         .pyramid_count = 1,
+        .base_size     = {1 << static_cast<i32>(std::log2(size.x)), 1 << static_cast<i32>(std::log2(size.y))},
     };
 
     ivec2 size_cpy = depth_pyramid.base_size;

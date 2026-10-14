@@ -1,5 +1,5 @@
 #include "utils/post.hlsl"
-#include "include/shaders/constants.hlsl"
+#include "include/shaders/constants.hlsl.h"
 
 [[vk::image_format("unknown")]] RWTexture2D<float4> i_hdr_color: register(u0);
 [[vk::image_format("unknown")]] RWTexture2D<float4> o_color:     register(u1);
@@ -7,7 +7,6 @@
 struct PushConstantData
 {
     uint2 size;
-    uint  debug_mode;
 };
 
 [[vk::push_constant]] ConstantBuffer<PushConstantData> pc: register(b0);
@@ -23,22 +22,5 @@ void main(uint3 global_id: SV_DispatchThreadID)
     }
 
     float3 color  = i_hdr_color[pixel].xyz;
-#if SHADERS_DEBUG
-    float4 result = 0.0F.xxxx;
-    switch (pc.debug_mode)
-    {
-        case kDebugModeShaded:
-        case kDebugModeLit:
-        case kDebugModeLitDiffuse:
-        case kDebugModeLitAmbient:
-            result = from_linear(float4(tonemap(color), 1.0F));
-            break;
-        default:
-            result = from_linear(float4(color, 1.0F));
-            break;
-    }
-#else
-    float4 result = from_linear(float4(tonemap(color), 1.0F));
-#endif
-    o_color[pixel] = result;
+    o_color[pixel] = from_linear(float4(tonemap(color), 1.0F));
 }

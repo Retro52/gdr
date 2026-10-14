@@ -1,6 +1,6 @@
 #include "utils/math.hlsl"
 #include "utils/gather.hlsl"
-#include "include/shaders/types.hlsl"
+#include "include/shaders/types.hlsl.h"
 
 [[vk::combinedImageSampler]] Texture2D    input_depth:         register(t0);
 [[vk::combinedImageSampler]] SamplerState input_depth_sampler: register(s0);

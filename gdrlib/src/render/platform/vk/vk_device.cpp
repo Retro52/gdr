@@ -701,7 +701,7 @@ static VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhy
 #endif
         .pVulkanFunctions = &vma_vulkan_functions,
         .instance         = instance,
-        .vulkanApiVersion = VK_API_VERSION_1_3,
+        .vulkanApiVersion = VK_API_VERSION_1_4,
     };
 
     return vmaCreateAllocator(&allocator_create_info, allocator);
@@ -823,11 +823,10 @@ static result<vk_context> create_vk_context(const window& window, const rhi::ins
 
     // Application info
     VkApplicationInfo application_info {VK_STRUCTURE_TYPE_APPLICATION_INFO};
-    application_info.pApplicationName   = desc.app_name ? desc.app_name : "NoName";
-    application_info.applicationVersion = desc.app_version;
-    application_info.pEngineName        = desc.app_name ? desc.app_name : "NoName";
-    application_info.engineVersion      = 1;
-    application_info.apiVersion         = VK_API_VERSION_1_3;
+    application_info.pApplicationName = desc.app_name ? desc.app_name : "NoName";
+    application_info.pEngineName      = desc.app_name ? desc.app_name : "NoName";
+    application_info.engineVersion    = 1;
+    application_info.apiVersion       = VK_API_VERSION_1_4;
 
     cpp::heap_array<const char*> layers;
     load_instance_layers_and_extensions(window, desc, layers, context.instance_extensions);

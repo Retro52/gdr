@@ -3,7 +3,7 @@
 #include <app/gpu_upload_mgr.hpp>
 #include <fs/fs.hpp>
 #include <render/rhi.hpp>
-#include <shaders/constants.h>
+#include <shaders/constants.hlsl.h>
 
 namespace app
 {

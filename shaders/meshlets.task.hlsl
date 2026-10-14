@@ -1,5 +1,5 @@
 #include "utils/math.hlsl"
-#include "include/shaders/types.hlsl"
+#include "include/shaders/types.hlsl.h"
 #include "include/shaders/bindings/draw.hlsl"
 
 groupshared uint meshlets_count;

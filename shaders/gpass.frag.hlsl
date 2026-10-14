@@ -1,4 +1,4 @@
-#include "include/shaders/types.hlsl"
+#include "include/shaders/types.hlsl.h"
 #include "include/shaders/bindings/draw.hlsl"
 
 #ifdef ENABLE_ALPHA_TESTING

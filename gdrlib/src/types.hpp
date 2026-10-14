@@ -25,3 +25,9 @@ using uvec4 = glm::uvec4;
 using u64vec2 = glm::u64vec2;
 using u64vec3 = glm::u64vec3;
 using u64vec4 = glm::u64vec4;
+
+constexpr u32 kU32Max = std::numeric_limits<u32>::max();
+constexpr u64 kU64Max = std::numeric_limits<u64>::max();
+
+constexpr f32 kF32Max = std::numeric_limits<f32>::max();
+constexpr f64 kF64Max = std::numeric_limits<f64>::max();

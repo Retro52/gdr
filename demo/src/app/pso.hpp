@@ -33,24 +33,16 @@ namespace app
         indexed_render_pipeline    = "indexed_render_pipeline"_crc32,
         indexed_render_ds_pipeline = "indexed_render_ds_pipeline"_crc32,
 
-        indexed_fill_pipeline         = "indexed_fill_pipeline"_crc32,
-        indexed_fill_late_pipeline    = "indexed_fill_late_pipeline"_crc32,
-        indexed_fill_ds_pipeline      = "indexed_fill_ds_pipeline"_crc32,
-        indexed_fill_ds_late_pipeline = "indexed_fill_ds_late_pipeline"_crc32,
+        mesh_to_indexed_pipeline         = "mesh_to_indexed_pipeline"_crc32,
+        mesh_to_indexed_late_pipeline    = "mesh_to_indexed_late_pipeline"_crc32,
+        mesh_to_indexed_ds_pipeline      = "mesh_to_indexed_ds_pipeline"_crc32,
+        mesh_to_indexed_ds_late_pipeline = "mesh_to_indexed_ds_late_pipeline"_crc32,
 
         depth_reduce_pipeline      = "depth_reduce_pipeline"_crc32,
         equirect_unpack_pipeline   = "equirect_unpack_pipeline"_crc32,
         make_brdf_lookup_pipeline  = "make_brdf_lookup_pipeline"_crc32,
         cubemap_convolute_pipeline = "cubemap_convolute_pipeline"_crc32,
         cubemap_prefilter_pipeline = "cubemap_prefilter_pipeline"_crc32,
-
-        shadow_cull            = "shadow_cull"_crc32,
-        shadow_fill_ss         = "shadow_fill_ss"_crc32,
-        shadow_fill_ds         = "shadow_fill_ds"_crc32,
-        shadow_draw_task_ss    = "shadow_draw_task_ss"_crc32,
-        shadow_draw_task_ds    = "shadow_draw_task_ds"_crc32,
-        shadow_draw_indexed_ss = "shadow_draw_indexed_ss"_crc32,
-        shadow_draw_indexed_ds = "shadow_draw_indexed_ds"_crc32,
     };
 
     struct pso_data
@@ -59,7 +51,10 @@ namespace app
         std::unordered_map<u32, rhi::pipeline> m_pipelines;
 
     public:
-        rhi::pipeline& operator[](const pso_id id) { return m_pipelines[static_cast<u32>(id)]; }
+        rhi::pipeline& operator[](const pso_id id) const
+        {
+            return const_cast<pso_data*>(this)->m_pipelines[static_cast<u32>(id)];
+        }
 
         void load(const rhi::impl& rhi, rhi::context context, rhi::swapchain swapchain, rhi::bindless_set textures_set);
 
