@@ -1,6 +1,6 @@
 #include "utils/math.hlsl"
 #include "utils/gather.hlsl"
-#include "include/shaders/types.hlsl"
+#include "include/shaders/types.hlsl.h"
 
 StructuredBuffer<MeshData>     meshes_data:         register(t0);
 StructuredBuffer<MeshInstance> mesh_instances:      register(t1);
@@ -17,14 +17,12 @@ StructuredBuffer<FrameCullData>             frame_cull:         register(t5);
 RWStructuredBuffer<DrawTaskCommandIndirect> draw_indirect_cmds: register(u6);
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-// TODO(dx12): D3D12 has no combined image samplers, the texture and its sampler are bound separately there (t7 + s7)
 [[vk::combinedImageSampler]] Texture2D    depth_pyramid:         register(t7);
 [[vk::combinedImageSampler]] SamplerState depth_pyramid_sampler: register(s7);
 #endif
 
 struct PushConstants
 {
-    // TODO(dx12): cbuffer arrays have a 16-byte element stride, so offset_table[kMatClassCount] is packed into a vector
     uint3 offset_table;
 };
 
@@ -71,10 +69,10 @@ void main(uint3 global_id: SV_DispatchThreadID)
         float level = ceil(log2(max(pmd_size.x, pmd_size.y)));
         float spr_depth = -frame_cull[0].frustum[4] / (center.z + radius);
 
-#ifndef PLATFORM_MVK
-        float pmd_depth = depth_pyramid.SampleLevel(depth_pyramid_sampler, (p_aabb.xy + p_aabb.zw) * 0.5, level).x;
-#else
+#ifdef EMULATE_SAMPLER_REDUCE
         float pmd_depth = textureGatherLodMin(depth_pyramid, depth_pyramid_sampler, (p_aabb.xy + p_aabb.zw) * 0.5, level, 0);
+#else
+        float pmd_depth = depth_pyramid.SampleLevel(depth_pyramid_sampler, (p_aabb.xy + p_aabb.zw) * 0.5, level).x;
 #endif
 
         visible = visible && spr_depth >= pmd_depth;

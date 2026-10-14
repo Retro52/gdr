@@ -7,12 +7,12 @@ namespace app
 {
     struct depth_pyramid_data
     {
-        rhi::image image;
-        rhi::sampler sampler;
-        rhi::image_view views[12] {};
+        rhi::image image          = rhi::null_image;
+        rhi::sampler sampler      = rhi::null_sampler;
+        rhi::image_view views[12] = {};
 
-        ivec2 base_size;
-        u32 pyramid_count {0};
+        u32 pyramid_count = 0;
+        ivec2 base_size   = ivec2(0, 0);
     };
 
     void begin_rendering(const rhi::impl& rhi, rhi::command_buffer cmd, rhi::attachment color, rhi::attachment depth,

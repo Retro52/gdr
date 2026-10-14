@@ -3,8 +3,8 @@
 #include <bytes.hpp>
 #include <cpp/containers/heap_array.hpp>
 #include <fs/fs.hpp>
-#include <shaders/constants.h>
-#include <shaders/types.h>
+#include <shaders/constants.hlsl.h>
+#include <shaders/types.hlsl.h>
 
 #include <array>
 
@@ -20,20 +20,32 @@ namespace loader
 {
     constexpr static u32 kLODCount = shader_constants::kLODCount;
 
-    using vertex    = shader_types::Vertex;
-    using lod       = shader_types::MeshLod;
-    using meshlet   = shader_types::Meshlet;
-    using primitive = shader_types::MeshData;
-    using material  = shader_types::MeshMaterial;
-    using instance  = shader_types::MeshInstance;
+    using vertex           = shader_types::Vertex;
+    using lod              = shader_types::MeshLod;
+    using meshlet          = shader_types::Meshlet;
+    using primitive        = shader_types::MeshData;
+    using material         = shader_types::MeshMaterial;
+    using instance         = shader_types::MeshInstance;
+    using material_buckets = std::array<u32, shader_constants::kMatClassCount>;
+
+    // clang-format off
+    REGISTER_ENUM(texture_usage,
+        unknown,
+        omr,
+        albedo,
+        normal,
+        gloss_spec
+    )
+    // clang-format on
 
     struct texture_desc
     {
         uvec3 dimensions         = uvec3(0);
-        u32 mips_count           = 0;
-        u32 arrays_count         = 0;
+        u16 mips_count           = 0;
+        u16 arrays_count         = 0;
         u32 block_size           = 0;
         u32 bits_per_block       = 0;
+        texture_usage usage      = texture_usage::unknown;
         rhi::image_format format = rhi::image_format::none;
         bytes pdata;
     };
@@ -43,7 +55,8 @@ namespace loader
         u64 meshlets  = 0;
         u64 triangles = 0;
         u64 instances = 0;
-        std::array<u32, shader_constants::kMatClassCount> mat_offset_table {};
+        material_buckets buckets {};
+        material_buckets buckets_offset {};
     };
 
     struct prim_layout

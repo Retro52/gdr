@@ -339,6 +339,7 @@ auto rhi::vk_resize_swapchain(context context, swapchain swapchain, const create
 
     RESULT_FORWARD_IF_FAILED(new_sc);
     platform::vk_destroy_swapchain(*vk_ctx, vk_sc->root);
+    clear_handle(nullptr, swapchain);
     vk_sc->root = std::move(*new_sc);
 
     return reference_handle<rhi::swapchain>(vk_sc);
@@ -609,6 +610,7 @@ void rhi::vk_destroy_image(context context, image& image)
     if (vk_ctx && vk_image)
     {
         platform::vk_destroy_image(vk_ctx->device, vk_ctx->allocator, *vk_image);
+        clear_handle(vk_image, image);
     }
 }
 
@@ -688,7 +690,6 @@ void rhi::vk_destroy_sampler(context context, sampler& sampler)
     const auto* vk_ctx = cast_from_handle<platform::vk_context>(context);
     auto vk_sampler    = vk_rhi_vkobj_from_handle<VkSampler>(sampler);
 
-    assert2(vk_ctx && vk_sampler != VK_NULL_HANDLE);
     if (vk_ctx && vk_sampler != VK_NULL_HANDLE)
     {
         VK_DESTROY(vk_sampler, vkDestroySampler, vk_ctx->device);

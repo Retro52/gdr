@@ -14,6 +14,20 @@ namespace app
         void* mapped;
         rhi::buffer buffer;
 
+        static mapped_buffer create(const rhi::impl& rhi, const rhi::context ctx, const u64 size,
+                                    const rhi::buffer_usage_bits usage_flags)
+        {
+            mapped_buffer result {};
+            const rhi::create_buffer_info info {
+                .mapped      = &result.mapped,
+                .size        = size,
+                .usage_flags = usage_flags,
+            };
+            result.buffer = *rhi.create_buffer(ctx, info);
+
+            return result;
+        }
+
         static mapped_buffer create(const rhi::impl& rhi, const rhi::context ctx, rhi::create_buffer_info info)
         {
             mapped_buffer result {};
@@ -53,21 +67,12 @@ namespace app
             return this->submit_internal(dst, dst_offset, data, count * sizeof(T));
         }
 
-        rhi::image create_texture(const loader::texture_desc& texture) const;
+        [[nodiscard]] rhi::image create_texture(const loader::texture_desc& texture) const;
 
     private:
         void submit_internal(rhi::buffer dst, u64 dst_offset, const void* data, u64 bytes) const;
 
     private:
-        // struct upload_payload
-        // {
-        //     bytes data;
-        //     u64 dst_offset;
-        //     rhi::buffer dst;
-        // };
-        //
-        // cpp::heap_array<upload_payload> m_pending_uploads;
-
         rhi::impl& m_rhi;
         rhi::context m_ctx;
         mapped_buffer m_staging_buffer;

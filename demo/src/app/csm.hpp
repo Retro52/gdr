@@ -4,7 +4,7 @@
 #include <cpp/containers/local_array.hpp>
 #include <glm/mat4x4.hpp>
 #include <render/rhi.hpp>
-#include <shaders/types.h>
+#include <shaders/types.hlsl.h>
 
 namespace app
 {

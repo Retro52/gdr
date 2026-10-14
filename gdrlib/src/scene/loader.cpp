@@ -38,19 +38,17 @@ namespace
         ddspp::Descriptor dds_descriptor;
     };
 
-    REGISTER_ENUM(texture_usage, unknown, albedo, normal, metalic_roughness)
-
     struct parsed_texture
     {
-        texture_usage usage {texture_usage::unknown};
+        loader::texture_usage usage {loader::texture_usage::unknown};
         std::variant<dds_data, SDL_Surface*> desc;
     };
 
-    texture_usage try_get_texture_usage(const cgltf_data* data, const cgltf_texture* texture)
+    loader::texture_usage try_get_texture_usage(const cgltf_data* data, const cgltf_texture* texture)
     {
         if (!data || !data->materials || !data->textures)
         {
-            return texture_usage::unknown;
+            return loader::texture_usage::unknown;
         }
 
         auto is_either = [texture](const cgltf_texture_view& a, const cgltf_texture_view& b)
@@ -64,23 +62,27 @@ namespace
 
             if (material.normal_texture.texture == texture)
             {
-                return texture_usage::normal;
+                return loader::texture_usage::normal;
             }
 
             if (is_either(material.pbr_metallic_roughness.base_color_texture,
                           material.pbr_specular_glossiness.diffuse_texture))
             {
-                return texture_usage::albedo;
+                return loader::texture_usage::albedo;
             }
 
-            if (is_either(material.pbr_metallic_roughness.metallic_roughness_texture,
-                          material.pbr_specular_glossiness.specular_glossiness_texture))
+            if (material.pbr_metallic_roughness.metallic_roughness_texture.texture == texture)
             {
-                return texture_usage::metalic_roughness;
+                return loader::texture_usage::omr;
+            }
+
+            if (material.pbr_metallic_roughness.metallic_roughness_texture.texture == texture)
+            {
+                return loader::texture_usage::gloss_spec;
             }
         }
 
-        return texture_usage::unknown;
+        return loader::texture_usage::unknown;
     }
 
     template<typename Data>
@@ -120,12 +122,13 @@ namespace
             },
             parsed_texture.desc);
 
-        if (parsed_texture.usage != texture_usage::unknown)
+        if (parsed_texture.usage != loader::texture_usage::unknown)
         {
+            result.usage  = parsed_texture.usage;
             result.format = static_cast<rhi::image_format>(platform::vk_format_force_color_space(
                 static_cast<VkFormat>(result.format),
-                parsed_texture.usage == texture_usage::albedo ? platform::color_space::srgb
-                                                              : platform::color_space::linear));
+                parsed_texture.usage == loader::texture_usage::albedo ? platform::color_space::srgb
+                                                                      : platform::color_space::linear));
         }
 
         return result;
@@ -231,9 +234,24 @@ static loader::material build_material(const cgltf_data* data, const cgltf_mater
     return mat;
 }
 
-static u32 get_max_draw_commands(u32 meshlets_count)
+static u32 get_max_draw_commands(const u32 meshlets_count)
 {
     return (meshlets_count + shader_constants::kTaskWorkGroups - 1) / shader_constants::kTaskWorkGroups;
+}
+
+static auto make_offset_table(const std::array<u32, shader_constants::kMatClassCount>& materials)
+    -> std::array<u32, shader_constants::kMatClassCount>
+{
+    std::array<u32, shader_constants::kMatClassCount> result {};
+
+    u32 sum = 0;
+    for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
+    {
+        result[i] = sum;
+        sum += materials[i];
+    }
+
+    return result;
 }
 
 static cpp::heap_array<loader::prim_info> collect_primitives(const cgltf_data* data,
@@ -284,7 +302,7 @@ static cpp::heap_array<loader::prim_info> collect_primitives(const cgltf_data* d
     return result;
 }
 
-static result<parsed_texture> read_texture(const fs::path& uri, texture_usage usage)
+static result<parsed_texture> read_texture(const fs::path& uri, loader::texture_usage usage)
 {
     ZoneScoped;
 
@@ -610,7 +628,7 @@ auto loader::load_scene(const fs::path& path, scene& scene) -> result<scene_data
                 instance.material_index    = node->mesh->primitives[j].material
                                                ? (cgltf_material_index(data, node->mesh->primitives[j].material) + 1)
                                                : 0;
-                scene_data.counters.mat_offset_table[scene_data.materials[instance.material_index].material_class] +=
+                scene_data.counters.buckets[scene_data.materials[instance.material_index].material_class] +=
                     get_max_draw_commands(get_max_lod_meshlets(scene_data.primitives[desc.offset + j]));
 
                 ++scene_data.counters.instances;
@@ -656,6 +674,7 @@ auto loader::load_scene(const fs::path& path, scene& scene) -> result<scene_data
 #endif
     }
 
+    scene_data.counters.buckets_offset = make_offset_table(scene_data.counters.buckets);
     textures_wg.wait_till_done();
     return scene_data;
 }
@@ -800,11 +819,12 @@ void loader::encode_raw_mesh(scene_data& data, const mesh::raw_mesh& primitive, 
             encoded_mst.sphere_center[1] = meshlet.sphere_center.y;
             encoded_mst.sphere_center[2] = meshlet.sphere_center.z;
 
-            encoded_mst.cone_cutoff     = meshlet.cone_cutoff;
-            encoded_mst.sphere_radius   = meshlet.sphere_radius;
-            encoded_mst.triangles_count = meshlet.triangles_count;
-            encoded_mst.vertices_count  = meshlet.vertices_count;
-            encoded_mst.data_offset     = meshlet_base_offset + meshlet.data_prefix_sum;
+            encoded_mst.cone_cutoff   = meshlet.cone_cutoff;
+            encoded_mst.sphere_radius = meshlet.sphere_radius;
+            encoded_mst.data_offset   = meshlet_base_offset + meshlet.data_prefix_sum;
+
+            encoded_mst.set_vertices_count(meshlet.vertices_count);
+            encoded_mst.set_triangles_count(meshlet.triangles_count);
         }
     }
 }

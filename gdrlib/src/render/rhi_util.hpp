@@ -20,7 +20,7 @@ namespace rhi
     }
 
     template<typename H>
-    void clear_handle(const nullptr_t storage, H&& data)
+    void clear_handle(const nullptr_t, H&& data)
     {
         memset(&data, 0, sizeof(data));
     }

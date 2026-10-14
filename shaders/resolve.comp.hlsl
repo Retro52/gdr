@@ -1,4 +1,4 @@
-#include "include/shaders/types.hlsl"
+#include "include/shaders/types.hlsl.h"
 
 #include "utils/pbr.hlsl"
 #include "utils/math.hlsl"
@@ -16,23 +16,26 @@ StructuredBuffer<MeshData>           primitives:      register(t6);
 StructuredBuffer<MeshInstance>       instances:       register(t7);
 StructuredBuffer<MeshMaterial>       materials:       register(t8);
 StructuredBuffer<FrameWorldData>     world:           register(t9);
+
+SamplerState textures_sampler: register(s10);
+
+[[vk::combinedImageSampler]] Texture2D    depth_texture:         register(t11);
+[[vk::combinedImageSampler]] SamplerState depth_texture_sampler: register(s11);
+
+[[vk::combinedImageSampler]] Texture2D              brdf_lut:                register(t12);
+[[vk::combinedImageSampler]] SamplerState           brdf_lut_sampler:        register(s12);
+[[vk::combinedImageSampler]] TextureCube            sky_cubemap:             register(t13);
+[[vk::combinedImageSampler]] SamplerState           sky_cubemap_sampler:     register(s13);
+[[vk::combinedImageSampler]] TextureCube            irradiance_map:          register(t14);
+[[vk::combinedImageSampler]] SamplerState           irradiance_map_sampler:  register(s14);
+[[vk::combinedImageSampler]] TextureCube            prefiltered_map:         register(t15);
+[[vk::combinedImageSampler]] SamplerState           prefiltered_map_sampler: register(s15);
+
+#if 0
 StructuredBuffer<ShadowCascadesData> shadow_cascades: register(t10);
-
-SamplerState textures_sampler: register(s11);
-
-[[vk::combinedImageSampler]] Texture2D    depth_texture:         register(t12);
-[[vk::combinedImageSampler]] SamplerState depth_texture_sampler: register(s12);
-
-[[vk::combinedImageSampler]] Texture2D              brdf_lut:                register(t13);
-[[vk::combinedImageSampler]] SamplerState           brdf_lut_sampler:        register(s13);
-[[vk::combinedImageSampler]] TextureCube            sky_cubemap:             register(t14);
-[[vk::combinedImageSampler]] SamplerState           sky_cubemap_sampler:     register(s14);
-[[vk::combinedImageSampler]] TextureCube            irradiance_map:          register(t15);
-[[vk::combinedImageSampler]] SamplerState           irradiance_map_sampler:  register(s15);
-[[vk::combinedImageSampler]] TextureCube            prefiltered_map:         register(t16);
-[[vk::combinedImageSampler]] SamplerState           prefiltered_map_sampler: register(s16);
 [[vk::combinedImageSampler]] Texture2DArray         shadow_map:              register(t17);
 [[vk::combinedImageSampler]] SamplerComparisonState shadow_map_sampler:      register(s17);
+#endif
 
 Texture2D textures[]: register(t0, space1);
 
@@ -118,6 +121,7 @@ float get_sun_disc_coverage(float3 view_dir, float3 sun_dir, float half_angle, f
     return smoothstep(cos(outer), cos(inner), cos_theta);
 }
 
+#if 0
 float shadow_pcf(float2 uv, float layer, float ref, float sm_res)
 {
     float2 tc   = uv * sm_res;
@@ -174,9 +178,11 @@ uint get_shadow_cascade_index(float view_depth)
 
     return kMaxShadowCascades - 1;
 }
+#endif
 
 float get_shadow(float3 pos, float3 nrm, float view_depth, float n_dot_l)
 {
+#if 0
     if (view_depth >= shadow_cascades[0].max_range)
     {
         return 1.0F;
@@ -198,6 +204,8 @@ float get_shadow(float3 pos, float3 nrm, float view_depth, float n_dot_l)
 
     float next = layer + 1 < kMaxShadowCascades ? shadow_cascade_lookup(layer + 1, pos, nrm, n_dot_l) : 1.0F;
     return lerp(shadow, next, blend);
+#endif
+    return 1.0F;
 }
 
 [shader("compute")]
@@ -419,8 +427,10 @@ void main(uint3 global_id: SV_DispatchThreadID)
         if (world[0].debug_mode == kDebugModeTriangleId)     { color = hash_color(i0); }
         if (world[0].debug_mode == kDebugModeInstanceId)     { color = hash_color(instance_id); }
         if (world[0].debug_mode == kDebugModeTriangleFace)   { color = hash_color(uint(is_front_face)); }
+#if 0
         if (world[0].debug_mode == kDebugModeShadow)         { color = shadow_factor.xxx; }
         if (world[0].debug_mode == kDebugModeShadowCascades) { color = lerp(color, hash_color(view_depth >= shadow_cascades[0].max_range ? kMaxShadowCascades : get_shadow_cascade_index(view_depth)), 0.5F); }
+#endif
         result = float4(color, 1.0F);
     }
 #endif

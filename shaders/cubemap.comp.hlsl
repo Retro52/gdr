@@ -1,5 +1,5 @@
 #include "utils/pbr.hlsl"
-#include "include/shaders/types.hlsl"
+#include "include/shaders/types.hlsl.h"
 
 // TODO(dx12): D3D12 has no combined image samplers, the texture and its sampler are bound separately there (t0 + s0)
 #ifdef UNPACK_MAIN

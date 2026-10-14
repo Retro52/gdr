@@ -3,7 +3,7 @@
 #include <types.hpp>
 
 #include <cpp/containers/heap_array.hpp>
-#include <shaders/constants.h>
+#include <shaders/constants.hlsl.h>
 
 struct cgltf_primitive;
 

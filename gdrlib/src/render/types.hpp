@@ -723,11 +723,13 @@ namespace rhi
         image output = null_image;
     };
 
+    constexpr u32 kDeviceIdDealersChoice = static_cast<u32>(-1);
+
     struct instance_desc
     {
         const char* app_name = "";
-        u32 app_version      = 0;
-        u32 device_id_hint   = static_cast<u32>(-1);
+        u32 device_id_hint   = kDeviceIdDealersChoice;
+
         rendering_features_table device_features;
     };
 }
