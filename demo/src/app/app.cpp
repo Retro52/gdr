@@ -38,8 +38,8 @@
 namespace
 {
     REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_ambient, lit_specular, uv, normal, tangent, depth, velocity,
-                  world_pos, color, metallic, roughness, albedo_texture, normal_texture, omr_texture, triangle_id,
-                  instance_id, triangle_face, shadow, shadow_cascades);
+                  world_pos, color, metallic, roughness, albedo_texture, normal_texture, orm_texture, triangle_id,
+                  instance_id, triangle_face);
 
     struct frames_tracker
     {
@@ -844,7 +844,10 @@ int app::instance::run()
 
                 static f64 accumulated_time = 0.0;
                 accumulated_time            = accumulated_time * 0.95 + dt * 0.05;
-                const auto str = cpp::stack_string::make_formatted("CPU: %.3lfms", accumulated_time * 1000.0F);
+                const auto str              = cpp::stack_string::make_formatted(
+                    "[%s] CPU: %.3lfms",
+                    reflection::get_enum_name_at<debug_mode>(static_cast<u32>(draw_debug_mode)),
+                    accumulated_time * 1000.0F);
                 SDL_SetWindowTitle(m_window.get_native_handle().window, str.c_str());
 
                 FrameMark;

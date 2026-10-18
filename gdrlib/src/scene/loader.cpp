@@ -204,12 +204,11 @@ static loader::material build_material(const cgltf_data* data, const cgltf_mater
                                   material.pbr_specular_glossiness.diffuse_factor[2],
                                   material.pbr_specular_glossiness.diffuse_factor[3]);
 
-        const f32 max_specular = glm::max(material.pbr_specular_glossiness.specular_factor[0],
-                                          material.pbr_specular_glossiness.specular_factor[1],
-                                          material.pbr_specular_glossiness.specular_factor[2]);
-
         mat.material_bits        = 1 << shader_constants::kMatGlossBit;
-        mat.met_roughness_factor = vec4(1.0F, material.pbr_specular_glossiness.glossiness_factor, max_specular, 1.0F);
+        mat.met_roughness_factor = vec4(material.pbr_specular_glossiness.specular_factor[0],
+                                        material.pbr_specular_glossiness.specular_factor[1],
+                                        material.pbr_specular_glossiness.specular_factor[2],
+                                        material.pbr_specular_glossiness.glossiness_factor);
     }
 
     if (material.has_transmission)
