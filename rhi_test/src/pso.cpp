@@ -1,27 +1,98 @@
 #include <cpp/containers/heap_array.hpp>
+#include <cpp/hash/hashed_string.hpp>
 #include <fs/fs.hpp>
 #include <log.hpp>
 #include <nlohmann/json.hpp>
 #include <pso.hpp>
+#include <reflection/enum.hpp>
 #include <tracy/Tracy.hpp>
 
 namespace
 {
     constexpr fs::path kShadersBinDir = "../shaders/bin";
+
+    u64 get_last_write_time()
+    {
+        u64 result = 0;
+        for (auto it = std::filesystem::directory_iterator(kShadersBinDir.c_str());
+             it != std::filesystem::directory_iterator();
+             ++it)
+        {
+            result = cpp::max(result, static_cast<u64>(it->last_write_time().time_since_epoch().count()));
+        }
+
+        return result;
+    }
+
+    template<typename T, typename U = T>
+    bool opt_get_type(const nlohmann::json& options, const char* key, U& dst)
+    {
+        if (options.contains(key))
+        {
+            dst = static_cast<T>(options[key]);
+            return true;
+        }
+
+        return false;
+    }
+
+    template<typename T>
+    bool opt_get(const nlohmann::json& options, const char* key, T& dst)
+    {
+        return opt_get_type<T>(options, key, dst);
+    }
+
+    bool opt_get_bit(const nlohmann::json& options, const char* key, bool default_value = false)
+    {
+        opt_get_type<bool>(options, key, default_value);
+        return default_value;
+    }
+
+    template<typename T>
+    bool opt_get_enum(const nlohmann::json& options, const char* key, T& dst)
+    {
+        if (options.contains(key))
+        {
+            dst = static_cast<T>(reflection::enum_from_string<T>(options[key].get<std::string>().c_str()));
+            return true;
+        }
+
+        return false;
+    }
+
+    void parse_pipeline_options(rhi::pso_options& options, const nlohmann::json& json_options)
+    {
+        opt_get_enum<rhi::image_format>(json_options, "depth_format", options.depth_format);
+
+        opt_get_enum(json_options, "topology", options.topology);
+        options.depth_bias_enable  = opt_get_bit(json_options, "depth_bias", options.depth_bias_enable);
+        options.depth_clamp_enable = opt_get_bit(json_options, "depth_clamp", options.depth_clamp_enable);
+
+        if (json_options.contains("color_formats"))
+        {
+            options.color_attachments_count = 0;
+            for (auto& item : json_options["color_formats"].items())
+            {
+                auto format = reflection::enum_from_string<rhi::image_format>(item.value().get<std::string>().c_str());
+
+                options.add_color_attachment(static_cast<rhi::image_format>(format));
+            }
+        }
+    }
 }
 
-void pso_data::load(const rhi::impl& impl, rhi::context context, rhi::swapchain swapchain,
+void pso_data::load(const rhi::impl& rhi, const rhi::context context, const rhi::swapchain swapchain,
                     rhi::bindless_set textures_set)
 {
     ZoneScoped;
-    auto data = fs::read_file("../shaders/rhi_test_pipelines.json");
+    auto data = fs::read_file("../shaders/pipelines.json");
     if (!data)
     {
         assert2m(false, data.message);
         return;
     }
 
-    const auto sc_format = RHI_SAFE_CALL(impl.query_swapchain_color_format, swapchain);
+    const auto sc_format = RHI_SAFE_CALL(rhi.query_swapchain_color_format, swapchain);
     assert2(sc_format);
 
     if (!sc_format)
@@ -49,11 +120,11 @@ void pso_data::load(const rhi::impl& impl, rhi::context context, rhi::swapchain 
             const auto& capabilities = pipeline_info["capabilities"];
             for (auto it = capabilities.begin(); it != capabilities.end(); ++it)
             {
-                // if (it.value() == "mesh_ext" && !renderer.is_feature_supported(render::feature_flag::eMeshShading))
-                // {
-                //     LOG_WARNING("pipeline is skipped because mesh shaders are unsupported on this platform");
-                //     return;
-                // }
+                if (it.value() == "mesh_ext" && !*rhi.query_feature_support(context, rhi::feature_flag::mesh_shading))
+                {
+                    LOG_WARNING("pipeline is skipped because mesh shaders are unsupported on this platform");
+                    return;
+                }
             }
         }
 
@@ -64,7 +135,7 @@ void pso_data::load(const rhi::impl& impl, rhi::context context, rhi::swapchain 
             const auto it        = cache.find(shader_id);
             if (it == cache.end())
             {
-                const auto compiled_shader = RHI_SAFE_CALL(impl.create_shader, context, kShadersBinDir / shader);
+                const auto compiled_shader = RHI_SAFE_CALL(rhi.create_shader, context, kShadersBinDir / shader);
                 assert2m(compiled_shader, compiled_shader.message);
                 if (compiled_shader)
                 {
@@ -87,15 +158,21 @@ void pso_data::load(const rhi::impl& impl, rhi::context context, rhi::swapchain 
                  "some shaders failed to compile?");
         if (compiled_shaders.size() == shaders.size())
         {
+            auto options = rhi::pso_options().add_color_attachment(*sc_format);
+            if (pipeline_info.contains("options"))
+            {
+                parse_pipeline_options(options, pipeline_info["options"]);
+            }
+
             auto pso =
                 (shaders.size() == 1
-                 && (*RHI_SAFE_CALL(impl.query_shader_stage, compiled_shaders.front()) == rhi::shader_stage::compute))
-                    ? RHI_SAFE_CALL(impl.create_compute_pso, context, compiled_shaders[0], {&textures_set, 1})
-                    : RHI_SAFE_CALL(impl.create_graphics_pso,
+                 && (*RHI_SAFE_CALL(rhi.query_shader_stage, compiled_shaders.front()) == rhi::shader_stage::compute))
+                    ? RHI_SAFE_CALL(rhi.create_compute_pso, context, compiled_shaders[0], {&textures_set, 1})
+                    : RHI_SAFE_CALL(rhi.create_graphics_pso,
                                     context,
                                     {compiled_shaders.data(), compiled_shaders.size()},
                                     {&textures_set, 1},
-                                    rhi::pso_options().add_color_attachment(*sc_format));
+                                    options);
 
             assert2m(pso && key, pso.message);
             if (pso)
@@ -119,15 +196,15 @@ void pso_data::load(const rhi::impl& impl, rhi::context context, rhi::swapchain 
 
     for (auto& [_, shader] : cache)
     {
-        RHI_SAFE_CALL(impl.destroy_shader, context, shader);
+        rhi.destroy_shader(context, shader);
     }
 }
 
-void pso_data::shutdown(const rhi::impl& impl, rhi::context context)
+void pso_data::shutdown(const rhi::impl& rhi, const rhi::context context)
 {
     ZoneScoped;
     for (auto& [_, pso] : m_pipelines)
     {
-        RHI_SAFE_CALL(impl.destroy_pso, context, pso);
+        RHI_SAFE_CALL(rhi.destroy_pso, context, pso);
     }
 }

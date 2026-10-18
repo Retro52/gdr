@@ -31,7 +31,6 @@ static rhi::instance_desc get_instance_desc()
                                         .require(rhi::feature_flag::synchronization2);
     return rhi::instance_desc {
         .app_name        = "GDR rhi demo",
-        .app_version     = 1,
         .device_features = features_table,
     };
 }
@@ -69,7 +68,7 @@ int main(const int argc, char* argv[])
 
     ZoneScoped;
     logging::s_instance->set_log_level(quill::LogLevel::Debug);
-    window window("RHI window", {.fullscreen = true, .borderless = true});
+    window window("RHI window", {.position = ivec2(200, 200), .fullscreen = false, .borderless = false});
 
     events_queue events(window);
 

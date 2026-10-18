@@ -7,12 +7,12 @@
 #include <app/pso.hpp>
 #include <app/render.hpp>
 #include <camera_controller.hpp>
-#include <debug/frustum_renderer.hpp>
 #include <events.hpp>
 #include <glm/common.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <log.hpp>
 #include <passes/pass_aa.hpp>
+#include <passes/pass_dbg_frustum.hpp>
 #include <passes/pass_geometry.hpp>
 #include <passes/pass_light_resolve.hpp>
 #include <passes/pass_post_process.hpp>
@@ -263,6 +263,7 @@ static rhi::instance_desc get_instance_desc(auto& args)
     constexpr auto features_table = rhi::rendering_features_table()
 #if !defined(NDEBUG)
                                         .request(rhi::feature_flag::validation)
+                                        .request(rhi::feature_flag::debug_labels)
 #endif
 #if !defined(__APPLE__)
                                         .require(rhi::feature_flag::sampler_min_max)
@@ -335,6 +336,8 @@ int app::instance::run()
     app::pass_aa aa_pass(m_rhi, pipelines, *context, m_window.get_size_in_px(), m_window.get_size_in_px());
     app::pass_post_process pp_pass(m_rhi, *context, m_window.get_size_in_px());
 
+    app::pass_dbg_frustum dbg_frustum_pass(m_rhi, *context, pipelines[pso_id::frustum_debug]);
+
     app::envmap envmap {
         m_rhi,
         *context,
@@ -346,9 +349,8 @@ int app::instance::run()
         m_rhi, *context, rhi::image_format::d32sf, {.resolution = 2048, .max_range = 500.0F, .split_lambda = 0.65F}
     };
 
-    bool exit                     = false;
-    bool mesh_shading_supported   = *m_rhi.query_feature_support(*context, rhi::feature_flag::mesh_shading);
-    bool pipeline_stats_supported = *m_rhi.query_feature_support(*context, rhi::feature_flag::pipeline_stats);
+    bool exit                   = false;
+    bool mesh_shading_supported = *m_rhi.query_feature_support(*context, rhi::feature_flag::mesh_shading);
 
     m_events_queue.add_watcher(
         event_type::request_close,
@@ -522,20 +524,16 @@ int app::instance::run()
     glm::mat4 debug_camera_view;
     glm::mat4 mv_pref_frame_view_proj;
 
-    u32 draw_materials_mask = 0xFFFF;
     debug_mode draw_debug_mode {debug_mode::shaded};
 
     f32 camera_exposure        = 10.0F;
     f32 envmap_compensation_ev = 0.0f;
     f32 envmap_intensity       = 1250.0f;
 
-    // bool enable_vsync             = m_renderer.get_vsync();
-
     bool enable_fsr_aa            = true;
     bool fsr_aa_rcas              = false;
     bool fsr_aa_reset             = false;
     bool freeze_cull_data         = false;
-    bool enable_fullscreen        = m_window.get_fullscreen();
     bool enable_meshlets_pipeline = mesh_shading_supported;
 
     struct keyboard_controls_context
@@ -616,8 +614,6 @@ int app::instance::run()
 
     f64 last_frame_time = get_time();
     camera_controller controller(m_events_queue, camera);
-
-    app::debug::frustum_renderer frustum_renderer(pipelines[pso_id::frustum_debug]);
 
     frames_tracker tracker;
     tracker.init(m_rhi, *context, *m_rhi.query_swapchain_images_count(*swapchain));
@@ -827,22 +823,14 @@ int app::instance::run()
 
                 if (freeze_cull_data)
                 {
-                    ZoneScopedN("Frustum debug render pass");
-                    const rhi::attachment_state_info color_attachments[] = {
-                        {.attachment = pp_pass.output,
-                         .load_op    = rhi::resource_load_op::load,
-                         .store_op   = rhi::resource_store_op::store},
-                    };
-
-                    m_rhi.cmd_set_draw_state(buffer,
-                                             {color_attachments, COUNT_OF(color_attachments)},
-                                             {.attachment = gpass.depth,
-                                              .load_op    = rhi::resource_load_op::load,
-                                              .store_op   = rhi::resource_store_op::store},
-                                             {0, 0, m_window.get_size_in_px().x, m_window.get_size_in_px().y});
-
-                    frustum_renderer.draw(m_rhi, buffer, camera_proj * camera_view, frame_cull_data_buffer.buffer);
-                    m_rhi.cmd_clear_draw_state(buffer);
+                    dbg_frustum_pass.draw(buffer,
+                                          app::pass_dbg_frustum::draw_params {
+                                              .cull_data = frame_cull_data_buffer.buffer,
+                                              .depth     = gpass.depth,
+                                              .output    = pp_pass.output,
+                                              .viewport  = m_window.get_size_in_px(),
+                                              .camera_vp = camera_proj * camera_view,
+                                          });
                 }
 
                 present_pass.present(buffer,

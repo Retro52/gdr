@@ -140,6 +140,9 @@ namespace rhi
                                                       rhi::buffer count_buffer, u64 count_offset, u32 max_count,
                                                       u32 stride);
 
+    using cmd_debug_label_begin_pfn = void (*)(command_buffer cmd, context context, const debug_label& label);
+    using cmd_debug_label_end_pfn   = void (*)(command_buffer cmd, context context);
+
     using submit_pfn  = void (*)(context context, queue queue, const submit_info& info);
     using present_pfn = void (*)(command_buffer cmd, swapchain swapchain, queue submit, queue present);
 
@@ -241,6 +244,9 @@ namespace rhi
 
         cmd_draw_mesh_indirect_pfn cmd_draw_mesh_indirect;
         cmd_draw_mesh_indirect_count_pfn cmd_draw_mesh_indirect_count;
+
+        cmd_debug_label_begin_pfn cmd_debug_label_begin;
+        cmd_debug_label_end_pfn cmd_debug_label_end;
 
         submit_pfn submit;
         present_pfn present;

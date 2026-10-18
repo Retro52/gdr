@@ -133,6 +133,9 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
     }
 
     GroupMemoryBarrierWithGroupSync();
+    if (s_indices_count == 0)
+        return;
+
     if (local_id.x == 0)
     {
         uint indices_offset_global;

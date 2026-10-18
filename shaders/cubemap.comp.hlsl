@@ -1,7 +1,6 @@
 #include "utils/pbr.hlsl"
 #include "include/shaders/types.hlsl.h"
 
-// TODO(dx12): D3D12 has no combined image samplers, the texture and its sampler are bound separately there (t0 + s0)
 #ifdef UNPACK_MAIN
 [[vk::combinedImageSampler]] Texture2D    i_equirect:         register(t0);
 [[vk::combinedImageSampler]] SamplerState i_equirect_sampler: register(s0);
@@ -101,46 +100,6 @@ void main(uint3 global_id: SV_DispatchThreadID)
 }
 #endif
 
-#ifdef CONVOLUTE_MAIN1
-[shader("compute")]
-[numthreads(16, 16, 1)]
-void main(uint3 global_id: SV_DispatchThreadID)
-{
-    int3 image_size = pc.resolution.xxx;
-    if (any(global_id.xy >= uint2(image_size.xy)))
-        return;
-
-    uint face = global_id.z;
-
-    float2 pixel = float2(global_id.xy);
-    float2 uv = to_ndc(pixel, float2(image_size.xy));
-
-    float3 dir   = normalize(kFaceForward[face] + uv.x * kFaceRight[face] + uv.y * kFaceUp[face]);
-    float3 right = normalize(kFaceRight[face] - dir * dot(dir, kFaceRight[face]));
-    float3 up    = cross(dir, right);
-    float3 irradiance = 0.0.xxx;
-
-    float sample_delta = 0.025;
-    float total_samples = 0.0;
-    for(float phi = 0.0; phi < 2.0 * kPI; phi += sample_delta)
-    {
-        for(float theta = 0.0; theta < 0.5 * kPI; theta += sample_delta)
-        {
-            // spherical to cartesian (in tangent space)
-            float3 tangent_sample = float3(sin(theta) * cos(phi),  sin(theta) * sin(phi), cos(theta));
-            // tangent space to world
-            float3 vec_sample = tangent_sample.x * right + tangent_sample.y * up + tangent_sample.z * dir;
-
-            irradiance += i_cubemap.SampleLevel(i_cubemap_sampler, vec_sample, 0.0F).rgb * cos(theta) * sin(theta);
-            total_samples++;
-        }
-    }
-
-    irradiance = kPI * irradiance * (1.0 / float(total_samples));
-    o_convolution[global_id.xyz] = float4(irradiance, 1.0);
-}
-#endif
-
 #ifdef CONVOLUTE_MAIN
 [shader("compute")]
 [numthreads(16, 16, 1)]
@@ -148,7 +107,7 @@ void main(uint3 global_id: SV_DispatchThreadID)
 {
     int3 image_size = pc.resolution.xxx;
     if (any(global_id.xy >= uint2(image_size.xy)))
-    return;
+        return;
 
     uint face = global_id.z;
 

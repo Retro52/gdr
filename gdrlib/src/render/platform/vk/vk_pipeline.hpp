@@ -69,17 +69,13 @@ namespace platform
         struct shader_meta
         {
             VkDescriptorType bindings[32];
-            u32 work_group_size[3];
+            uvec3 work_group_size;
             u32 bindings_count            = 0;
             u32 max_binding_set_used      = 0;
             u32 push_constant_struct_size = 0;
             VkShaderStageFlagBits stage   = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
 
-            shader_meta()
-                : work_group_size {}
-            {
-                cpp::cx_fill(bindings + 0, bindings + COUNT_OF(bindings), VK_DESCRIPTOR_TYPE_MAX_ENUM);
-            }
+            shader_meta() { cpp::cx_fill(bindings + 0, bindings + COUNT_OF(bindings), VK_DESCRIPTOR_TYPE_MAX_ENUM); }
         };
 
         VkShaderModule module = VK_NULL_HANDLE;
@@ -101,7 +97,7 @@ namespace platform
         VkPipelineBindPoint m_pipeline_bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS;
         VkShaderStageFlags m_push_constant_stages = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
         u32 m_push_constants_max_size;
-        u32 work_group_size[3] {};
+        uvec3 work_group_size;
 
         static result<vk_pipeline> create_compute(VkDevice device, const vk_shader& shader,
                                                   const vk_descriptor_set* desc_set = nullptr, u32 desc_set_count = 0);

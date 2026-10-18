@@ -290,6 +290,58 @@ D3D12_BARRIER_SUBRESOURCE_RANGE platform::d3d12_rhi_parse_image_range(const rhi:
     };
 }
 
+D3D_PRIMITIVE_TOPOLOGY platform::d3d12_rhi_parse_topology(const rhi::topology topology)
+{
+    switch (topology)
+    {
+    case rhi::topology::list_lines :
+        return D3D_PRIMITIVE_TOPOLOGY_LINELIST;
+    case rhi::topology::list_triangles :
+        return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+    case rhi::topology::list_lines_adjacent :
+        return D3D_PRIMITIVE_TOPOLOGY_LINELIST_ADJ;
+    case rhi::topology::list_triangles_adjacent :
+        return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST_ADJ;
+    case rhi::topology::strip_lines :
+        return D3D_PRIMITIVE_TOPOLOGY_LINESTRIP;
+    case rhi::topology::strip_triangles :
+        return D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP;
+    case rhi::topology::strip_lines_adjacent :
+        return D3D_PRIMITIVE_TOPOLOGY_LINESTRIP_ADJ;
+    case rhi::topology::strip_triangles_adjacent :
+        return D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP_ADJ;
+    default :
+    case rhi::topology::list_points :
+        return D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
+    }
+}
+
+D3D12_COMPARISON_FUNC platform::d3d12_rhi_parse_comparison_func(const rhi::compare_op op)
+{
+    switch (op)
+    {
+    case rhi::compare_op::never :
+        return D3D12_COMPARISON_FUNC_NEVER;
+    case rhi::compare_op::always :
+        return D3D12_COMPARISON_FUNC_ALWAYS;
+    case rhi::compare_op::less :
+        return D3D12_COMPARISON_FUNC_LESS;
+    case rhi::compare_op::greater :
+        return D3D12_COMPARISON_FUNC_GREATER;
+    case rhi::compare_op::equal :
+        return D3D12_COMPARISON_FUNC_EQUAL;
+    case rhi::compare_op::not_equal :
+        return D3D12_COMPARISON_FUNC_NOT_EQUAL;
+    case rhi::compare_op::equal_or_less :
+        return D3D12_COMPARISON_FUNC_LESS_EQUAL;
+    case rhi::compare_op::equal_or_greater :
+        return D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+    default :
+    case rhi::compare_op::none :
+        return D3D12_COMPARISON_FUNC_NONE;
+    }
+}
+
 D3D12_BARRIER_SYNC platform::d3d12_rhi_parse_stage_flags(const rhi::barrier_stage_bits stages)
 {
     D3D12_BARRIER_SYNC result = D3D12_BARRIER_SYNC_NONE;

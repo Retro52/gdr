@@ -73,7 +73,7 @@ namespace
     }
 
     VkResult create_update_template(VkDevice device, VkPipelineBindPoint bind_point, VkPipelineLayout layout,
-                                    const vk_shader* shaders, u32 shaders_count,
+                                    const vk_shader* shaders, const u32 shaders_count,
                                     VkDescriptorUpdateTemplate* update_template)
     {
         ZoneScoped;
@@ -208,7 +208,7 @@ namespace
 result<vk_shader> vk_shader::load(VkDevice device, const fs::path& path)
 {
     ZoneScoped;
-    const auto r_binary = fs::read_file(path);
+    const auto r_binary = fs::read_file(path.append(".spv"));
     RESULT_FORWARD_IF_FAILED(r_binary);
 
     auto& binary = r_binary.value;
@@ -257,7 +257,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     std::unordered_map<u32, spv_struct> structs;
     std::unordered_map<u32, spv_push_desc> push_descriptors;
 
-    u32 work_group_size[3] {};
+    uvec3 work_group_size {};
     const spv_id* work_group_size_ids[3] {};
 
     auto save_if_push_constant = [&](u32 storage_class, spv_id* self)
@@ -318,7 +318,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
         switch (force_ids ? SpvExecutionModeLocalSizeId : static_cast<SpvExecutionMode>(inst[2]))
         {
         case SpvExecutionModeLocalSize :
-            cpp::cx_copy_n(work_group_size, &inst[3], 3);
+            cpp::cx_copy_n(&work_group_size.x, &inst[3], 3);
             break;
         case SpvExecutionModeLocalSizeId :
             work_group_size_ids[0] = &spv_ids[inst[3]];
@@ -682,17 +682,14 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
     VK_RETURN_ON_FAIL(create_update_template(
         device, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, shaders, shaders_count, &update_template));
 
-    u32 work_group_size[3] {};
+    uvec3 work_group_size {};
     for (u32 i = 0; i < shaders_count; ++i)
     {
-        auto& meta = shaders[i].meta;
-        if (meta.stage == VK_SHADER_STAGE_MESH_BIT_EXT && !work_group_size[0])
+        const auto& meta = shaders[i].meta;
+        if ((meta.stage == VK_SHADER_STAGE_MESH_BIT_EXT && !work_group_size[0])
+            || meta.stage == VK_SHADER_STAGE_TASK_BIT_EXT)
         {
-            cpp::cx_copy_n(work_group_size, meta.work_group_size, 3);
-        }
-        else if (meta.stage == VK_SHADER_STAGE_TASK_BIT_EXT)
-        {
-            cpp::cx_copy_n(work_group_size, meta.work_group_size, 3);
+            work_group_size = meta.work_group_size;
         }
     }
 
@@ -704,7 +701,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
         .m_pipeline_bind_point        = VK_PIPELINE_BIND_POINT_GRAPHICS,
         .m_push_constant_stages       = push_constant_range.stageFlags,
         .m_push_constants_max_size    = push_constant_range.size,
-        .work_group_size              = {work_group_size[0], work_group_size[1], work_group_size[2]}
+        .work_group_size              = work_group_size,
     };
 }
 

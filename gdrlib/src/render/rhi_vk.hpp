@@ -102,6 +102,9 @@ namespace rhi
     void vk_cmd_draw_mesh_indirect_count(command_buffer cmd, rhi::buffer buffer, u64 offset, rhi::buffer count_buffer,
                                          u64 count_offset, u32 max_count, u32 stride);
 
+    void vk_cmd_debug_label_begin(command_buffer cmd, context context, const debug_label& label);
+    void vk_cmd_debug_label_end(command_buffer cmd, context context);
+
     void vk_submit(context context, queue queue, const submit_info& info);
     void vk_present(command_buffer cmd, swapchain swapchain, queue submit, queue present);
 

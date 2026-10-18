@@ -45,10 +45,12 @@ struct vk_rhi_attachment_objects
 };
 
 template<typename T>
-static void vk_rhi_set_object_name_if_needed(VkDevice device, T object, const char* name)
+static void vk_rhi_set_object_name_if_needed(const platform::vk_context& ctx, T object, const char* name)
 {
     ZoneScoped;
-    if (!name || object == VK_NULL_HANDLE || !vkSetDebugUtilsObjectNameEXT)
+    if (!name || object == VK_NULL_HANDLE || !vkSetDebugUtilsObjectNameEXT
+        || (!ctx.enabled_device_features.supported(rhi::feature_flag::debug_labels)
+            || !ctx.enabled_device_features.wanted(rhi::feature_flag::debug_labels)))
     {
         return;
     }
@@ -86,7 +88,7 @@ static void vk_rhi_set_object_name_if_needed(VkDevice device, T object, const ch
         .pObjectName  = name,
     };
 
-    // vkSetDebugUtilsObjectNameEXT(device, &info);
+    vkSetDebugUtilsObjectNameEXT(ctx.device, &info);
 }
 
 template<typename T, typename H>
@@ -539,10 +541,11 @@ auto rhi::vk_create_buffer(context context, const create_buffer_info& buffer_inf
 
     if (buffer_info.mapped)
     {
+        assert2(vk_buffer->mapped);
         *buffer_info.mapped = vk_buffer->mapped;
     }
 
-    vk_rhi_set_object_name_if_needed(vk_ctx->device, vk_buffer->buffer, buffer_info.dbg_name);
+    vk_rhi_set_object_name_if_needed(*vk_ctx, vk_buffer->buffer, buffer_info.dbg_name);
     return create_handle<buffer>(*vk_buffer);
 }
 
@@ -597,8 +600,8 @@ auto rhi::vk_create_image(context context, const create_image_info& image_info) 
                                   vk_ctx->allocator);
     RESULT_FORWARD_IF_FAILED(vk_image);
 
-    vk_rhi_set_object_name_if_needed(vk_ctx->device, vk_image->image, image_info.dbg_name);
-    vk_rhi_set_object_name_if_needed(vk_ctx->device, vk_image->view, image_info.dbg_name);
+    vk_rhi_set_object_name_if_needed(*vk_ctx, vk_image->image, image_info.dbg_name);
+    vk_rhi_set_object_name_if_needed(*vk_ctx, vk_image->view, image_info.dbg_name);
     return create_handle<image>(*vk_image);
 }
 
@@ -647,7 +650,7 @@ auto rhi::vk_create_image_view(context context, image source, const create_image
     VkImageView vk_view;
     VK_RETURN_ON_FAIL(vkCreateImageView(vk_ctx->device, &image_view_create_info, nullptr, &vk_view));
 
-    vk_rhi_set_object_name_if_needed(vk_ctx->device, vk_image->image, view_info.dbg_name);
+    vk_rhi_set_object_name_if_needed(*vk_ctx, vk_image->image, view_info.dbg_name);
     return create_handle<image_view>(vk_rhi_image_view {.source = *vk_image, .view = vk_view});
 }
 
@@ -681,7 +684,7 @@ auto rhi::vk_create_sampler(context context, const create_sampler_info& sampler_
                                     platform::vk_rhi_parse_sampler_border_color(sampler_info.border_color));
     RESULT_FORWARD_IF_FAILED(vk_sampler);
 
-    vk_rhi_set_object_name_if_needed(vk_ctx->device, *vk_sampler, sampler_info.dbg_name);
+    vk_rhi_set_object_name_if_needed(*vk_ctx, *vk_sampler, sampler_info.dbg_name);
     return sampler {.id = reinterpret_cast<u64>(*vk_sampler)};
 }
 
@@ -1539,6 +1542,49 @@ void rhi::vk_cmd_draw_mesh_indirect_count(command_buffer cmd, rhi::buffer buffer
     assert2(offset < vk_buffer->size);
     vkCmdDrawMeshTasksIndirectCountEXT(
         vk_cmd->cmd_buffer, vk_buffer->buffer, offset, vk_buffer_count->buffer, count_offset, max_count, stride);
+}
+
+void rhi::vk_cmd_debug_label_begin(command_buffer cmd, context context, const debug_label& label)
+{
+    const auto* vk_cmd = cast_from_handle<platform::vk_command_buffer>(cmd);
+    const auto* vk_ctx = cast_from_handle<platform::vk_context>(context);
+    if (!vk_cmd || !vk_ctx)
+    {
+        return;
+    }
+
+    assert2(vk_ctx->enabled_device_features.supported(rhi::feature_flag::debug_labels));
+    if (!vk_ctx->enabled_device_features.supported(rhi::feature_flag::debug_labels)
+        || !vk_ctx->enabled_device_features.wanted(rhi::feature_flag::debug_labels))
+    {
+        return;
+    }
+
+    const VkDebugUtilsLabelEXT vk_label {
+        .sType      = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+        .pLabelName = label.label,
+        .color      = {label.color.r, label.color.g, label.color.b, label.color.a},
+    };
+
+    vkCmdBeginDebugUtilsLabelEXT(vk_cmd->cmd_buffer, &vk_label);
+}
+
+void rhi::vk_cmd_debug_label_end(command_buffer cmd, context context)
+{
+    const auto* vk_cmd = cast_from_handle<platform::vk_command_buffer>(cmd);
+    const auto* vk_ctx = cast_from_handle<platform::vk_context>(context);
+    if (!vk_cmd || !vk_ctx)
+    {
+        return;
+    }
+
+    if (!vk_ctx->enabled_device_features.supported(rhi::feature_flag::debug_labels)
+        || !vk_ctx->enabled_device_features.wanted(rhi::feature_flag::debug_labels))
+    {
+        return;
+    }
+
+    vkCmdEndDebugUtilsLabelEXT(vk_cmd->cmd_buffer);
 }
 
 void rhi::vk_submit(context context, queue queue, const submit_info& info)

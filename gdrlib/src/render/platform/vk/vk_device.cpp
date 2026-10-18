@@ -217,16 +217,26 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBi
     return VK_FALSE;
 }
 
-static void load_instance_layers_and_extensions(const window& window, const rhi::instance_desc& desc,
+static void load_instance_layers_and_extensions(const window& window, rhi::rendering_features_table& desc,
                                                 cpp::heap_array<const char*>& layers,
                                                 cpp::heap_array<const char*>& extensions)
 {
-    if (desc.device_features.requested(rhi::feature_flag::validation) && layer_available("VK_LAYER_KHRONOS_validation")
+    if (desc.requested(rhi::feature_flag::validation) && layer_available("VK_LAYER_KHRONOS_validation")
         && inst_ext_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
     {
+        desc.set_supported(rhi::feature_flag::validation, true);
+        desc.set_supported(rhi::feature_flag::debug_labels, true);
+
         layers.push_back("VK_LAYER_KHRONOS_validation");
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
         LOG_DEBUG("Validation was requested and seems to be available (VK_LAYER_KHRONOS_validation)");
+    }
+    else if (desc.requested(rhi::feature_flag::debug_labels) && inst_ext_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
+    {
+        desc.set_supported(rhi::feature_flag::debug_labels, true);
+
+        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        LOG_DEBUG("Labels were requested and will be enabled");
     }
 
     insert_video_driver_extensions(window, extensions);
@@ -822,14 +832,17 @@ static result<vk_context> create_vk_context(const window& window, const rhi::ins
     vk_context context {};
 
     // Application info
-    VkApplicationInfo application_info {VK_STRUCTURE_TYPE_APPLICATION_INFO};
+    VkApplicationInfo application_info {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO};
     application_info.pApplicationName = desc.app_name ? desc.app_name : "NoName";
     application_info.pEngineName      = desc.app_name ? desc.app_name : "NoName";
     application_info.engineVersion    = 1;
     application_info.apiVersion       = VK_API_VERSION_1_4;
 
+    // copy requested & required features
+    context.enabled_device_features = desc.device_features;
+
     cpp::heap_array<const char*> layers;
-    load_instance_layers_and_extensions(window, desc, layers, context.instance_extensions);
+    load_instance_layers_and_extensions(window, context.enabled_device_features, layers, context.instance_extensions);
 
 #if ENABLE_SYNC_VALIDATION
     constexpr VkValidationFeatureEnableEXT enabled_validation_features[] = {
@@ -879,9 +892,6 @@ static result<vk_context> create_vk_context(const window& window, const rhi::ins
     }
 
     VK_RETURN_ON_FAIL(video_driver_create_surface(window, context.instance, &context.surface));
-
-    // copy requested & required features
-    context.enabled_device_features = desc.device_features;
 
     // here context.enabled_device_features is populated with all supported features, both required and requested
     context.physical_device = pick_physical_device(context.instance,

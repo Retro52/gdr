@@ -23,10 +23,18 @@ void platform::d3d12_signal_fence(const d3d12_fence& fence, ID3D12CommandQueue* 
 
 void platform::d3d12_wait_on_fence(const d3d12_fence& fence, const u64 value, const u64 timeout)
 {
-    if (!fence.fence || fence.fence->GetCompletedValue() < value)
+    if (fence.fence && fence.fence->GetCompletedValue() < value)
     {
         D3D12_ASSERT_ON_FAIL(fence.fence->SetEventOnCompletion(value, fence.event));
         ::WaitForSingleObject(fence.event, static_cast<DWORD>(timeout));
+    }
+}
+
+void platform::d3d12_queue_wait_on_fence(const d3d12_fence& fence, ID3D12CommandQueue* queue, const u64 value)
+{
+    if (fence.fence && fence.fence->GetCompletedValue() < value)
+    {
+        D3D12_ASSERT_ON_FAIL(queue->Wait(fence.fence.Get(), value));
     }
 }
 

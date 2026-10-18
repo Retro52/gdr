@@ -1,5 +1,6 @@
 #include <app/render.hpp>
 #include <passes/pass_light_resolve.hpp>
+#include <passes/scoped_label.hpp>
 
 app::pass_light_resolve::pass_light_resolve(const rhi::impl& impl, const rhi::context context, const uvec2 render_res)
     : m_ctx(context)
@@ -12,6 +13,7 @@ app::pass_light_resolve::pass_light_resolve(const rhi::impl& impl, const rhi::co
                                               .filter       = rhi::sampler_filter::nearest,
                                               .mipmap_mode  = rhi::sampler_mipmap_mode::nearest,
                                               .address_mode = rhi::sampler_address_mode::clamp_to_border,
+                                              .dbg_name     = "light resolve depth sampler",
                                           });
 }
 
@@ -38,6 +40,8 @@ void app::pass_light_resolve::draw(const rhi::command_buffer cmd, const common_r
                                    const draw_params& params) const
 {
     ZoneScoped;
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Light resolve");
+
     constexpr rhi::global_barrier pre_barrier {
         .before = {.stages = rhi::barrier_stage::color_attachment | rhi::barrier_stage::late_depth_stencil,
                    .access = rhi::barrier_access::color_attachment_write | rhi::barrier_access::depth_stencil_write},

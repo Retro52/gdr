@@ -126,14 +126,12 @@ static void log_device_features_table(const char* name, const D3D_FEATURE_LEVEL 
 
         if (supported || !wanted)
         {
-            LOG_DEBUG("{}: {}",
-                      reflection::get_enum_name_at<rhi::feature_flag>(i),
-                      supported ? "supported" : "unsupported");
+            LOG_DEBUG(
+                "{}: {}", reflection::get_enum_name_at<rhi::feature_flag>(i), supported ? "supported" : "unsupported");
         }
         else if (wanted)
         {
-            LOG_WARNING("{}: feature requested but unsupported",
-                        reflection::get_enum_name_at<rhi::feature_flag>(i));
+            LOG_WARNING("{}: feature requested but unsupported", reflection::get_enum_name_at<rhi::feature_flag>(i));
         }
     }
 }
@@ -270,8 +268,7 @@ static bool check_device_features(ID3D12Device* device, const D3D_SHADER_MODEL d
                                   device_shader_model >= D3D_SHADER_MODEL_6_5
                                       && d3d12_options7.MeshShaderTier > D3D12_MESH_SHADER_TIER_NOT_SUPPORTED);
 
-    wanted_features.set_supported(rhi::feature_flag::synchronization2,
-                                  d3d12_options12.EnhancedBarriersSupported);
+    wanted_features.set_supported(rhi::feature_flag::synchronization2, d3d12_options12.EnhancedBarriersSupported);
 
     wanted_features.set_supported(rhi::feature_flag::types_16bit,
                                   device_shader_model >= D3D_SHADER_MODEL_6_2
@@ -285,8 +282,7 @@ static bool check_device_features(ID3D12Device* device, const D3D_SHADER_MODEL d
 }
 
 static HRESULT pick_and_create_device(platform::d3d12_context& ctx,
-                                      const rhi::rendering_features_table& wanted_features,
-                                      const u32 device_hint_id)
+                                      const rhi::rendering_features_table& wanted_features, const u32 device_hint_id)
 {
     ZoneScoped;
 
@@ -434,20 +430,35 @@ auto platform::d3d12_create_context(const window& window, const rhi::instance_de
     RESULT_FORWARD_IF_FAILED(queue_direct);
     RESULT_FORWARD_IF_FAILED(queue_compute);
 
-    context.queues[kD3D12CommandQueueCopy]    = *queue_copy;
-    context.queues[kD3D12CommandQueueDirect]  = *queue_direct;
-    context.queues[kD3D12CommandQueueCompute] = *queue_compute;
+    context.queues[kD3D12_CommandQueueCopy]    = *queue_copy;
+    context.queues[kD3D12_CommandQueueDirect]  = *queue_direct;
+    context.queues[kD3D12_CommandQueueCompute] = *queue_compute;
 
-    auto rtv_desc_heap =
-        d3d12_create_desc_heap(context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, kD3D12RTVHeapMaxDescCount);
+    auto cbv_srv_uav_desc_heap = d3d12_create_tracked_desc_heap<kD3D12_CBV_SRV_UAV_HeapMaxDescCount>(
+        context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    RESULT_FORWARD_IF_FAILED(cbv_srv_uav_desc_heap);
+
+    auto sampler_desc_heap = d3d12_create_tracked_desc_heap<kD3D12_Sampler_HeapMaxDescCount>(
+        context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+    RESULT_FORWARD_IF_FAILED(sampler_desc_heap);
+
+    auto rtv_desc_heap = d3d12_create_tracked_desc_heap<kD3D12_RTV_HeapMaxDescCount>(context.device.Get(),
+                                                                                     D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     RESULT_FORWARD_IF_FAILED(rtv_desc_heap);
 
-    context.rtv_descriptor_heap = d3d12_track_heap<kD3D12RTVHeapMaxDescCount>(std::move(*rtv_desc_heap));
+    auto dsv_desc_heap = d3d12_create_tracked_desc_heap<kD3D12_DSV_HeapMaxDescCount>(context.device.Get(),
+                                                                                     D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    RESULT_FORWARD_IF_FAILED(dsv_desc_heap);
+
+    context.rtv_descriptor_heap         = *rtv_desc_heap;
+    context.dsv_descriptor_heap         = *dsv_desc_heap;
+    context.sampler_descriptor_heap     = *sampler_desc_heap;
+    context.cbv_srv_uav_descriptor_heap = *cbv_srv_uav_desc_heap;
     return context;
 }
 
 auto platform::d3d12_update_back_buffers(platform::d3d12_context& d3d12_context, IDXGISwapChain4* swapchain,
-                                       const u32 count) -> result<cpp::heap_array<d3d12_sc_back_buffer>>
+                                         const u32 count) -> result<cpp::heap_array<d3d12_sc_back_buffer>>
 {
     ZoneScoped;
     cpp::heap_array<platform::d3d12_sc_back_buffer> result(count);
@@ -479,7 +490,7 @@ void platform::d3d12_destroy_swapchain(d3d12_context& d3d12_context, d3d12_swapc
 }
 
 auto platform::d3d12_create_swapchain(d3d12_context& d3d12_context, const u32 format, const ivec2 size,
-                                    const u32 frames_in_flight, const bool vsync) -> result<d3d12_swapchain>
+                                      const u32 frames_in_flight, const bool vsync) -> result<d3d12_swapchain>
 {
     ZoneScoped;
 
@@ -506,7 +517,7 @@ auto platform::d3d12_create_swapchain(d3d12_context& d3d12_context, const u32 fo
 
     com_ptr<IDXGISwapChain1> swapchain;
     D3D12_RETURN_ON_FAIL(
-        d3d12_context.factory->CreateSwapChainForHwnd(d3d12_context.queues[kD3D12CommandQueueDirect].Get(),
+        d3d12_context.factory->CreateSwapChainForHwnd(d3d12_context.queues[kD3D12_CommandQueueDirect].Get(),
                                                       d3d12_context.window_handle,
                                                       &desc,
                                                       nullptr,
