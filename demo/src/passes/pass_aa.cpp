@@ -1,5 +1,6 @@
 #include <app/render.hpp>
 #include <passes/pass_aa.hpp>
+#include <passes/scoped_label.hpp>
 
 app::pass_aa::pass_aa(const rhi::impl& impl, const app::pso_data& pipelines, const rhi::context context,
                       const uvec2 render_res, const uvec2 display_res)
@@ -50,6 +51,8 @@ glm::mat4 app::pass_aa::get_jittered_matrix(const glm::mat4& proj) const
 void app::pass_aa::draw(const rhi::command_buffer cmd, const draw_params& params) const
 {
     ZoneScoped;
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "AA pass");
+
     rhi::image_barrier sync[] = {
         app::make_image_barrier(output, rhi::image_layout::common),
     };
@@ -62,6 +65,7 @@ void app::pass_aa::draw(const rhi::command_buffer cmd, const draw_params& params
         run_blit(cmd, params);
         break;
     case aa_backend::fsr3 :
+        run_mv_reconstruct(cmd, params);
         run_fsr3(cmd, params);
         break;
     case aa_backend::fxaa :
@@ -87,6 +91,8 @@ void app::pass_aa::on_render_display_size_changed(const uvec2 new_render_size, c
 void app::pass_aa::run_blit(const rhi::command_buffer cmd, const draw_params& params) const
 {
     ZoneScoped;
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Copy AA");
+
     m_rhi.cmd_image_blit(cmd,
                          params.color,
                          output,
@@ -101,6 +107,8 @@ void app::pass_aa::run_blit(const rhi::command_buffer cmd, const draw_params& pa
 void app::pass_aa::run_fxaa(const rhi::command_buffer cmd, const draw_params& params) const
 {
     ZoneScoped;
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "FXAA");
+
     const rhi::binding fxaa_pass_bindings[] = {
         rhi::binding(params.color, this->fxaa_color_sampler),
         rhi::binding(params.depth, this->fxaa_depth_sampler),
@@ -134,30 +142,9 @@ void app::pass_aa::run_fxaa(const rhi::command_buffer cmd, const draw_params& pa
 void app::pass_aa::run_fsr3(const rhi::command_buffer cmd, const draw_params& params) const
 {
     ZoneScoped;
-    rhi::image_barrier sync[] = {
-        app::make_image_barrier(motion_vectors, rhi::image_layout::common),
-    };
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "FSR 3.1.4");
 
-    m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
-    m_rhi.cmd_clear_color_attachment(cmd, motion_vectors, rhi::color_clear_value {.f4 = vec4(0.0F)});
-    m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
-
-    auto fsr_params     = params.params.ffx;
-    const auto& mv_pass = m_pipelines[pso_id::mv_from_depth_pipeline];
-    m_rhi.cmd_bind_pso(cmd, mv_pass);
-
-    const rhi::binding mv_bindings[] = {
-        rhi::binding(params.depth, fxaa_depth_sampler),
-        rhi::binding(fsr_params.mv_matrices),
-        rhi::binding(motion_vectors),
-    };
-
-    m_rhi.cmd_push_bindings(cmd, mv_pass, std::span {mv_bindings});
-    m_rhi.cmd_push_constants(cmd, mv_pass, &m_render_res, sizeof(m_render_res), 0);
-    m_rhi.cmd_dispatch(cmd, mv_pass, uvec3(m_render_res, 1));
-
-    m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
-
+    auto fsr_params = params.params.ffx;
     const rhi::ffx_upscale_resources ffx_resources {
         .color          = params.color,
         .depth          = params.depth,
@@ -169,6 +156,35 @@ void app::pass_aa::run_fsr3(const rhi::command_buffer cmd, const draw_params& pa
     fsr_params.ffx_upscale.render_size  = m_render_res;
     fsr_params.ffx_upscale.display_size = m_display_res;
     m_rhi.ffx_upscale_dispatch(ffx_context, cmd, fsr_params.ffx_upscale, ffx_resources);
+}
+
+void app::pass_aa::run_mv_reconstruct(const rhi::command_buffer cmd, const draw_params& params) const
+{
+    ZoneScoped;
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Motion vectors reconstruction");
+
+    rhi::image_barrier sync[] = {
+        app::make_image_barrier(motion_vectors, rhi::image_layout::common),
+    };
+
+    m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
+    m_rhi.cmd_clear_color_attachment(cmd, motion_vectors, rhi::color_clear_value {.f4 = vec4(0.0F)});
+    m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
+
+    const auto& mv_pass = m_pipelines[pso_id::mv_from_depth_pipeline];
+    m_rhi.cmd_bind_pso(cmd, mv_pass);
+
+    const rhi::binding mv_bindings[] = {
+        rhi::binding(params.depth, fxaa_depth_sampler),
+        rhi::binding(params.params.ffx.mv_matrices),
+        rhi::binding(motion_vectors),
+    };
+
+    m_rhi.cmd_push_bindings(cmd, mv_pass, std::span {mv_bindings});
+    m_rhi.cmd_push_constants(cmd, mv_pass, &m_render_res, sizeof(m_render_res), 0);
+    m_rhi.cmd_dispatch(cmd, mv_pass, uvec3(m_render_res, 1));
+
+    m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
 }
 
 void app::pass_aa::destroy_resources()

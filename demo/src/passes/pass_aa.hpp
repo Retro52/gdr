@@ -66,6 +66,8 @@ namespace app
 
         void run_fsr3(rhi::command_buffer cmd, const draw_params& params) const;
 
+        void run_mv_reconstruct(rhi::command_buffer cmd, const draw_params& params) const;
+
         void destroy_resources();
 
         void create_resources(uvec2 render_res, uvec2 display_res);

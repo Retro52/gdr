@@ -26,6 +26,7 @@ namespace rhi
         portability_subset  = 1 << 9,
         bindless_textures   = 1 << 10,
         types_16bit         = 1 << 11,
+        debug_labels        = 1 << 12,
         COUNT
     );
 
@@ -629,6 +630,12 @@ namespace rhi
         std::span<const fence_submit_info> waits;
         std::span<const fence_submit_info> signals;
         std::span<const command_buffer> command_buffers;
+    };
+
+    struct debug_label
+    {
+        const char* label;
+        vec4 color = vec4(0.0F);
     };
 
     struct rendering_features_table

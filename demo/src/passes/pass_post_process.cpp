@@ -1,5 +1,6 @@
 #include <app/render.hpp>
 #include <passes/pass_post_process.hpp>
+#include <passes/scoped_label.hpp>
 
 app::pass_post_process::pass_post_process(const rhi::impl& impl, const rhi::context context, const uvec2 display_res)
     : m_ctx(context)
@@ -29,6 +30,7 @@ void app::pass_post_process::on_display_size_changed(const uvec2 new_display_siz
 void app::pass_post_process::draw(const rhi::command_buffer cmd, const draw_params& params) const
 {
     ZoneScoped;
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Post process");
 
     const rhi::image_barrier transition_barriers[] {
         app::make_image_barrier(this->output, rhi::image_layout::common, rhi::image_aspect::color),

@@ -1,20 +1,20 @@
 {
   "blit_sampler2d_pipeline": {
     "shaders": [
-      "imgui_blit_2d.frag.spv",
-      "imgui_blit.vert.spv"
+      "imgui_blit_2d.frag",
+      "imgui_blit.vert"
     ]
   },
   "blit_sampler2d_array_pipeline": {
     "shaders": [
-      "imgui_blit_2d_array.frag.spv",
-      "imgui_blit.vert.spv"
+      "imgui_blit_2d_array.frag",
+      "imgui_blit.vert"
     ]
   },
   "frustum_debug": {
     "shaders": [
-      "frustum.frag.spv",
-      "frustum.vert.spv"
+      "frustum.frag",
+      "frustum.vert"
     ],
     "options": {
       "topology": "list_lines",
@@ -23,14 +23,14 @@
   },
   "task_cull_pipeline": {
     "shaders": [
-      "cull_tasks.comp.spv"
+      "cull_tasks.comp"
     ]
   },
   "task_render_pipeline": {
     "shaders": [
-      "meshlets_submit.task.spv",
-      "meshlets.mesh.spv",
-      "gpass_mesh.frag.spv"
+      "meshlets_submit.task",
+      "meshlets.mesh",
+      "gpass_mesh.frag"
     ],
     "options": {
       "color_formats": [
@@ -44,9 +44,9 @@
   },
   "task_render_ds_pipeline": {
     "shaders": [
-      "meshlets_submit_ds.task.spv",
-      "meshlets.mesh.spv",
-      "gpass_mesh_masked.frag.spv"
+      "meshlets_submit_ds.task",
+      "meshlets.mesh",
+      "gpass_mesh_masked.frag"
     ],
     "options": {
       "color_formats": [
@@ -60,9 +60,9 @@
   },
   "task_render_late_pipeline": {
     "shaders": [
-      "meshlets_submit_late.task.spv",
-      "meshlets.mesh.spv",
-      "gpass_mesh.frag.spv"
+      "meshlets_submit_late.task",
+      "meshlets.mesh",
+      "gpass_mesh.frag"
     ],
     "options": {
       "color_formats": [
@@ -76,9 +76,9 @@
   },
   "task_render_ds_late_pipeline": {
     "shaders": [
-      "meshlets_submit_ds_late.task.spv",
-      "meshlets.mesh.spv",
-      "gpass_mesh_masked.frag.spv"
+      "meshlets_submit_ds_late.task",
+      "meshlets.mesh",
+      "gpass_mesh_masked.frag"
     ],
     "options": {
       "color_formats": [
@@ -92,13 +92,13 @@
   },
   "task_occlusion_cull_pipeline": {
     "shaders": [
-      "cull_occlusion_tasks.comp.spv"
+      "cull_occlusion_tasks.comp"
     ]
   },
   "indexed_render_pipeline": {
     "shaders": [
-      "mesh.vert.spv",
-      "gpass_vert.frag.spv"
+      "mesh.vert",
+      "gpass_vert.frag"
     ],
     "options": {
       "color_formats": [
@@ -109,8 +109,8 @@
   },
   "indexed_render_ds_pipeline": {
     "shaders": [
-      "mesh.vert.spv",
-      "gpass_vert_masked.frag.spv"
+      "mesh.vert",
+      "gpass_vert_masked.frag"
     ],
     "options": {
       "color_formats": [
@@ -121,78 +121,78 @@
   },
   "depth_reduce_pipeline": {
     "shaders": [
-      "depth_reduce.comp.spv"
+      "depth_reduce.comp"
     ]
   },
   "mesh_to_indexed_pipeline": {
     "shaders": [
-      "mesh_to_indexed_cmd.comp.spv"
+      "mesh_to_indexed_cmd.comp"
     ]
   },
   "mesh_to_indexed_late_pipeline": {
     "shaders": [
-      "mesh_to_indexed_cmd_late.comp.spv"
+      "mesh_to_indexed_cmd_late.comp"
     ]
   },
   "mesh_to_indexed_ds_pipeline": {
     "shaders": [
-      "mesh_to_indexed_cmd_ds.comp.spv"
+      "mesh_to_indexed_cmd_ds.comp"
     ]
   },
   "mesh_to_indexed_ds_late_pipeline": {
     "shaders": [
-      "mesh_to_indexed_cmd_ds_late.comp.spv"
+      "mesh_to_indexed_cmd_ds_late.comp"
     ]
   },
   "mesh_resolve_pipeline": {
     "shaders": [
-      "resolve_mesh.comp.spv"
+      "resolve_mesh.comp"
     ]
   },
   "vert_resolve_pipeline": {
     "shaders": [
-      "resolve_vert.comp.spv"
+      "resolve_vert.comp"
     ]
   },
   "equirect_unpack_pipeline": {
     "shaders": [
-      "equirect_unpack.comp.spv"
+      "equirect_unpack.comp"
     ]
   },
   "cubemap_convolute_pipeline": {
     "shaders": [
-      "cubemap_convolute.comp.spv"
+      "cubemap_convolute.comp"
     ]
   },
   "cubemap_prefilter_pipeline": {
     "shaders": [
-      "cubemap_prefilter.comp.spv"
+      "cubemap_prefilter.comp"
     ]
   },
   "fxaa_pipeline": {
     "shaders": [
-      "fxaa.comp.spv"
+      "fxaa.comp"
     ]
   },
   "make_brdf_lookup_pipeline": {
     "shaders": [
-      "make_brdf_lookup.comp.spv"
+      "make_brdf_lookup.comp"
     ]
   },
   "tonemap_pipeline": {
     "shaders": [
-      "tonemap.comp.spv"
+      "tonemap.comp"
     ]
   },
   "mv_from_depth_pipeline": {
     "shaders": [
-      "mv_from_depth.comp.spv"
+      "mv_from_depth.comp"
     ]
   },
   "triangle": {
     "shaders": [
-      "triangle.vert.spv",
-      "triangle.frag.spv"
+      "triangle.vert",
+      "triangle.frag"
     ]
   }
 }

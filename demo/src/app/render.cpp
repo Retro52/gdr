@@ -112,7 +112,7 @@ rhi::image app::create_color_image(const rhi::impl& rhi, const ivec2& size, cons
         .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
         .usage_flags = rhi::image_usage::sampled | rhi::image_usage::storage | rhi::image_usage::transfer_dst
                      | rhi::image_usage::attachment_color | extra_usage,
-        .dbg_name = "color_image",
+        .dbg_name = "unnamed color image",
     };
 
     return *rhi.create_image(ctx, info);
@@ -201,7 +201,7 @@ app::depth_pyramid_data app::create_depth_pyramid(const rhi::impl& rhi, const iv
 
     for (u32 i = 0; i < depth_pyramid.pyramid_count; ++i)
     {
-        auto name = cpp::stack_string::make_formatted("depth_pyramid_mip_view #%d", i);
+        auto name = cpp::stack_string::make_formatted("HiZB view #%d", i);
         const rhi::create_image_view_info view_info {
             .range    = {.mips_range = {i, 1}},
             .format   = format,

@@ -1,15 +1,8 @@
 project(shaders)
 
 function(parse_shader_profile SHADER_FILE)
-    get_filename_component(SHADER_NAME "${SHADER_FILE}" NAME)
+    get_filename_component(SHADER_NAME "${SHADER_FILE}" NAME_WLE)
     get_filename_component(SHADER_EXTENSION "${SHADER_NAME}" LAST_EXT)
-
-    set(IS_HLSL_LOCAL FALSE)
-    if (SHADER_EXTENSION STREQUAL ".hlsl")
-        set(IS_HLSL_LOCAL TRUE)
-        get_filename_component(SHADER_NAME "${SHADER_NAME}" NAME_WLE)
-        get_filename_component(SHADER_EXTENSION "${SHADER_NAME}" LAST_EXT)
-    endif ()
 
     if (SHADER_EXTENSION STREQUAL ".vert")
         set(SHADER_STAGE_LOCAL "vs")
@@ -26,7 +19,6 @@ function(parse_shader_profile SHADER_FILE)
     endif ()
 
     set(SHADER_PROFILE "${SHADER_STAGE_LOCAL}_6_8" PARENT_SCOPE)
-    set(SHADER_IS_HLSL ${IS_HLSL_LOCAL} PARENT_SCOPE)
 endfunction()
 
 function(collect_shader_deps_recursive FILE_PATH)
@@ -132,52 +124,40 @@ foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
     set(SHADER_BIN_OUTPUT "${SHADERS_BIN_FOLDER}/${SHADER_BIN}")
 
     if (APPLE)
-        list(APPEND SHADER_DEF "-DPLATFORM_MVK")
         list(APPEND SHADER_DEF "-DEMULATE_DRAW_ID")
         list(APPEND SHADER_DEF "-DEMULATE_SAMPLER_REDUCE")
     endif ()
 
-    if (SHADER_IS_HLSL)
-        if (NOT DXC_EXECUTABLE)
-            message(FATAL_ERROR "HLSL shader '${SHADER}' requires dxc, which was not found")
-        endif ()
+    if (NOT DXC_EXECUTABLE)
+        message(FATAL_ERROR "HLSL shader '${SHADER}' requires dxc, which was not found")
+    endif ()
 
+    add_custom_command(
+            OUTPUT "${SHADER_BIN_OUTPUT}.spv"
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
+            COMMAND ${DXC_EXECUTABLE} -spirv -fspv-target-env=vulkan1.3 -T ${SHADER_PROFILE} -E main -WX
+            -enable-16bit-types -fvk-use-dx-layout -fvk-support-nonzero-base-vertex -fvk-support-nonzero-base-instance
+            ${DXC_SPIRV_CONFIG_FLAGS} ${SHADER_DEF}
+            -Fo "${SHADER_BIN_OUTPUT}.spv" "${SHADER_INPUT_PATH}"
+            DEPENDS ${SHADER_DEPENDENCIES}
+            COMMENT "Compiling HLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.spv'"
+            COMMAND_EXPAND_LISTS
+    )
+    list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.spv")
+
+    if (WIN32 AND GDR_ENABLE_DX12_BACKEND)
         add_custom_command(
-                OUTPUT "${SHADER_BIN_OUTPUT}.spv"
+                OUTPUT "${SHADER_BIN_OUTPUT}.dxl"
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
-                COMMAND ${DXC_EXECUTABLE} -spirv -fspv-target-env=vulkan1.3 -T ${SHADER_PROFILE} -E main -WX
-                -enable-16bit-types -fvk-use-dx-layout -fvk-support-nonzero-base-vertex -fvk-support-nonzero-base-instance
-                ${DXC_SPIRV_CONFIG_FLAGS} ${SHADER_DEF}
-                -Fo "${SHADER_BIN_OUTPUT}.spv" "${SHADER_INPUT_PATH}"
+                COMMAND ${DXC_EXECUTABLE} -T ${SHADER_PROFILE} -E main -WX
+                -enable-16bit-types -Wno-ignored-attributes
+                ${DXC_DXIL_CONFIG_FLAGS} ${SHADER_DEF} -DEMULATE_DRAW_ID
+                -Fo "${SHADER_BIN_OUTPUT}.dxl" "${SHADER_INPUT_PATH}"
                 DEPENDS ${SHADER_DEPENDENCIES}
-                COMMENT "Compiling HLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.spv'"
+                COMMENT "Compiling HLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.dxl'"
                 COMMAND_EXPAND_LISTS
         )
-        list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.spv")
-
-        if (WIN32 AND GDR_ENABLE_DX12_BACKEND)
-            add_custom_command(
-                    OUTPUT "${SHADER_BIN_OUTPUT}.dxl"
-                    COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
-                    COMMAND ${DXC_EXECUTABLE} -T ${SHADER_PROFILE} -E main -WX
-                    -enable-16bit-types -Wno-ignored-attributes
-                    ${DXC_DXIL_CONFIG_FLAGS} ${SHADER_DEF} -DEMULATE_DRAW_ID
-                    -Fo "${SHADER_BIN_OUTPUT}.dxl" "${SHADER_INPUT_PATH}"
-                    DEPENDS ${SHADER_DEPENDENCIES}
-                    COMMENT "Compiling HLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.dxl'"
-                    COMMAND_EXPAND_LISTS
-            )
-            list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.dxl")
-        endif ()
-    else ()
-        add_custom_command(
-                OUTPUT "${SHADER_BIN_OUTPUT}.spv"
-                COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
-                COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} "${SHADER_INPUT_PATH}" -o "${SHADER_BIN_OUTPUT}.spv" --target-env vulkan1.3 --target-env spirv1.5 "$<IF:$<CONFIG:Debug>,-g,-Os>" ${SHADER_DEF}
-                DEPENDS ${SHADER_DEPENDENCIES}
-                COMMENT "Compiling GLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.spv'"
-        )
-        list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.spv")
+        list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.dxl")
     endif ()
 endforeach ()
 

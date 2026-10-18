@@ -1,4 +1,5 @@
 #include <passes/pass_geometry.hpp>
+#include <passes/scoped_label.hpp>
 #include <shaders/bindings/fill.h>
 #include <shaders/constants.hlsl.h>
 #include <tracy/Tracy.hpp>
@@ -45,38 +46,59 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
 
     mesh_draw_count = *m_rhi.create_buffer(
         m_ctx,
-        {.size        = sizeof(u32[shader_constants::kMatClassCount * 3]),
-         .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw});
+        {
+            .size        = sizeof(u32[shader_constants::kMatClassCount * 3]),
+            .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
+            .dbg_name    = "mesh_draw_count",
+        });
 
     indexed_count_buffer = *m_rhi.create_buffer(
         m_ctx,
-        {.size        = sizeof(u32[2]),
-         .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw});
+        {
+            .size        = sizeof(u32[2]),
+            .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
+            .dbg_name    = "indexed_count_buffer",
+        });
 
     mesh_visibility = *m_rhi.create_buffer(
         m_ctx,
-        {.size        = kMaxInstances / 8,
-         .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw});
+        {
+            .size        = kMaxInstances / 8,
+            .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
+            .dbg_name    = "mesh_visibility",
+        });
 
     meshlets_visibility = *m_rhi.create_buffer(
         m_ctx,
-        {.size        = kMaxMeshlets / 8,
-         .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw});
+        {
+            .size        = kMaxMeshlets / 8,
+            .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
+            .dbg_name    = "meshlets_visibility",
+        });
 
     indices = *m_rhi.create_buffer(
         m_ctx,
-        {.size        = 96_MB,
-         .usage_flags = rhi::buffer_usage::index | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw});
+        {
+            .size        = 96_MB,
+            .usage_flags = rhi::buffer_usage::index | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
+            .dbg_name    = "indices",
+        });
 
     mesh_draw_commands = *m_rhi.create_buffer(
         m_ctx,
-        {.size        = kMaxMeshlets * sizeof(shader_types::DrawTaskCommandIndirect),
-         .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw});
+        {
+            .size        = kMaxMeshlets * sizeof(shader_types::DrawTaskCommandIndirect),
+            .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
+            .dbg_name    = "mesh_draw_commands",
+        });
 
     indexed_draw_commands = *m_rhi.create_buffer(
         m_ctx,
-        {.size        = kMaxMeshlets * sizeof(shader_types::DrawIndexedIndirect),
-         .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw});
+        {
+            .size        = kMaxMeshlets * sizeof(shader_types::DrawIndexedIndirect),
+            .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
+            .dbg_name    = "indexed_draw_commands",
+        });
 }
 
 void app::pass_geometry::shutdown()
@@ -97,6 +119,8 @@ void app::pass_geometry::draw(const rhi::command_buffer cmd, const common_resour
                               const loader::scene_counters& counters, const draw_params& params) const
 {
     ZoneScoped;
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "V-buffer pass");
+
     const bool occlusion_cull_pass = params.flags & app::gpass_flags::hizb_cull;
     const bool use_mesh_shaders    = params.flags & app::gpass_flags::use_mesh_shaders;
 
@@ -170,6 +194,8 @@ void app::pass_geometry::create_resources(const uvec2 render_res)
 void app::pass_geometry::on_pre_draw(const rhi::command_buffer cmd) const
 {
     ZoneScoped;
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "on_pre_draw");
+
     constexpr rhi::ds_clear_value kDSClear    = {.depth = 0.0F, .stencil = 0};
     constexpr rhi::color_clear_value kVBClear = {.u4 = uvec4(~0U)};
 
@@ -211,6 +237,8 @@ void app::pass_geometry::on_pre_draw(const rhi::command_buffer cmd) const
 void app::pass_geometry::build_hzb(rhi::command_buffer cmd) const
 {
     ZoneScoped;
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "build_hzb");
+
     constexpr rhi::global_barrier barrier {
         .before =
             {
@@ -267,6 +295,8 @@ void app::pass_geometry::cull_scene(const rhi::command_buffer cmd, const common_
                                     const loader::scene_counters& counters, const bool occlusion_cull) const
 {
     ZoneScoped;
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "cull_scene");
+
     reset_draw_count_buffer(m_rhi, cmd, mesh_draw_count);
 
     descriptor_bindings bindings;
@@ -308,7 +338,7 @@ void app::pass_geometry::draw_scene(const rhi::command_buffer cmd, const common_
                                     const u32 material_class, const bool mesh_pipeline) const
 {
     ZoneScoped;
-    // TRACY_ONLY(TracyVkZone(m_renderer.get_frame_tracy_context(), cmd, "draw scene"));
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "draw_scene");
 
     constexpr rhi::barrier_stage_bits kAttachmentStages = rhi::barrier_stage::color_attachment
                                                         | rhi::barrier_stage::early_depth_stencil
@@ -394,6 +424,7 @@ void app::pass_geometry::build_indexed_draw_commands(const rhi::command_buffer c
                                                      const bool enable_occlusion_cull) const
 {
     ZoneScoped;
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "build_indexed_draw_commands");
 
 #if defined(__APPLE__)
     app::zero_buffer(m_rhi, cmd, indexed_draw_commands);

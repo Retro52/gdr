@@ -11,11 +11,15 @@
 namespace platform
 {
     // god I'm good with naming things
-    constexpr u32 kD3D12CommandQueuesCount  = 3;
-    constexpr u32 kD3D12CommandQueueCopy    = 0;
-    constexpr u32 kD3D12CommandQueueCompute = 1;
-    constexpr u32 kD3D12CommandQueueDirect  = 2;
-    constexpr u32 kD3D12RTVHeapMaxDescCount = 64;
+    constexpr u32 kD3D12_CommandQueueCopy    = 0;
+    constexpr u32 kD3D12_CommandQueueCompute = 1;
+    constexpr u32 kD3D12_CommandQueueDirect  = 2;
+    constexpr u32 kD3D12_CommandQueuesCount  = 3;
+
+    constexpr u32 kD3D12_RTV_HeapMaxDescCount         = 64;
+    constexpr u32 kD3D12_DSV_HeapMaxDescCount         = 64;
+    constexpr u32 kD3D12_Sampler_HeapMaxDescCount     = 2048;
+    constexpr u32 kD3D12_CBV_SRV_UAV_HeapMaxDescCount = 65'534;  // 0xFFFF - 1 to fit into u16
 
     // clang-format off
     REGISTER_FLAGS(swapchain_flag,
@@ -27,13 +31,16 @@ namespace platform
 
     struct d3d12_context
     {
-        com_ptr<ID3D12Device10> device = nullptr;
-        com_ptr<IDXGIFactory6> factory = nullptr;
-        com_ptr<IDXGIAdapter4> adapter = nullptr;
-        com_ptr<ID3D12CommandQueue> queues[kD3D12CommandQueuesCount];
-        com_ptr<ID3D12InfoQueue1> info_queue;
+        com_ptr<ID3D12Device10> device       = nullptr;
+        com_ptr<IDXGIFactory6> factory       = nullptr;
+        com_ptr<IDXGIAdapter4> adapter       = nullptr;
+        com_ptr<ID3D12InfoQueue1> info_queue = nullptr;
+        com_ptr<ID3D12CommandQueue> queues[kD3D12_CommandQueuesCount];
 
-        d3d12_tracked_heap<kD3D12RTVHeapMaxDescCount> rtv_descriptor_heap;
+        d3d12_tracked_heap<kD3D12_RTV_HeapMaxDescCount> rtv_descriptor_heap;
+        d3d12_tracked_heap<kD3D12_DSV_HeapMaxDescCount> dsv_descriptor_heap;
+        d3d12_tracked_heap<kD3D12_Sampler_HeapMaxDescCount> sampler_descriptor_heap;
+        d3d12_tracked_heap<kD3D12_CBV_SRV_UAV_HeapMaxDescCount> cbv_srv_uav_descriptor_heap;
 
         com_ptr<D3D12MA::Allocator> allocator;
 
