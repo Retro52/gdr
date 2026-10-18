@@ -69,15 +69,6 @@ float3 hash_color(uint id)
     return uint_color(lowbias32(id));
 }
 
-float4 metallic_roughness_from_specular_gloss(float4 spec_gloss_texture)
-{
-    // pow() is monotonic, so the channel max commutes with the sRGB decode
-    float gloss = spec_gloss_texture.a;
-    float metal = pow(max(spec_gloss_texture.r, max(spec_gloss_texture.g, spec_gloss_texture.b)), 2.2F);
-
-    return float4(0.0F, gloss, metal, 1.0F);
-}
-
 void get_vertex_normal_tangent(uint index, out float3 normal, out float4 tangent)
 {
     float4 up_norm = unpack_r10g10b10a2(vertices[index].packed_normal);
@@ -309,7 +300,7 @@ void main(uint3 global_id: SV_DispatchThreadID)
     uint material_bits = uint(materials[material_id].material_bits);
 
     float4 diffuse_factor = materials[material_id].diffuse_factor;
-    float4 mr_factor = materials[material_id].met_roughness_factor;
+    float4 orm_factor = materials[material_id].met_roughness_factor;
 
     float4 frag_col = albedo_idx > 0 ? TEXTURE2DG(albedo_idx, uv, dfdx, dfdy) * diffuse_factor : diffuse_factor;
 
@@ -341,21 +332,22 @@ void main(uint3 global_id: SV_DispatchThreadID)
     float3 nrm = (normal_idx > 0 ? normalize(tex_normal.r * tangent.xyz + tex_normal.g * bitangent + tex_normal.b * normal) : normal) * (is_front_face ? 1.0F : -1.0F);
 
 #if 1
-    float4 met_roughness_factor = 1.0F.xxxx;
+    float3 orm = 1.0F.xxx;
     if (GET_BIT(material_bits, kMatGlossBit) == 1)
     {
-        met_roughness_factor = met_roughness_idx > 0
-                                ? metallic_roughness_from_specular_gloss(TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy)) * mr_factor
-                                : mr_factor;
+        float3 diffuse = albedo;
+        float4 sp_gloss = met_roughness_idx > 0
+                            ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * orm_factor
+                            : orm_factor;
 
-        met_roughness_factor.g = 1.0F - met_roughness_factor.g;
+        orm = orm_from_gloss_spec(sp_gloss, diffuse, albedo);
     }
     else
     {
-        met_roughness_factor = met_roughness_idx > 0 ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * mr_factor : mr_factor;
+        orm = float4(met_roughness_idx > 0 ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * orm_factor : orm_factor).xyz;
     }
 #else
-    float4 met_roughness_factor = met_roughness_idx > 0 ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * mr_factor : mr_factor;
+    float3 orm = float4(met_roughness_idx > 0 ? TEXTURE2DG(met_roughness_idx, uv, dfdx, dfdy) * orm_factor : orm_factor).xyz;
 #endif
 
     float3 view_pos = wsum(v0, v1, v2, bary.lambda);
@@ -363,8 +355,8 @@ void main(uint3 global_id: SV_DispatchThreadID)
     float3 view = normalize(-view_pos);
     float3 halfw = normalize(world[0].sun_direction + view);
 
-    float metallic = met_roughness_factor.b;
-    float roughness = max(met_roughness_factor.g, 0.045);
+    float metallic = orm.b;
+    float roughness = max(orm.g, 0.045);
 
     float n_dot_v = max(dot(nrm, view), 0.0F);
     float n_dot_h = max(dot(nrm, halfw), 0.0F);
@@ -423,7 +415,7 @@ void main(uint3 global_id: SV_DispatchThreadID)
         if (world[0].debug_mode == kDebugModeRoughness)      { color = roughness.xxx; }
         if (world[0].debug_mode == kDebugModeAlbedoTexture)  { color = DTEXTURE2D(albedo_idx, uv, dfdx, dfdy).rgb; }
         if (world[0].debug_mode == kDebugModeNormalTexture)  { color = DTEXTURE2D(normal_idx, uv, dfdx, dfdy).rgb; }
-        if (world[0].debug_mode == kDebugModeOmrTexture)     { color = DTEXTURE2D(met_roughness_idx, uv, dfdx, dfdy).rgb; }
+        if (world[0].debug_mode == kDebugModeOrmTexture)     { color = DTEXTURE2D(met_roughness_idx, uv, dfdx, dfdy).rgb; }
         if (world[0].debug_mode == kDebugModeTriangleId)     { color = hash_color(i0); }
         if (world[0].debug_mode == kDebugModeInstanceId)     { color = hash_color(instance_id); }
         if (world[0].debug_mode == kDebugModeTriangleFace)   { color = hash_color(uint(is_front_face)); }

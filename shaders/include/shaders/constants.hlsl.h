@@ -52,7 +52,7 @@ namespace shader_constants
     static const uint kDebugModeRoughness      = 13;
     static const uint kDebugModeAlbedoTexture  = 14;
     static const uint kDebugModeNormalTexture  = 15;
-    static const uint kDebugModeOmrTexture     = 16;
+    static const uint kDebugModeOrmTexture     = 16;
     static const uint kDebugModeTriangleId     = 17;
     static const uint kDebugModeInstanceId     = 18;
     static const uint kDebugModeTriangleFace   = 19;
