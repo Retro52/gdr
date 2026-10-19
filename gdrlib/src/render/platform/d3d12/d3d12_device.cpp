@@ -467,8 +467,8 @@ auto platform::d3d12_update_back_buffers(platform::d3d12_context& d3d12_context,
         auto& pfd = result[i];
         D3D12_RETURN_ON_FAIL(swapchain->GetBuffer(i, IID_PPV_ARGS(&pfd.image.resource)));
 
-        pfd.image.cpu_handle = d3d12_context.rtv_descriptor_heap.alloc_cpu();
-        d3d12_context.device->CreateRenderTargetView(pfd.image.resource.Get(), nullptr, pfd.image.cpu_handle);
+        pfd.image.rtv.cpu_handle = d3d12_context.rtv_descriptor_heap.alloc_cpu();
+        d3d12_context.device->CreateRenderTargetView(pfd.image.resource.Get(), nullptr, pfd.image.rtv.cpu_handle);
     }
 
     return result;
@@ -479,7 +479,7 @@ void platform::d3d12_destroy_swapchain(d3d12_context& d3d12_context, d3d12_swapc
     ZoneScoped;
     for (auto& back_buffer : swapchain.back_buffers)
     {
-        d3d12_context.rtv_descriptor_heap.free_cpu(back_buffer.image.cpu_handle);
+        d3d12_context.rtv_descriptor_heap.free_cpu(back_buffer.image.rtv.cpu_handle);
     }
 
     swapchain.swapchain.Reset();
@@ -487,7 +487,7 @@ void platform::d3d12_destroy_swapchain(d3d12_context& d3d12_context, d3d12_swapc
     d3d12_destroy_fence(swapchain.sc_sync_fence);
 }
 
-auto platform::d3d12_create_swapchain(d3d12_context& d3d12_context, const u32 format, const ivec2 size,
+auto platform::d3d12_create_swapchain(d3d12_context& d3d12_context, const DXGI_FORMAT format, const ivec2 size,
                                       const u32 frames_in_flight, const bool vsync) -> result<d3d12_swapchain>
 {
     ZoneScoped;
@@ -502,7 +502,7 @@ auto platform::d3d12_create_swapchain(d3d12_context& d3d12_context, const u32 fo
     const DXGI_SWAP_CHAIN_DESC1 desc {
         .Width       = static_cast<UINT>(size.x),
         .Height      = static_cast<UINT>(size.y),
-        .Format      = static_cast<DXGI_FORMAT>(format),
+        .Format      = format,
         .Stereo      = FALSE,
         .SampleDesc  = {.Count = 1, .Quality = 0},
         .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_BACK_BUFFER,

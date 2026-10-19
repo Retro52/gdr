@@ -61,11 +61,9 @@ rhi::impl rhi::create_for_d3d12()
         .cmd_begin_recording = d3d12_cmd_begin_recording,
         .cmd_end_recording   = d3d12_cmd_end_recording,
 
-        .cmd_reset    = d3d12_cmd_reset,
-        .cmd_barriers = d3d12_cmd_barriers,
-#if 0
+        .cmd_reset       = d3d12_cmd_reset,
+        .cmd_barriers    = d3d12_cmd_barriers,
         .cmd_image_blit  = d3d12_cmd_image_blit,
-#endif
         .cmd_copy_buffer = d3d12_cmd_copy_buffer,
 
 #if 0
@@ -85,16 +83,16 @@ rhi::impl rhi::create_for_d3d12()
         .cmd_set_depth_bias = d3d12_cmd_set_depth_bias,
 #endif
 
-        .cmd_bind_pso = d3d12_cmd_bind_pso,
+        .cmd_bind_pso   = d3d12_cmd_bind_pso,
+        .cmd_bind_index = d3d12_cmd_bind_index,
 #if 0
-        .cmd_bind_index        = d3d12_cmd_bind_index,
         .cmd_push_bindings     = d3d12_cmd_push_bindings,
         .cmd_push_constants    = d3d12_cmd_push_constants,
         .cmd_push_bindless_set = d3d12_cmd_push_bindless_set,
+#endif
 
         .cmd_dispatch          = d3d12_cmd_dispatch,
         .cmd_dispatch_indirect = d3d12_cmd_dispatch_indirect,
-#endif
 
         .cmd_draw = d3d12_cmd_draw,
 
@@ -104,21 +102,19 @@ rhi::impl rhi::create_for_d3d12()
 
         .cmd_draw_mesh_indirect       = d3d12_cmd_draw_mesh_indirect,
         .cmd_draw_mesh_indirect_count = d3d12_cmd_draw_mesh_indirect_count,
+#endif
 
         .cmd_debug_label_begin = d3d12_cmd_debug_label_begin,
         .cmd_debug_label_end   = d3d12_cmd_debug_label_end,
-#endif
 
         .submit  = d3d12_submit,
         .present = d3d12_present,
 
-#if 0
         .ffx_create_upscale_context = d3d12_ffx_create_upscale_context,
         .ffx_destroy_context        = d3d12_ffx_destroy_context,
 
         .ffx_upscale_query_jitter = d3d12_ffx_upscale_query_jitter,
         .ffx_upscale_dispatch     = d3d12_ffx_upscale_dispatch,
-#endif
     };
     return result;
 }

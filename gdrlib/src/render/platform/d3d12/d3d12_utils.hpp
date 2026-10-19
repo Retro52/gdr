@@ -2,13 +2,14 @@
 
 #include <volk.h>
 
-#include <pod_types.hpp>
 #include <render/platform/d3d12/d3d12.hpp>
 #include <render/rhi.hpp>
 
 namespace platform
 {
-    u32 d3d12_format_from_vk(VkFormat vk_format);
+    DXGI_FORMAT d3d12_format_from_vk(VkFormat vk_format);
+
+    D3D12_RESOURCE_FLAGS d3d12_rhi_parse_image_usage(rhi::image_usage_bits usage);
 
     uvec2 d3d12_rhi_parse_aspect_flags(rhi::image_aspect_bits aspects);
     D3D12_BARRIER_LAYOUT d3d12_rhi_parse_image_layout(rhi::image_layout layout);

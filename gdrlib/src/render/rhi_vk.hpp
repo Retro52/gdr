@@ -115,5 +115,4 @@ namespace rhi
                                              i32 jitter_index);
     void vk_ffx_upscale_dispatch(ffx_context ffx_ctx, command_buffer cmd, const ffx_upscale_params& params,
                                  const ffx_upscale_resources& resources);
-
 }

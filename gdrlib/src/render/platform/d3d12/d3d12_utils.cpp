@@ -2,9 +2,11 @@
 
 #include <ddspp.h>
 #include <render/platform/d3d12/d3d12_utils.hpp>
+#include <tracy/Tracy.hpp>
 
-u32 platform::d3d12_format_from_vk(const VkFormat vk_format)
+static u32 ddspp_format_from_vk(const VkFormat vk_format)
 {
+    ZoneScoped;
     using ddspp::DXGIFormat;
 
     switch (vk_format)
@@ -234,8 +236,46 @@ u32 platform::d3d12_format_from_vk(const VkFormat vk_format)
     }
 }
 
+DXGI_FORMAT platform::d3d12_format_from_vk(const VkFormat vk_format)
+{
+    ZoneScoped;
+    return static_cast<DXGI_FORMAT>(ddspp_format_from_vk(vk_format));
+}
+
+D3D12_RESOURCE_FLAGS platform::d3d12_rhi_parse_image_usage(const rhi::image_usage_bits usage)
+{
+    ZoneScoped;
+    D3D12_RESOURCE_FLAGS result = D3D12_RESOURCE_FLAG_NONE;
+    for (u32 i = 0; i < reflection::get_enum_values_count<rhi::image_usage>(); i++)
+    {
+        const auto flag = reflection::get_enum_value_at<rhi::image_usage>(i);
+        if (!(flag & usage))
+        {
+            continue;
+        }
+
+        switch (flag)
+        {
+        case rhi::image_usage::storage :
+            result |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+            break;
+        case rhi::image_usage::attachment_color :
+            result |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+            break;
+        case rhi::image_usage::attachment_ds :
+            result |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+            break;
+        default :
+            break;
+        }
+    }
+
+    return result;
+}
+
 uvec2 platform::d3d12_rhi_parse_aspect_flags(const rhi::image_aspect_bits aspects)
 {
+    ZoneScoped;
     assert2(!(aspects & rhi::image_aspect::format));
 
     const bool color   = aspects & rhi::image_aspect::color;
@@ -261,6 +301,7 @@ uvec2 platform::d3d12_rhi_parse_aspect_flags(const rhi::image_aspect_bits aspect
 
 D3D12_BARRIER_LAYOUT platform::d3d12_rhi_parse_image_layout(const rhi::image_layout layout)
 {
+    ZoneScoped;
     switch (layout)
     {
     case rhi::image_layout::discard :
@@ -279,6 +320,7 @@ D3D12_BARRIER_LAYOUT platform::d3d12_rhi_parse_image_layout(const rhi::image_lay
 
 D3D12_BARRIER_SUBRESOURCE_RANGE platform::d3d12_rhi_parse_image_range(const rhi::image_subresource_range& range)
 {
+    ZoneScoped;
     const uvec2 planes = d3d12_rhi_parse_aspect_flags(range.aspects);
     return D3D12_BARRIER_SUBRESOURCE_RANGE {
         .IndexOrFirstMipLevel = range.mips_range.x,
@@ -292,6 +334,7 @@ D3D12_BARRIER_SUBRESOURCE_RANGE platform::d3d12_rhi_parse_image_range(const rhi:
 
 D3D_PRIMITIVE_TOPOLOGY platform::d3d12_rhi_parse_topology(const rhi::topology topology)
 {
+    ZoneScoped;
     switch (topology)
     {
     case rhi::topology::list_lines :
@@ -318,6 +361,7 @@ D3D_PRIMITIVE_TOPOLOGY platform::d3d12_rhi_parse_topology(const rhi::topology to
 
 D3D12_COMPARISON_FUNC platform::d3d12_rhi_parse_comparison_func(const rhi::compare_op op)
 {
+    ZoneScoped;
     switch (op)
     {
     case rhi::compare_op::never :
@@ -344,6 +388,7 @@ D3D12_COMPARISON_FUNC platform::d3d12_rhi_parse_comparison_func(const rhi::compa
 
 D3D12_BARRIER_SYNC platform::d3d12_rhi_parse_stage_flags(const rhi::barrier_stage_bits stages)
 {
+    ZoneScoped;
     D3D12_BARRIER_SYNC result = D3D12_BARRIER_SYNC_NONE;
     for (u32 i = 0; i < reflection::get_enum_values_count<rhi::barrier_stage>(); i++)
     {
@@ -398,6 +443,7 @@ D3D12_BARRIER_SYNC platform::d3d12_rhi_parse_stage_flags(const rhi::barrier_stag
 
 D3D12_BARRIER_ACCESS platform::d3d12_rhi_parse_access_flags(const rhi::barrier_access_bits access)
 {
+    ZoneScoped;
     D3D12_BARRIER_ACCESS result = D3D12_BARRIER_ACCESS_COMMON;
     for (u32 i = 0; i < reflection::get_enum_values_count<rhi::barrier_access>(); i++)
     {
@@ -455,6 +501,7 @@ D3D12_BARRIER_ACCESS platform::d3d12_rhi_parse_access_flags(const rhi::barrier_a
 
 D3D12_FILTER_TYPE platform::d3d12_rhi_parse_filter(const rhi::sampler_filter filter)
 {
+    ZoneScoped;
     switch (filter)
     {
     case rhi::sampler_filter::nearest :
@@ -467,6 +514,7 @@ D3D12_FILTER_TYPE platform::d3d12_rhi_parse_filter(const rhi::sampler_filter fil
 
 D3D12_FILTER_TYPE platform::d3d12_rhi_parse_mipmap(const rhi::sampler_mipmap_mode mode)
 {
+    ZoneScoped;
     switch (mode)
     {
     default :;
@@ -479,6 +527,7 @@ D3D12_FILTER_TYPE platform::d3d12_rhi_parse_mipmap(const rhi::sampler_mipmap_mod
 
 D3D12_FILTER_REDUCTION_TYPE platform::d3d12_rhi_parse_reduction(const rhi::sampler_reduction reduction)
 {
+    ZoneScoped;
     switch (reduction)
     {
     case rhi::sampler_reduction::min :
@@ -493,6 +542,7 @@ D3D12_FILTER_REDUCTION_TYPE platform::d3d12_rhi_parse_reduction(const rhi::sampl
 
 D3D12_TEXTURE_ADDRESS_MODE platform::d3d12_rhi_parse_address_mode(const rhi::sampler_address_mode address_mode)
 {
+    ZoneScoped;
     switch (address_mode)
     {
     case rhi::sampler_address_mode::clamp_to_edge :
@@ -513,6 +563,7 @@ D3D12_FILTER platform::d3d12_rhi_parse_filter_type(const rhi::sampler_filter fil
                                                    const rhi::sampler_reduction reduction,
                                                    const rhi::sampler_mipmap_mode mipmap_mode)
 {
+    ZoneScoped;
     const D3D12_FILTER_TYPE min_mag       = d3d12_rhi_parse_filter(filter);
     const D3D12_FILTER_TYPE mip           = d3d12_rhi_parse_mipmap(mipmap_mode);
     const D3D12_FILTER_REDUCTION_TYPE red = d3d12_rhi_parse_reduction(reduction);

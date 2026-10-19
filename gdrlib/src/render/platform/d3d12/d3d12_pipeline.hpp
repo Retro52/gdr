@@ -47,6 +47,7 @@ namespace platform
         platform::com_ptr<ID3D12PipelineState> pso;
         platform::com_ptr<ID3D12RootSignature> root_signature;
 
+        uvec3 work_group_size             = uvec3(0);
         D3D12_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
     };
 

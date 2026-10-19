@@ -34,7 +34,6 @@ float4 unpack_r10g10b10a2(uint packed)
     return result;
 }
 
-// TODO(dx12): HLSL has no 8-bit types, so bytes are extracted from the dword that contains them
 uint load_u8(ByteAddressBuffer data, uint byte_offset)
 {
     return (data.Load(byte_offset & ~3u) >> ((byte_offset & 3u) * 8u)) & 0xFFu;

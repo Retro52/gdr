@@ -75,7 +75,7 @@ namespace platform
 
     void d3d12_destroy_swapchain(d3d12_context& d3d12_context, d3d12_swapchain& swapchain);
 
-    result<d3d12_swapchain> d3d12_create_swapchain(d3d12_context& d3d12_context, u32 format, ivec2 size,
+    result<d3d12_swapchain> d3d12_create_swapchain(d3d12_context& d3d12_context, DXGI_FORMAT format, ivec2 size,
                                                    u32 frames_in_flight, bool vsync);
 
     result<cpp::heap_array<d3d12_sc_back_buffer>> d3d12_update_back_buffers(platform::d3d12_context& d3d12_context,
