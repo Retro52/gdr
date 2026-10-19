@@ -199,7 +199,7 @@ namespace
         return vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, layout);
     }
 
-    u32 align_wg(u32 global, u32 local)
+    u32 align_wg(const u32 global, const u32 local)
     {
         return (global + local - 1) / local;
     }

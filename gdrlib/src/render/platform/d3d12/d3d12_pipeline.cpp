@@ -179,6 +179,7 @@ namespace
 
     PSVStructVersion psv0_get_binding_struct_version(const u32 size)
     {
+        ZoneScoped;
         switch (size)
         {
         case sizeof(PSVResourceBindInfo_v1) :
@@ -194,6 +195,7 @@ namespace
 
     PSVStructVersion psv0_get_info_struct_version(const u32 size)
     {
+        ZoneScoped;
         switch (size)
         {
         case sizeof(PSVRuntimeInfo_v1) :
@@ -213,6 +215,7 @@ namespace
 
     D3D_ROOT_SIGNATURE_VERSION get_root_signature_version(ID3D12Device* device)
     {
+        ZoneScoped;
         D3D12_FEATURE_DATA_ROOT_SIGNATURE feature_support = {};
         D3D_ROOT_SIGNATURE_VERSION versions[]             = {
             D3D_ROOT_SIGNATURE_VERSION_1_2,
@@ -235,6 +238,7 @@ namespace
 
     D3D12_SHADER_VISIBILITY get_shader_visibility(const platform::PSVShaderKind shader_type)
     {
+        ZoneScoped;
         switch (shader_type)
         {
         case platform::PSVShaderKind::Hull :
@@ -259,6 +263,7 @@ namespace
 
     D3D12_ROOT_PARAMETER_TYPE get_root_parameter_type(const platform::PSVResourceType type)
     {
+        ZoneScoped;
         switch (type)
         {
         case platform::PSVResourceType::CBV :
@@ -276,6 +281,7 @@ namespace
 
     D3D12_DESCRIPTOR_RANGE_TYPE get_descriptor_range_type(const platform::PSVResourceType type)
     {
+        ZoneScoped;
         switch (type)
         {
         case platform::PSVResourceType::CBV :
@@ -298,6 +304,7 @@ namespace
     cpp::heap_array<D3D12_ROOT_PARAMETER1> collect_root_signature_parameters(const platform::d3d12_shader* shaders,
                                                                              const u32 shaders_count)
     {
+        ZoneScoped;
         u32 parameters[D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER + 1][4][32] {};
         constexpr u32 kInvalidDedup = ~static_cast<u32>(0);
         constexpr u32 kTotalParams  = COUNT_OF(parameters) * 4 * 32;
@@ -375,6 +382,7 @@ namespace
                                                                          const platform::d3d12_shader* shaders,
                                                                          const u32 shaders_count)
     {
+        ZoneScoped;
         const auto params = collect_root_signature_parameters(shaders, shaders_count);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
@@ -400,6 +408,7 @@ namespace
 
 auto platform::d3d12_parse_dxil(const bytes& data) -> result<d3d12_shader_meta>
 {
+    ZoneScoped;
     u64 cursor = 0;
 
     auto fcc = [](const char name[4])
@@ -532,6 +541,7 @@ result<platform::d3d12_shader> platform::d3d12_create_shader(const fs::path& sha
 
 void platform::d3d12_destroy_shader(d3d12_shader& shader)
 {
+    ZoneScoped;
     shader.dxil_bytecode.release();
     memset(&shader.dxil_meta, 0, sizeof(shader.dxil_meta));
 }
@@ -539,6 +549,7 @@ void platform::d3d12_destroy_shader(d3d12_shader& shader)
 auto platform::d3d12_create_pipeline_compute(ID3D12Device2* device, const d3d12_shader& shader)
     -> result<d3d12_pipeline>
 {
+    ZoneScoped;
     const auto rs = create_root_signature(device, &shader, 1);
     RESULT_FORWARD_IF_FAILED(rs);
 
@@ -557,31 +568,50 @@ auto platform::d3d12_create_pipeline_compute(ID3D12Device2* device, const d3d12_
     platform::com_ptr<ID3D12PipelineState> pipeline;
     D3D12_RETURN_ON_FAIL(device->CreatePipelineState(&stream_desc, IID_PPV_ARGS(&pipeline)));
 
-    return d3d12_pipeline {
-        .pso            = pipeline,
-        .root_signature = *rs,
-    };
+    return d3d12_pipeline {.pso = pipeline, .root_signature = *rs, .work_group_size = shader.dxil_meta.threads};
 }
 
 auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12_shader* shaders,
                                               const u32 shaders_count, const rhi::pso_options& options)
     -> result<d3d12_pipeline>
 {
+    ZoneScoped;
     const auto rs = create_root_signature(device, shaders, shaders_count);
     RESULT_FORWARD_IF_FAILED(rs);
 
     CD3DX12_PIPELINE_STATE_STREAM2 desc = {};
     desc.pRootSignature                 = rs->Get();
 
-    desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    desc.DSVFormat = static_cast<DXGI_FORMAT>(d3d12_format_from_vk(static_cast<VkFormat>(options.depth_format)));
+    switch (options.topology)
+    {
+    case rhi::topology::list_points :
+        desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+        break;
+    case rhi::topology::list_patches :
+        desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
+        break;
+    case rhi::topology::list_lines :
+    case rhi::topology::strip_lines :
+    case rhi::topology::strip_lines_adjacent :
+    case rhi::topology::list_lines_adjacent :
+        desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+        break;
+    default :
+    case rhi::topology::list_triangles :
+    case rhi::topology::strip_triangles :
+    case rhi::topology::list_triangles_adjacent :
+    case rhi::topology::strip_triangles_adjacent :
+        desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        break;
+    }
+
+    desc.DSVFormat = d3d12_format_from_vk(static_cast<VkFormat>(options.depth_format));
 
     assert2(options.color_attachments_count < COUNT_OF(options.color_formats));
     D3D12_RT_FORMAT_ARRAY rt_format_array = {.NumRenderTargets = options.color_attachments_count};
     for (u32 i = 0; i < options.color_attachments_count; ++i)
     {
-        rt_format_array.RTFormats[i] =
-            static_cast<DXGI_FORMAT>(d3d12_format_from_vk(static_cast<VkFormat>(options.color_formats[i])));
+        rt_format_array.RTFormats[i] = d3d12_format_from_vk(static_cast<VkFormat>(options.color_formats[i]));
     }
 
     desc.RTVFormats = rt_format_array;
@@ -648,6 +678,7 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
 
 void platform::d3d12_destroy_pipeline(d3d12_pipeline& pipeline)
 {
+    ZoneScoped;
     pipeline.pso.Reset();
     pipeline.root_signature.Reset();
 }

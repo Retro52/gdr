@@ -59,6 +59,7 @@ namespace rhi
 
     void d3d12_cmd_reset(command_buffer cmd);
     void d3d12_cmd_barriers(command_buffer cmd, const barrier_batch& barriers);
+    void d3d12_cmd_image_blit(command_buffer cmd, image src, image dst, const blit_image_info& info);
     void d3d12_cmd_copy_buffer(command_buffer cmd, buffer src_buffer, u64vec2 src_range, buffer dst_buffer,
                                u64 dst_offset);
 
@@ -67,9 +68,24 @@ namespace rhi
     void d3d12_cmd_clear_draw_state(command_buffer cmd);
 
     void d3d12_cmd_bind_pso(command_buffer cmd, pipeline pso);
+    void d3d12_cmd_bind_index(command_buffer cmd, buffer index_buffer);
+
+    void d3d12_cmd_dispatch(command_buffer cmd, pipeline pso, uvec3 threads);
+    void d3d12_cmd_dispatch_indirect(command_buffer cmd, buffer count_buffer, u32 buffer_offset);
 
     void d3d12_cmd_draw(command_buffer cmd, u32 vtx_count, u32 instance_count, u32 first_vertex, u32 first_instance);
 
+    void d3d12_cmd_debug_label_begin(command_buffer cmd, context context, const debug_label& label);
+    void d3d12_cmd_debug_label_end(command_buffer cmd, context context);
+
     void d3d12_submit(context context, queue queue, const submit_info& info);
     void d3d12_present(command_buffer cmd, swapchain swapchain, queue submit, queue present);
+
+    result<ffx_context> d3d12_ffx_create_upscale_context(context ctx, const ffx_upscale_desc& desc);
+    void d3d12_ffx_destroy_context(ffx_context& ffx_ctx);
+
+    result<vec2> d3d12_ffx_upscale_query_jitter(ffx_context ffx_ctx, u32 render_width, u32 display_width,
+                                                i32 jitter_index);
+    void d3d12_ffx_upscale_dispatch(ffx_context ffx_ctx, command_buffer cmd, const ffx_upscale_params& params,
+                                    const ffx_upscale_resources& resources);
 }

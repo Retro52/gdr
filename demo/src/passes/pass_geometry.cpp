@@ -1,6 +1,5 @@
 #include <passes/pass_geometry.hpp>
 #include <passes/scoped_label.hpp>
-#include <shaders/bindings/fill.h>
 #include <shaders/constants.hlsl.h>
 #include <tracy/Tracy.hpp>
 
@@ -432,18 +431,17 @@ void app::pass_geometry::build_indexed_draw_commands(const rhi::command_buffer c
     app::zero_buffer(m_rhi, cmd, indexed_count_buffer, sizeof(u32));
 
     descriptor_bindings bindings;
-    bindings.bind_at(res.meshlets, shader_bindings::fill::kMeshletBinding);
-    bindings.bind_at(res.meshlets_payload, shader_bindings::fill::kMeshletDataBinding);
-    bindings.bind_at(res.primitives, shader_bindings::fill::kPrimitiveBinding);
-    bindings.bind_at(res.instances, shader_bindings::fill::kInstanceBinding);
-    bindings.bind_at(mesh_draw_commands, shader_bindings::fill::kDrawBinding);
-    bindings.bind_at(res.frame_cull_data_buffer().buffer, shader_bindings::fill::kCullBinding);
-    bindings.bind_at(indices, shader_bindings::fill::kOutIndicesBinding);
-    bindings.bind_at(indexed_draw_commands, shader_bindings::fill::kOutCommandsBinding);
-    bindings.bind_at(indexed_count_buffer, shader_bindings::fill::kOutCountBinding);
-    bindings.bind_at(meshlets_visibility, shader_bindings::fill::kVisibilityBinding);
-    bindings.bind_at(
-        rhi::binding(this->hizb.image, this->hizb.sampler), shader_bindings::fill::kHiZBinding, enable_occlusion_cull);
+    bindings.bind_next(res.meshlets);
+    bindings.bind_next(res.meshlets_payload);
+    bindings.bind_next(res.primitives);
+    bindings.bind_next(res.instances);
+    bindings.bind_next(mesh_draw_commands);
+    bindings.bind_next(res.frame_cull_data_buffer().buffer);
+    bindings.bind_next(indices);
+    bindings.bind_next(indexed_draw_commands);
+    bindings.bind_next(indexed_count_buffer);
+    bindings.bind_next(meshlets_visibility);
+    bindings.bind_next(rhi::binding(this->hizb.image, this->hizb.sampler), enable_occlusion_cull);
 
     pso_id id;
     switch (material_class)

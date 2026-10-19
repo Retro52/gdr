@@ -277,7 +277,8 @@ static rhi::instance_desc get_instance_desc(auto& args)
                                         .require(rhi::feature_flag::synchronization2);
     return rhi::instance_desc {
         .app_name        = "GDR",
-        .device_id_hint  = static_cast<u32>(args.read_numeric("--device_id", rhi::kDeviceIdDealersChoice)),
+        .device_id_hint  = 0,
+        // .device_id_hint  = static_cast<u32>(args.read_numeric("--device_id", rhi::kDeviceIdDealersChoice)),
         .device_features = features_table,
     };
 }
