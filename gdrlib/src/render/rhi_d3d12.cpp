@@ -7,6 +7,7 @@
 #include <render/platform/d3d12/d3d12_device.hpp>
 #include <render/platform/d3d12/d3d12_error.hpp>
 #include <render/platform/d3d12/d3d12_pipeline.hpp>
+#include <render/platform/d3d12/d3d12_sampler.hpp>
 #include <render/platform/d3d12/d3d12_utils.hpp>
 #include <render/platform/vk/vk_utils.hpp>
 #include <render/rhi_d3d12.hpp>
@@ -140,7 +141,7 @@ auto rhi::d3d12_resize_swapchain(context context, swapchain swapchain, const cre
     for (auto& back_buffer : d3d12_sc->back_buffers)
     {
         back_buffer.image.resource.Reset();
-        d3d12_ctx->rtv_descriptor_heap.free(back_buffer.image.cpu_handle);
+        d3d12_ctx->rtv_descriptor_heap.free_cpu(back_buffer.image.cpu_handle);
     }
 
     D3D12_RETURN_ON_FAIL(d3d12_sc->swapchain->ResizeBuffers(
@@ -328,6 +329,50 @@ auto rhi::d3d12_create_image(context context, const create_image_info& image_inf
 
 void rhi::d3d12_destroy_image(context context, image& image)
 {
+}
+
+auto rhi::d3d12_create_sampler(context context, const create_sampler_info& sampler_info) -> result<sampler>
+{
+    auto* d3d12_ctx = cast_from_handle<platform::d3d12_context>(context);
+    if (!d3d12_ctx)
+    {
+        return error("failed to access context");
+    }
+
+    vec4 border_color;
+    switch (sampler_info.border_color)
+    {
+    default :
+    case rhi::sampler_border_color::white :
+        border_color = vec4(1.0F);
+        break;
+    case rhi::sampler_border_color::black :
+        border_color = vec4(vec3(0.0F), 1.0F);
+        break;
+    case rhi::sampler_border_color::black_transparent :
+        border_color = vec4(0.0F);
+        break;
+    }
+
+    return create_handle<sampler>(platform::d3d12_create_sampler(
+        d3d12_ctx->device.Get(),
+        d3d12_ctx->sampler_descriptor_heap,
+        platform::d3d12_rhi_parse_filter_type(sampler_info.filter, sampler_info.reduction, sampler_info.mipmap_mode),
+        platform::d3d12_rhi_parse_address_mode(sampler_info.address_mode),
+        sampler_info.anisotropy_factor,
+        platform::d3d12_rhi_parse_comparison_func(sampler_info.compare_op),
+        border_color));
+}
+
+void rhi::d3d12_destroy_sampler(context context, sampler& sampler)
+{
+    auto* d3d12_ctx     = cast_from_handle<platform::d3d12_context>(context);
+    auto* d3d12_sampler = cast_from_handle<platform::d3d12_sampler>(sampler);
+    if (d3d12_ctx && d3d12_sampler)
+    {
+        platform::d3d12_destroy_sampler(d3d12_ctx->sampler_descriptor_heap, *d3d12_sampler);
+        clear_handle(d3d12_sampler, sampler);
+    }
 }
 
 auto rhi::d3d12_create_compute_pso(context context, shader shader, std::span<const bindless_set> /* sets */)

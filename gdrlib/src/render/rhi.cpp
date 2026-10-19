@@ -33,10 +33,10 @@ rhi::impl rhi::create_for_d3d12()
 #if 0
         .create_image_view  = d3d12_create_image_view,
         .destroy_image_view = d3d12_destroy_image_view,
+#endif
 
         .create_sampler  = d3d12_create_sampler,
         .destroy_sampler = d3d12_destroy_sampler,
-#endif
 
         .create_compute_pso  = d3d12_create_compute_pso,
         .create_graphics_pso = d3d12_create_graphics_pso,
@@ -61,8 +61,8 @@ rhi::impl rhi::create_for_d3d12()
         .cmd_begin_recording = d3d12_cmd_begin_recording,
         .cmd_end_recording   = d3d12_cmd_end_recording,
 
-        .cmd_reset       = d3d12_cmd_reset,
-        .cmd_barriers    = d3d12_cmd_barriers,
+        .cmd_reset    = d3d12_cmd_reset,
+        .cmd_barriers = d3d12_cmd_barriers,
 #if 0
         .cmd_image_blit  = d3d12_cmd_image_blit,
 #endif
@@ -85,7 +85,7 @@ rhi::impl rhi::create_for_d3d12()
         .cmd_set_depth_bias = d3d12_cmd_set_depth_bias,
 #endif
 
-        .cmd_bind_pso          = d3d12_cmd_bind_pso,
+        .cmd_bind_pso = d3d12_cmd_bind_pso,
 #if 0
         .cmd_bind_index        = d3d12_cmd_bind_index,
         .cmd_push_bindings     = d3d12_cmd_push_bindings,

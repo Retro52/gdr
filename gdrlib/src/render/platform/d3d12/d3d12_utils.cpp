@@ -452,3 +452,70 @@ D3D12_BARRIER_ACCESS platform::d3d12_rhi_parse_access_flags(const rhi::barrier_a
 
     return result == D3D12_BARRIER_ACCESS_COMMON ? D3D12_BARRIER_ACCESS_NO_ACCESS : result;
 }
+
+D3D12_FILTER_TYPE platform::d3d12_rhi_parse_filter(const rhi::sampler_filter filter)
+{
+    switch (filter)
+    {
+    case rhi::sampler_filter::nearest :
+        return D3D12_FILTER_TYPE_POINT;
+    default :
+    case rhi::sampler_filter::linear :
+        return D3D12_FILTER_TYPE_LINEAR;
+    }
+}
+
+D3D12_FILTER_TYPE platform::d3d12_rhi_parse_mipmap(const rhi::sampler_mipmap_mode mode)
+{
+    switch (mode)
+    {
+    default :;
+    case rhi::sampler_mipmap_mode::linear :
+        return D3D12_FILTER_TYPE_LINEAR;
+    case rhi::sampler_mipmap_mode::nearest :
+        return D3D12_FILTER_TYPE_POINT;
+    }
+}
+
+D3D12_FILTER_REDUCTION_TYPE platform::d3d12_rhi_parse_reduction(const rhi::sampler_reduction reduction)
+{
+    switch (reduction)
+    {
+    case rhi::sampler_reduction::min :
+        return D3D12_FILTER_REDUCTION_TYPE_MINIMUM;
+    case rhi::sampler_reduction::max :
+        return D3D12_FILTER_REDUCTION_TYPE_MAXIMUM;
+    default :
+    case rhi::sampler_reduction::none :
+        return D3D12_FILTER_REDUCTION_TYPE_STANDARD;
+    }
+}
+
+D3D12_TEXTURE_ADDRESS_MODE platform::d3d12_rhi_parse_address_mode(const rhi::sampler_address_mode address_mode)
+{
+    switch (address_mode)
+    {
+    case rhi::sampler_address_mode::clamp_to_edge :
+        return D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    case rhi::sampler_address_mode::clamp_to_border :
+        return D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+    case rhi::sampler_address_mode::mirrored_repeat :
+        return D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
+    case rhi::sampler_address_mode::mirrored_clamp_to_edge :
+        return D3D12_TEXTURE_ADDRESS_MODE_MIRROR_ONCE;
+    default :
+    case rhi::sampler_address_mode::repeat :
+        return D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    }
+}
+
+D3D12_FILTER platform::d3d12_rhi_parse_filter_type(const rhi::sampler_filter filter,
+                                                   const rhi::sampler_reduction reduction,
+                                                   const rhi::sampler_mipmap_mode mipmap_mode)
+{
+    const D3D12_FILTER_TYPE min_mag       = d3d12_rhi_parse_filter(filter);
+    const D3D12_FILTER_TYPE mip           = d3d12_rhi_parse_mipmap(mipmap_mode);
+    const D3D12_FILTER_REDUCTION_TYPE red = d3d12_rhi_parse_reduction(reduction);
+
+    return D3D12_ENCODE_BASIC_FILTER(min_mag, min_mag, mip, red);
+}

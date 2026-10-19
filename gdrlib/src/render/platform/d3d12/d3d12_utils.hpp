@@ -18,4 +18,11 @@ namespace platform
     D3D12_COMPARISON_FUNC d3d12_rhi_parse_comparison_func(rhi::compare_op op);
     D3D12_BARRIER_SYNC d3d12_rhi_parse_stage_flags(rhi::barrier_stage_bits stages);
     D3D12_BARRIER_ACCESS d3d12_rhi_parse_access_flags(rhi::barrier_access_bits access);
+
+    D3D12_FILTER_TYPE d3d12_rhi_parse_filter(rhi::sampler_filter filter);
+    D3D12_FILTER_TYPE d3d12_rhi_parse_mipmap(rhi::sampler_mipmap_mode mode);
+    D3D12_FILTER_REDUCTION_TYPE d3d12_rhi_parse_reduction(rhi::sampler_reduction reduction);
+    D3D12_TEXTURE_ADDRESS_MODE d3d12_rhi_parse_address_mode(rhi::sampler_address_mode address_mode);
+    D3D12_FILTER d3d12_rhi_parse_filter_type(rhi::sampler_filter filter, rhi::sampler_reduction reduction,
+                                             rhi::sampler_mipmap_mode mipmap_mode);
 }

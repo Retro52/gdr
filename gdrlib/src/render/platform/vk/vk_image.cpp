@@ -189,6 +189,7 @@ result<VkSampler> platform::vk_create_sampler(VkDevice device, const VkFilter fi
         .addressModeU     = sampler_address_mode,
         .addressModeV     = sampler_address_mode,
         .addressModeW     = sampler_address_mode,
+        .mipLodBias       = 0.0F,
         .anisotropyEnable = anisotropic_filtering_factor > 0 ? VK_TRUE : VK_FALSE,
         .maxAnisotropy    = anisotropic_filtering_factor > 0 ? anisotropic_filtering_factor : 0.0F,
         .compareEnable =

@@ -15,6 +15,7 @@ auto platform::d3d12_create_buffer(D3D12MA::Allocator* allocator, const u64 size
         .DepthOrArraySize = 1,
         .MipLevels        = 1,
         .Format           = DXGI_FORMAT_UNKNOWN,
+        .SampleDesc       = {.Count = 1, .Quality = 0},
         .Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
     };
 

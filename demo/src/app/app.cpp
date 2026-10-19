@@ -249,7 +249,7 @@ static rhi::impl load_rhi(const app::argv_handler& args)
         logging::s_instance->set_log_level(static_cast<quill::LogLevel>(ll));
     }
 
-    const bool use_dx12 = args.read_numeric("--use_dx12");
+    const bool use_dx12 = args.read_numeric("--use_dx12") || true;
 
 #if GDR_ENABLE_DX12_BACKEND
     return use_dx12 ? rhi::create_for_d3d12() : rhi::create_for_vk();
@@ -270,7 +270,6 @@ static rhi::instance_desc get_instance_desc(auto& args)
 #endif
                                         .request(rhi::feature_flag::mesh_shading)
                                         .require(rhi::feature_flag::types_16bit)
-                                        .require(rhi::feature_flag::types_int8)
                                         .require(rhi::feature_flag::draw_indirect)
                                         .require(rhi::feature_flag::dynamic_render)
                                         .require(rhi::feature_flag::bindless_textures)

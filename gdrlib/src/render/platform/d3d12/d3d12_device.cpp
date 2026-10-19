@@ -434,20 +434,20 @@ auto platform::d3d12_create_context(const window& window, const rhi::instance_de
     context.queues[kD3D12_CommandQueueDirect]  = *queue_direct;
     context.queues[kD3D12_CommandQueueCompute] = *queue_compute;
 
-    auto cbv_srv_uav_desc_heap = d3d12_create_tracked_desc_heap<kD3D12_CBV_SRV_UAV_HeapMaxDescCount>(
-        context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    auto cbv_srv_uav_desc_heap = d3d12_create_desc_heap(
+        context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kD3D12_CBV_SRV_UAV_HeapMaxDescCount);
     RESULT_FORWARD_IF_FAILED(cbv_srv_uav_desc_heap);
 
-    auto sampler_desc_heap = d3d12_create_tracked_desc_heap<kD3D12_Sampler_HeapMaxDescCount>(
-        context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+    auto sampler_desc_heap = d3d12_create_desc_heap(
+        context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, kD3D12_Sampler_HeapMaxDescCount);
     RESULT_FORWARD_IF_FAILED(sampler_desc_heap);
 
-    auto rtv_desc_heap = d3d12_create_tracked_desc_heap<kD3D12_RTV_HeapMaxDescCount>(context.device.Get(),
-                                                                                     D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    auto rtv_desc_heap =
+        d3d12_create_desc_heap(context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, kD3D12_RTV_HeapMaxDescCount);
     RESULT_FORWARD_IF_FAILED(rtv_desc_heap);
 
-    auto dsv_desc_heap = d3d12_create_tracked_desc_heap<kD3D12_DSV_HeapMaxDescCount>(context.device.Get(),
-                                                                                     D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    auto dsv_desc_heap =
+        d3d12_create_desc_heap(context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, kD3D12_DSV_HeapMaxDescCount);
     RESULT_FORWARD_IF_FAILED(dsv_desc_heap);
 
     context.rtv_descriptor_heap         = *rtv_desc_heap;
@@ -467,10 +467,8 @@ auto platform::d3d12_update_back_buffers(platform::d3d12_context& d3d12_context,
         auto& pfd = result[i];
         D3D12_RETURN_ON_FAIL(swapchain->GetBuffer(i, IID_PPV_ARGS(&pfd.image.resource)));
 
-        const auto handle = d3d12_context.rtv_descriptor_heap.alloc();
-        d3d12_context.device->CreateRenderTargetView(pfd.image.resource.Get(), nullptr, handle);
-
-        pfd.image.cpu_handle = handle;
+        pfd.image.cpu_handle = d3d12_context.rtv_descriptor_heap.alloc_cpu();
+        d3d12_context.device->CreateRenderTargetView(pfd.image.resource.Get(), nullptr, pfd.image.cpu_handle);
     }
 
     return result;
@@ -481,7 +479,7 @@ void platform::d3d12_destroy_swapchain(d3d12_context& d3d12_context, d3d12_swapc
     ZoneScoped;
     for (auto& back_buffer : swapchain.back_buffers)
     {
-        d3d12_context.rtv_descriptor_heap.free(back_buffer.image.cpu_handle);
+        d3d12_context.rtv_descriptor_heap.free_cpu(back_buffer.image.cpu_handle);
     }
 
     swapchain.swapchain.Reset();
