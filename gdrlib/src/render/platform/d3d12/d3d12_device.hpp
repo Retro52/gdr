@@ -37,10 +37,10 @@ namespace platform
         com_ptr<ID3D12InfoQueue1> info_queue = nullptr;
         com_ptr<ID3D12CommandQueue> queues[kD3D12_CommandQueuesCount];
 
-        d3d12_tracked_heap<kD3D12_RTV_HeapMaxDescCount> rtv_descriptor_heap;
-        d3d12_tracked_heap<kD3D12_DSV_HeapMaxDescCount> dsv_descriptor_heap;
-        d3d12_tracked_heap<kD3D12_Sampler_HeapMaxDescCount> sampler_descriptor_heap;
-        d3d12_tracked_heap<kD3D12_CBV_SRV_UAV_HeapMaxDescCount> cbv_srv_uav_descriptor_heap;
+        d3d12_desc_heap rtv_descriptor_heap;
+        d3d12_desc_heap dsv_descriptor_heap;
+        d3d12_desc_heap sampler_descriptor_heap;
+        d3d12_desc_heap cbv_srv_uav_descriptor_heap;
 
         com_ptr<D3D12MA::Allocator> allocator;
 

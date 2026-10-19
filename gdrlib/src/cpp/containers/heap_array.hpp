@@ -235,6 +235,13 @@ namespace cpp
             m_end = m_data;
         }
 
+        void pop_back()
+        {
+            ZoneScoped;
+            assert2(!empty());
+            destroy(m_end - 1, m_end--);
+        }
+
     private:
         void init(T* start, T* const end)
         {

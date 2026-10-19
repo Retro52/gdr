@@ -317,8 +317,8 @@ namespace
 
             for (u32 j = 0; j < shader_meta.resources_count; j++)
             {
-                auto& resource = shader_meta.resources[j];
-                auto type      = get_descriptor_range_type(resource.resource_type);
+                auto& resource  = shader_meta.resources[j];
+                const auto type = get_descriptor_range_type(resource.resource_type);
 
                 auto& redirect = parameters[type][resource.space][resource.slot];
                 if (redirect != kInvalidDedup)
@@ -367,7 +367,7 @@ namespace
             }
         }
 
-        assert2(size_in_dwords < 64);
+        assert2(size_in_dwords <= 64);
         return result;
     }
 
