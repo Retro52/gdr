@@ -161,8 +161,8 @@ static void message_callback(D3D12_MESSAGE_CATEGORY category, D3D12_MESSAGE_SEVE
         assert2m(false, message);
         break;
     case D3D12_MESSAGE_SEVERITY_WARNING :
-        assert2m(false, message);
         LOG_WARNING("validation warning ({}): {}", debug_message_category_to_str(category), message);
+        assert2m(false, message);
         break;
     case D3D12_MESSAGE_SEVERITY_INFO :
     case D3D12_MESSAGE_SEVERITY_MESSAGE :
@@ -466,6 +466,16 @@ auto platform::d3d12_update_back_buffers(platform::d3d12_context& d3d12_context,
     {
         auto& pfd = result[i];
         D3D12_RETURN_ON_FAIL(swapchain->GetBuffer(i, IID_PPV_ARGS(&pfd.image.resource)));
+
+        // back buffers get an rtv and nothing else, so they are built by hand rather than through
+        // d3d12_create_image_view - but they still have to describe themselves like any other view,
+        // or attachment clears and barriers have no metadata to work from
+        pfd.image.view.source     = pfd.image.resource.Get();
+        pfd.image.view.view_types = d3d12_image_view_type::rtv;
+        pfd.image.view.desc       = d3d12_image_view_desc {
+                  .format = pfd.image.resource->GetDesc().Format,
+                  .kind   = rhi::image_view_kind::flat_2d,
+        };
 
         pfd.image.view.descriptors.rtv = d3d12_context.rtv_descriptor_heap.alloc();
         d3d12_context.device->CreateRenderTargetView(

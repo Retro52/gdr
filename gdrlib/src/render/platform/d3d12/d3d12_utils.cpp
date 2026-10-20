@@ -318,18 +318,46 @@ D3D12_BARRIER_LAYOUT platform::d3d12_rhi_parse_image_layout(const rhi::image_lay
     }
 }
 
-D3D12_BARRIER_SUBRESOURCE_RANGE platform::d3d12_rhi_parse_image_range(const rhi::image_subresource_range& range)
+D3D12_BARRIER_SUBRESOURCE_RANGE platform::d3d12_rhi_parse_image_range(const rhi::image_subresource_range& range,
+                                                                      const u32 mips_count, const u32 layers_count)
 {
     ZoneScoped;
     const uvec2 planes = d3d12_rhi_parse_aspect_flags(range.aspects);
+    const u32 mips     = range.mips_range.y == rhi::kMipsAll ? mips_count - range.mips_range.x : range.mips_range.y;
+    const u32 layers =
+        range.layers_range.y == rhi::kLayersAll ? layers_count - range.layers_range.x : range.layers_range.y;
+
+    assert2(range.mips_range.x < mips_count && range.layers_range.x < layers_count);
     return D3D12_BARRIER_SUBRESOURCE_RANGE {
         .IndexOrFirstMipLevel = range.mips_range.x,
-        .NumMipLevels         = 1,
+        .NumMipLevels         = mips,
         .FirstArraySlice      = range.layers_range.x,
-        .NumArraySlices       = 1,
+        .NumArraySlices       = layers,
         .FirstPlane           = planes.x,
         .NumPlanes            = planes.y,
     };
+}
+
+bool platform::d3d12_format_has_stencil(const DXGI_FORMAT format)
+{
+    switch (format)
+    {
+    case DXGI_FORMAT_D24_UNORM_S8_UINT :
+    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT :
+    case DXGI_FORMAT_R24_UNORM_X8_TYPELESS :
+    case DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS :
+    case DXGI_FORMAT_R24G8_TYPELESS :
+    case DXGI_FORMAT_R32G8X24_TYPELESS :
+        return true;
+    default :
+        return false;
+    }
+}
+
+D3D12_CLEAR_FLAGS platform::d3d12_dsv_clear_flags(const DXGI_FORMAT format)
+{
+    return d3d12_format_has_stencil(format) ? D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL
+                                            : D3D12_CLEAR_FLAG_DEPTH;
 }
 
 D3D_PRIMITIVE_TOPOLOGY platform::d3d12_rhi_parse_topology(const rhi::topology topology)

@@ -19,9 +19,21 @@ namespace platform
     );
     // clang-format on
 
+    struct d3d12_image_view_desc
+    {
+        uvec2 mips;
+        uvec2 layers;
+
+        DXGI_FORMAT format;
+        rhi::image_view_kind kind;
+    };
+
     struct d3d12_image_view
     {
-        d3d12_image_view_type_bits view_types;
+        ID3D12Resource* source = nullptr;
+
+        d3d12_image_view_desc desc;
+        d3d12_image_view_type_bits view_types = {};
 
         union
         {
@@ -57,20 +69,15 @@ namespace platform
         d3d12_desc_heap& cbv_srv_uav_heap;
     };
 
-    struct d3d12_image_view_desc
-    {
-        uvec2 mips;
-        uvec2 layers;
-
-        DXGI_FORMAT format;
-        rhi::image_view_kind kind;
-    };
-
     result<d3d12_image_view> d3d12_create_image_view(ID3D12Device* device, ID3D12Resource* source,
-                                                     const d3d12_heaps_view& heaps, const d3d12_image_view_desc& desc,
+                                                     const d3d12_heaps_view& heaps, const d3d12_image_view_desc& meta,
                                                      d3d12_image_view_type_bits flags);
 
     void d3d12_destroy_image_view(d3d12_image_view& view, const d3d12_heaps_view& heaps);
+
+    d3d12_image_view_type_bits d3d12_view_types_from_resource_flags(D3D12_RESOURCE_FLAGS flags);
+
+    void d3d12_write_srv(ID3D12Device* device, const d3d12_image_view& view, D3D12_CPU_DESCRIPTOR_HANDLE dst);
 
     result<d3d12_image> d3d12_create_image(D3D12MA::Allocator* allocator, D3D12_RESOURCE_DIMENSION type,
                                            DXGI_FORMAT format, u32 mips, uvec3 dimensions, D3D12_RESOURCE_FLAGS flags);
