@@ -30,6 +30,9 @@ namespace rhi
     result<image> d3d12_create_image(context context, const create_image_info& image_info);
     void d3d12_destroy_image(context context, image& image);
 
+    result<image_view> d3d12_create_image_view(context context, image source, const create_image_view_info& view_info);
+    void d3d12_destroy_image_view(context context, image_view& view);
+
     result<sampler> d3d12_create_sampler(context context, const create_sampler_info& sampler_info);
     void d3d12_destroy_sampler(context context, sampler& sampler);
 

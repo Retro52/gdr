@@ -15,7 +15,8 @@ namespace platform
         com_ptr<D3D12MA::Allocation> allocation = nullptr;
     };
 
-    result<d3d12_buffer> d3d12_create_buffer(D3D12MA::Allocator* allocator, u64 size, D3D12_HEAP_TYPE heap);
+    result<d3d12_buffer> d3d12_create_buffer(D3D12MA::Allocator* allocator, u64 size, D3D12_HEAP_TYPE heap,
+                                             D3D12_RESOURCE_FLAGS flags);
 
     void d3d12_destroy_buffer(d3d12_buffer& buffer);
 }

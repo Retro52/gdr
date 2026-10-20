@@ -105,14 +105,6 @@ result<ffx::Context> platform::vk_ffx_create_upscale_context(VkDevice device, Vk
     upscale_desc.flags =
         FFX_UPSCALE_ENABLE_HIGH_DYNAMIC_RANGE | FFX_UPSCALE_ENABLE_AUTO_EXPOSURE | FFX_UPSCALE_ENABLE_DEPTH_INVERTED;
 
-#if 1
-    upscale_desc.flags |= FFX_UPSCALE_ENABLE_DEBUG_CHECKING;  // debug builds
-    upscale_desc.fpMessage = [](uint32_t type, const wchar_t* msg)
-    {
-        assert2(false && msg);
-    };
-#endif
-
     FFX_RETURN_ON_FAIL(ffx::CreateContext(ctx, nullptr, upscale_desc, backend_desc));
     return ctx;
 }

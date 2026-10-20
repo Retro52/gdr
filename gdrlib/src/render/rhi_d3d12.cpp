@@ -178,7 +178,7 @@ auto rhi::d3d12_resize_swapchain(context context, swapchain swapchain, const cre
     for (auto& back_buffer : d3d12_sc->back_buffers)
     {
         back_buffer.image.resource.Reset();
-        d3d12_ctx->rtv_descriptor_heap.free_cpu(back_buffer.image.rtv.cpu_handle);
+        d3d12_ctx->rtv_descriptor_heap.free(back_buffer.image.view.descriptors.rtv);
     }
 
     D3D12_RETURN_ON_FAIL(
@@ -255,17 +255,53 @@ void rhi::d3d12_destroy_command_buffer(context context, command_buffer& cmd)
     }
 }
 
-auto rhi::d3d12_create_bindless_set(context context, u32 resource_count) -> result<bindless_set>
+auto rhi::d3d12_create_bindless_set(context context, const u32 resource_count) -> result<bindless_set>
 {
-    return rhi::null_bindless_set;
+    ZoneScoped;
+    auto* d3d12_ctx = cast_from_handle<platform::d3d12_context>(context);
+    if (!d3d12_ctx)
+    {
+        return error("failed to access context");
+    }
+
+    platform::d3d12_view_desc_range d3d12_set;
+    d3d12_set.count  = resource_count;
+    d3d12_set.stride = d3d12_ctx->cbv_srv_uav_descriptor_heap.stride;
+    d3d12_set.start  = d3d12_ctx->cbv_srv_uav_descriptor_heap.alloc(resource_count);
+
+    return create_handle<bindless_set>(d3d12_set);
 }
 
-void rhi::d3d12_update_bindless_set(context context, bindless_set set, std::span<const bindless_set_write_info> info)
+void rhi::d3d12_update_bindless_set(context context, bindless_set set,
+                                    const std::span<const bindless_set_write_info> info)
 {
+    ZoneScoped;
+    auto* d3d12_ctx       = cast_from_handle<platform::d3d12_context>(context);
+    const auto* d3d12_set = cast_from_handle<platform::d3d12_view_desc_range>(set);
+
+    assert2(d3d12_ctx && d3d12_set);
+    if (!d3d12_ctx || !d3d12_set)
+    {
+        return;
+    }
+
+    for (const auto& write : info)
+    {
+        // d3d12_ctx->device->CreateShaderResourceView(
+        //     attachment.image->resource.Get(), &attachment.view->srv_desc, d3d12_set->cpu_at(write.index));
+    }
 }
 
 void rhi::d3d12_destroy_bindless_set(context context, bindless_set& set)
 {
+    ZoneScoped;
+    auto* d3d12_ctx = cast_from_handle<platform::d3d12_context>(context);
+    auto* d3d12_set = cast_from_handle<platform::d3d12_view_desc_range>(set);
+    if (d3d12_ctx && d3d12_set)
+    {
+        d3d12_ctx->cbv_srv_uav_descriptor_heap.free(d3d12_set->start, d3d12_set->count);
+        clear_handle(d3d12_set, set);
+    }
 }
 
 auto rhi::d3d12_create_fence(context context, const u64 initial_value) -> result<fence>
@@ -324,10 +360,15 @@ auto rhi::d3d12_create_buffer(context context, const create_buffer_info& buffer_
         return error("failed to access context");
     }
 
+    const auto flags = (buffer_info.usage_flags & rhi::buffer_usage::shader_rw && !buffer_info.mapped)
+                         ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+                         : D3D12_RESOURCE_FLAG_NONE;
+
     auto d3d12_buffer =
         platform::d3d12_create_buffer(d3d12_ctx->allocator.Get(),
                                       buffer_info.size,
-                                      buffer_info.mapped ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_DEFAULT);
+                                      buffer_info.mapped ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_DEFAULT,
+                                      flags);
 
     RESULT_FORWARD_IF_FAILED(d3d12_buffer);
 
@@ -385,11 +426,67 @@ auto rhi::d3d12_create_image(context context, const create_image_info& image_inf
 void rhi::d3d12_destroy_image(context context, image& image)
 {
     const auto* d3d12_ctx = cast_from_handle<platform::d3d12_context>(context);
-    auto* d3d12_image     = cast_from_handle<platform::d3d12_image>(context);
-    if (d3d12_ctx)
+    auto* d3d12_image     = cast_from_handle<platform::d3d12_image>(image);
+    if (d3d12_ctx && d3d12_image)
     {
         platform::d3d12_destroy_image(*d3d12_image);
         clear_handle(d3d12_image, image);
+    }
+}
+
+auto rhi::d3d12_create_image_view(context context, image source, const create_image_view_info& view_info)
+    -> result<image_view>
+{
+    auto* d3d12_ctx         = cast_from_handle<platform::d3d12_context>(context);
+    const auto* d3d12_image = cast_from_handle<platform::d3d12_image>(source);
+
+    if (!d3d12_ctx || !d3d12_image)
+    {
+        return error("failed to access context or image source");
+    }
+
+    const platform::d3d12_heaps_view heaps {
+        .rtv_heap         = d3d12_ctx->rtv_descriptor_heap,
+        .dsv_heap         = d3d12_ctx->dsv_descriptor_heap,
+        .cbv_srv_uav_heap = d3d12_ctx->cbv_srv_uav_descriptor_heap,
+    };
+
+    const platform::d3d12_image_view_desc desc {
+        .mips   = view_info.range.mips_range,
+        .layers = view_info.range.layers_range,
+        .format = platform::d3d12_format_from_vk(static_cast<VkFormat>(view_info.format)),
+        .kind   = view_info.kind,
+    };
+
+    const D3D12_RESOURCE_FLAGS flags = d3d12_image->resource->GetDesc().Flags;
+
+    platform::d3d12_image_view_type_bits bits = platform::d3d12_image_view_type::srv;
+    bits = (flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) ? (bits | platform::d3d12_image_view_type::rtv) : bits;
+    bits = (flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) ? (bits | platform::d3d12_image_view_type::dsv) : bits;
+    bits = (flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) ? (bits | platform::d3d12_image_view_type::uav) : bits;
+
+    const auto d3d12_view =
+        platform::d3d12_create_image_view(d3d12_ctx->device.Get(), d3d12_image->resource.Get(), heaps, desc, bits);
+    RESULT_FORWARD_IF_FAILED(d3d12_view);
+
+    return create_handle<image_view>(*d3d12_view);
+}
+
+void rhi::d3d12_destroy_image_view(context context, image_view& view)
+{
+    auto* d3d12_ctx  = cast_from_handle<platform::d3d12_context>(context);
+    auto* d3d12_view = cast_from_handle<platform::d3d12_image_view>(view);
+
+    if (d3d12_ctx && d3d12_view)
+    {
+        const platform::d3d12_heaps_view heaps {
+            .rtv_heap         = d3d12_ctx->rtv_descriptor_heap,
+            .dsv_heap         = d3d12_ctx->dsv_descriptor_heap,
+            .cbv_srv_uav_heap = d3d12_ctx->cbv_srv_uav_descriptor_heap,
+        };
+
+        platform::d3d12_destroy_image_view(*d3d12_view, heaps);
+        clear_handle(d3d12_view, view);
     }
 }
 
@@ -726,7 +823,7 @@ void rhi::d3d12_cmd_reset(command_buffer cmd)
 
     if (const auto gfx_command_list = d3d12_rhi_get_gfx_command_list(d3d12_cmd))
     {
-        D3D12_ASSERT_ON_FAIL(gfx_command_list->Close());
+        // D3D12_ASSERT_ON_FAIL(gfx_command_list->Reset(d3d12_cmd->allocator.Get(), nullptr));
     }
 }
 
@@ -865,7 +962,7 @@ void rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const attachmen
             return;
         }
 
-        color_handles[i] = d3d12_img->rtv.cpu_handle;
+        color_handles[i] = d3d12_img->view.descriptors.rtv.cpu_handle;
 
         switch (color_attachments[i].load_op)
         {
@@ -874,7 +971,7 @@ void rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const attachmen
             break;
         case resource_load_op::clear :
             gfx_command_list->ClearRenderTargetView(
-                d3d12_img->rtv.cpu_handle, &color_attachments[i].clear_value.color.f4.x, 0, nullptr);
+                d3d12_img->view.descriptors.rtv.cpu_handle, &color_attachments[i].clear_value.color.f4.x, 0, nullptr);
             break;
         default :
         case resource_load_op::load :
@@ -893,7 +990,7 @@ void rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const attachmen
             return;
         }
 
-        depth_stencil = &d3d12_img->rtv.cpu_handle;
+        depth_stencil = &d3d12_img->view.descriptors.rtv.cpu_handle;
 
         switch (depth_attachment.load_op)
         {
@@ -901,7 +998,7 @@ void rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const attachmen
             gfx_command_list->DiscardResource(d3d12_img->resource.Get(), nullptr);
             break;
         case resource_load_op::clear :
-            gfx_command_list->ClearDepthStencilView(d3d12_img->rtv.cpu_handle,
+            gfx_command_list->ClearDepthStencilView(d3d12_img->view.descriptors.rtv.cpu_handle,
                                                     D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
                                                     depth_attachment.clear_value.ds.depth,
                                                     depth_attachment.clear_value.ds.stencil,

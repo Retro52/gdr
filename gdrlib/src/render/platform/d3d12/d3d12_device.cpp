@@ -467,8 +467,9 @@ auto platform::d3d12_update_back_buffers(platform::d3d12_context& d3d12_context,
         auto& pfd = result[i];
         D3D12_RETURN_ON_FAIL(swapchain->GetBuffer(i, IID_PPV_ARGS(&pfd.image.resource)));
 
-        pfd.image.rtv.cpu_handle = d3d12_context.rtv_descriptor_heap.alloc_cpu();
-        d3d12_context.device->CreateRenderTargetView(pfd.image.resource.Get(), nullptr, pfd.image.rtv.cpu_handle);
+        pfd.image.view.descriptors.rtv = d3d12_context.rtv_descriptor_heap.alloc();
+        d3d12_context.device->CreateRenderTargetView(
+            pfd.image.resource.Get(), nullptr, pfd.image.view.descriptors.rtv.cpu_handle);
     }
 
     return result;
@@ -479,7 +480,8 @@ void platform::d3d12_destroy_swapchain(d3d12_context& d3d12_context, d3d12_swapc
     ZoneScoped;
     for (auto& back_buffer : swapchain.back_buffers)
     {
-        d3d12_context.rtv_descriptor_heap.free_cpu(back_buffer.image.rtv.cpu_handle);
+        back_buffer.image.resource.Reset();
+        d3d12_context.rtv_descriptor_heap.free(back_buffer.image.view.descriptors.rtv);
     }
 
     swapchain.swapchain.Reset();

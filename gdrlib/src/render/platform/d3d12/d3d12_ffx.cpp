@@ -76,6 +76,7 @@ result<ffx::Context> platform::d3d12_ffx_create_upscale_context(ID3D12Device* de
     upscale_desc.flags |= FFX_UPSCALE_ENABLE_DEBUG_CHECKING;  // debug builds
     upscale_desc.fpMessage = [](uint32_t type, const wchar_t* msg)
     {
+        OutputDebugStringW(msg);
         assert2(false && msg);
     };
 #endif

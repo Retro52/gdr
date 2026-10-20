@@ -4,8 +4,8 @@
 #include <render/platform/d3d12/d3d12_error.hpp>
 #include <tracy/Tracy.hpp>
 
-auto platform::d3d12_create_buffer(D3D12MA::Allocator* allocator, const u64 size, const D3D12_HEAP_TYPE heap)
-    -> result<d3d12_buffer>
+auto platform::d3d12_create_buffer(D3D12MA::Allocator* allocator, const u64 size, const D3D12_HEAP_TYPE heap,
+                                   const D3D12_RESOURCE_FLAGS flags) -> result<d3d12_buffer>
 {
     ZoneScoped;
     d3d12_buffer result;
@@ -19,6 +19,7 @@ auto platform::d3d12_create_buffer(D3D12MA::Allocator* allocator, const u64 size
         .Format           = DXGI_FORMAT_UNKNOWN,
         .SampleDesc       = {.Count = 1, .Quality = 0},
         .Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        .Flags            = flags,
     };
 
     const D3D12MA::ALLOCATION_DESC ma_desc = {.HeapType = heap};
