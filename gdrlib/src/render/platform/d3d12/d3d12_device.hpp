@@ -19,7 +19,7 @@ namespace platform
     constexpr u32 kD3D12_RTV_HeapMaxDescCount         = 64;
     constexpr u32 kD3D12_DSV_HeapMaxDescCount         = 64;
     constexpr u32 kD3D12_Sampler_HeapMaxDescCount     = 2048;
-    constexpr u32 kD3D12_CBV_SRV_UAV_HeapMaxDescCount = 65'534;  // 0xFFFF - 1 to fit into u16
+    constexpr u32 kD3D12_CBV_SRV_UAV_HeapMaxDescCount = 262'144;
 
     // clang-format off
     REGISTER_FLAGS(swapchain_flag,

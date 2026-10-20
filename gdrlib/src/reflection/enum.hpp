@@ -61,7 +61,7 @@
         u32 m_data = 0;                                                                             \
     };                                                                                              \
                                                                                                     \
-    constexpr u64 enum_reflect_count(const Name* /*enum*/)                                          \
+    consteval u64 enum_reflect_count(const Name* /*enum*/)                                          \
     {                                                                                               \
         return reflection::enum_values_count(#__VA_ARGS__);                                         \
     }                                                                                               \
@@ -163,7 +163,7 @@ namespace reflection
     namespace detail
     {
         template<typename T>
-        constexpr u64 enum_values_count_adl()
+        consteval u64 enum_values_count_adl()
         {
             return enum_reflect_count(static_cast<const T*>(nullptr));
         }
@@ -176,7 +176,7 @@ namespace reflection
     }
 
     template<typename T>
-    constexpr u64 get_enum_values_count()
+    consteval u64 get_enum_values_count()
     {
         return detail::enum_values_count_adl<T>();
     }

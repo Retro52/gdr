@@ -30,10 +30,8 @@ rhi::impl rhi::create_for_d3d12()
         .create_image  = d3d12_create_image,
         .destroy_image = d3d12_destroy_image,
 
-#if 0
         .create_image_view  = d3d12_create_image_view,
         .destroy_image_view = d3d12_destroy_image_view,
-#endif
 
         .create_sampler  = d3d12_create_sampler,
         .destroy_sampler = d3d12_destroy_sampler,

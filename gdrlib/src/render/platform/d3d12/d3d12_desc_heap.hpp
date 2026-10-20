@@ -5,66 +5,137 @@
 #include <render/platform/d3d12/d3d12.hpp>
 #include <result.hpp>
 
+#include <map>
+
 namespace platform
 {
+    struct d3d12_desc_heap;
+
+    struct d3d12_view_desc
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle = {};
+        D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle = {};
+    };
+
+    struct d3d12_view_desc_range
+    {
+        u64 count  = 0;
+        u64 stride = 0;
+        d3d12_view_desc start;
+
+        [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE cpu_at(const u64 index) const noexcept
+        {
+            assert2m(index < count, "index out of range");
+            return {.ptr = this->start.cpu_handle.ptr + this->stride * index};
+        }
+
+        [[nodiscard]] D3D12_GPU_DESCRIPTOR_HANDLE gpu_at(const u64 index) const noexcept
+        {
+            assert2m(index < count, "index out of range");
+            assert2m(start.gpu_handle.ptr > 0, "desc heap is not shader visible");
+
+            return {.ptr = this->start.gpu_handle.ptr + this->stride * index};
+        }
+    };
+
     struct d3d12_desc_heap
     {
     public:
+        using index_t = u32;
+
         com_ptr<ID3D12DescriptorHeap> heap;
 
-        UINT stride;
-        D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle;
-        D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle;
+        UINT stride = 0;
+        d3d12_view_desc start;
 
-        using index_t = u16;
+        d3d12_desc_heap() = default;
 
-    public:
-        [[nodiscard]] index_t alloc()
+        explicit d3d12_desc_heap(const u32 count) { m_free_ranges[0] = count; }
+
+    private:
+        void split_free_range(const index_t base, const u32 count)
         {
-            if (m_free_list.empty())
+            const auto it = m_free_ranges.find(base);
+            assert2(it != m_free_ranges.end());
+
+            const u32 range_count = it->second;
+            m_free_ranges.erase(it);
+
+            if (range_count > count)
             {
-                return m_next_free++;
+                m_free_ranges[base + count] = range_count - count;
+            }
+        }
+
+        [[nodiscard]] index_t alloc_internal(const u32 count)
+        {
+            for (auto [range_base, range_count] : m_free_ranges)
+            {
+                if (range_count >= count)
+                {
+                    split_free_range(range_base, count);
+                    return range_base;
+                }
             }
 
-            const auto free = m_free_list.back();
-            m_free_list.pop_back();
-
-            return free;
+            assert2m(false, "out of free ranges");
+            return static_cast<index_t>(-1);
         }
 
-        [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE alloc_cpu() { return to_cpu(this->alloc()); }
-
-        [[nodiscard]] D3D12_GPU_DESCRIPTOR_HANDLE alloc_gpu() { return to_gpu(this->alloc()); }
-
-        void free(const index_t idx) { m_free_list.push_back(idx); }
-
-        void free_cpu(const D3D12_CPU_DESCRIPTOR_HANDLE handle) { free(from_cpu(handle)); }
-
-        void free_gpu(const D3D12_GPU_DESCRIPTOR_HANDLE handle) { free(from_gpu(handle)); }
-
-        [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE to_cpu(const index_t slot) const
+        void free_internal(const index_t base, const u32 count)
         {
-            return {this->cpu_handle.ptr + slot * stride};
+            const index_t end                   = base + count;
+            const auto it_merge_candidate_right = m_free_ranges.find(end);
+
+            auto it_merge_candidate_left = m_free_ranges.lower_bound(base);
+            if (it_merge_candidate_left != m_free_ranges.begin())
+            {
+                --it_merge_candidate_left;
+            }
+            else
+            {
+                it_merge_candidate_left = m_free_ranges.end();
+            }
+
+            decltype(m_free_ranges)::iterator dst;
+            if (it_merge_candidate_left != m_free_ranges.end()
+                && it_merge_candidate_left->first + it_merge_candidate_left->second == base)
+            {
+                dst                             = it_merge_candidate_left;
+                it_merge_candidate_left->second = end - it_merge_candidate_left->first;
+            }
+            else
+            {
+                dst = m_free_ranges.emplace(base, count).first;
+            }
+
+            if (it_merge_candidate_right != m_free_ranges.end())
+            {
+                dst->second += it_merge_candidate_right->second;
+                m_free_ranges.erase(it_merge_candidate_right);
+            }
         }
 
-        [[nodiscard]] index_t from_cpu(const D3D12_CPU_DESCRIPTOR_HANDLE slot) const
+    public:
+        d3d12_view_desc alloc(const u32 count = 1)
         {
-            return (this->cpu_handle.ptr - slot.ptr) / stride;
+            const index_t alloc_index = alloc_internal(count);
+            return {
+                .cpu_handle = {.ptr = this->start.cpu_handle.ptr + this->stride * alloc_index},
+                .gpu_handle = {.ptr = this->start.gpu_handle.ptr
+                                        ? this->start.gpu_handle.ptr + this->stride * alloc_index
+                                        : 0},
+            };
         }
 
-        [[nodiscard]] D3D12_GPU_DESCRIPTOR_HANDLE to_gpu(const index_t slot) const
+        void free(const d3d12_view_desc desc, const u32 count = 1)
         {
-            return {this->gpu_handle.ptr + slot * stride};
-        }
-
-        [[nodiscard]] index_t from_gpu(const D3D12_GPU_DESCRIPTOR_HANDLE slot) const
-        {
-            return (this->gpu_handle.ptr - slot.ptr) / stride;
+            const index_t alloc_index = (desc.cpu_handle.ptr - this->start.cpu_handle.ptr) / this->stride;
+            free_internal(alloc_index, count);
         }
 
     private:
-        index_t m_next_free = 0;
-        cpp::heap_array<index_t> m_free_list;
+        std::map<index_t, u32> m_free_ranges;
     };
 
     result<d3d12_desc_heap> d3d12_create_desc_heap(ID3D12Device* device, D3D12_DESCRIPTOR_HEAP_TYPE type,

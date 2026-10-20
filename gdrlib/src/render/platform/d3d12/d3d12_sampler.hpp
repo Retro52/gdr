@@ -9,8 +9,7 @@ namespace platform
 {
     struct d3d12_sampler
     {
-        D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle;
-        D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle;
+        d3d12_view_desc desc;
     };
 
     d3d12_sampler d3d12_create_sampler(ID3D12Device* device, d3d12_desc_heap& desc_heap, D3D12_FILTER filter,
