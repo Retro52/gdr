@@ -2,11 +2,16 @@
 #include <render/platform/d3d12/d3d12_device.hpp>
 #include <render/platform/d3d12/d3d12_error.hpp>
 
-auto platform::d3d12_create_command_list(ID3D12Device4* device, const D3D12_COMMAND_LIST_TYPE type)
+auto platform::d3d12_create_command_list(ID3D12Device4* device, const D3D12_COMMAND_LIST_TYPE type,
+                                         const std::array<ID3D12DescriptorHeap*, kD3D12_ShaderVisibleHeapsCount> heaps)
     -> result<d3d12_command_list>
 {
     ZoneScoped;
     d3d12_command_list result;
+    if (type != D3D12_COMMAND_LIST_TYPE_COPY)
+    {
+        result.shader_visible_heaps = heaps;
+    }
 
     D3D12_RETURN_ON_FAIL(device->CreateCommandAllocator(type, IID_PPV_ARGS(&result.allocator)));
     D3D12_RETURN_ON_FAIL(

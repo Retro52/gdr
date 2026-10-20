@@ -276,7 +276,8 @@ auto platform::d3d12_create_image_view(ID3D12Device* device, ID3D12Resource* sou
                                        const d3d12_image_view_desc& desc, const d3d12_image_view_type_bits flags)
     -> result<d3d12_image_view>
 {
-    d3d12_image_view result;
+    ZoneScoped;
+    d3d12_image_view result {.source = source, .desc = desc, .view_types = flags};
 
     d3d12_create_dsv_if_needed(device, source, result, heaps.dsv_heap, desc, flags);
     d3d12_create_rtv_if_needed(device, source, result, heaps.rtv_heap, desc, flags);
@@ -284,6 +285,31 @@ auto platform::d3d12_create_image_view(ID3D12Device* device, ID3D12Resource* sou
     d3d12_create_srv_if_needed(device, source, result, heaps.cbv_srv_uav_heap, desc, flags);
 
     return result;
+}
+
+auto platform::d3d12_view_types_from_resource_flags(const D3D12_RESOURCE_FLAGS flags) -> d3d12_image_view_type_bits
+{
+    d3d12_image_view_type_bits result = d3d12_image_view_type::srv;
+
+    result = (flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) ? (result | d3d12_image_view_type::rtv) : result;
+    result = (flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) ? (result | d3d12_image_view_type::dsv) : result;
+    result = (flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) ? (result | d3d12_image_view_type::uav) : result;
+
+    return result;
+}
+
+void platform::d3d12_write_srv(ID3D12Device* device, const d3d12_image_view& view,
+                               const D3D12_CPU_DESCRIPTOR_HANDLE dst)
+{
+    ZoneScoped;
+    assert2(view.source && (view.view_types & d3d12_image_view_type::srv));
+    if (!view.source)
+    {
+        return;
+    }
+
+    const auto d3d12_desc = d3d12_make_srv_desc(view.desc);
+    device->CreateShaderResourceView(view.source, &d3d12_desc, dst);
 }
 
 void platform::d3d12_destroy_image_view(d3d12_image_view& view, const d3d12_heaps_view& heaps)
@@ -332,7 +358,7 @@ void platform::d3d12_destroy_image(d3d12_image& image)
 {
     ZoneScoped;
     image.resource.Reset();
-    image.resource.Reset();
+    image.allocation.Reset();
 
     image.layout = D3D12_BARRIER_LAYOUT_UNDEFINED;
 }

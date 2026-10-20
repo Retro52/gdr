@@ -9,11 +9,15 @@ namespace platform
 {
     DXGI_FORMAT d3d12_format_from_vk(VkFormat vk_format);
 
+    bool d3d12_format_has_stencil(DXGI_FORMAT format);
+    D3D12_CLEAR_FLAGS d3d12_dsv_clear_flags(DXGI_FORMAT format);
+
     D3D12_RESOURCE_FLAGS d3d12_rhi_parse_image_usage(rhi::image_usage_bits usage);
 
     uvec2 d3d12_rhi_parse_aspect_flags(rhi::image_aspect_bits aspects);
     D3D12_BARRIER_LAYOUT d3d12_rhi_parse_image_layout(rhi::image_layout layout);
-    D3D12_BARRIER_SUBRESOURCE_RANGE d3d12_rhi_parse_image_range(const rhi::image_subresource_range& range);
+    D3D12_BARRIER_SUBRESOURCE_RANGE d3d12_rhi_parse_image_range(const rhi::image_subresource_range& range,
+                                                                u32 mips_count, u32 layers_count);
 
     D3D_PRIMITIVE_TOPOLOGY d3d12_rhi_parse_topology(rhi::topology topology);
     D3D12_COMPARISON_FUNC d3d12_rhi_parse_comparison_func(rhi::compare_op op);

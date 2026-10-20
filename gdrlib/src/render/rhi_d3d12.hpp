@@ -66,6 +66,9 @@ namespace rhi
     void d3d12_cmd_copy_buffer(command_buffer cmd, buffer src_buffer, u64vec2 src_range, buffer dst_buffer,
                                u64 dst_offset);
 
+    void d3d12_cmd_clear_depth_attachment(command_buffer cmd, image image, ds_clear_value value);
+    void d3d12_cmd_clear_color_attachment(command_buffer cmd, image image, color_clear_value value);
+
     void d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const attachment_state_info> color_attachments,
                                   attachment_state_info depth_attachment, uvec4 viewport);
     void d3d12_cmd_clear_draw_state(command_buffer cmd);
