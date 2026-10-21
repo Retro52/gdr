@@ -74,6 +74,7 @@ void debug::assert2_set_window(SDL_Window* window)
 
 void debug::assert2_show_assert_popup(const char* message)
 {
+    return;
     if (g_last_skipped != kEmptySkip && cpp::hashed_string(message) == g_last_skipped)
     {
         return;

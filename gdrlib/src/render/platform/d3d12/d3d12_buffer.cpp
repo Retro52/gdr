@@ -59,8 +59,23 @@ void platform::d3d12_destroy_buffer(d3d12_buffer& buffer)
     buffer.mapped = nullptr;
 }
 
-void platform::d3d12_create_buffer_uav(ID3D12Device* device, d3d12_buffer& buffer,
-                                       d3d12_desc_heap& shader_visible_heap, d3d12_desc_heap& cpu_heap)
+auto platform::d3d12_create_buffer_cbv(ID3D12Device* device, const d3d12_buffer& buffer, d3d12_desc_heap& heap)
+    -> d3d12_view_desc
+{
+    ZoneScoped;
+    const D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_desc {
+        .BufferLocation = buffer.va,
+        .SizeInBytes    = static_cast<UINT>(buffer.size),
+    };
+
+    const d3d12_view_desc alloc_handle = heap.alloc();
+    device->CreateConstantBufferView(&cbv_desc, alloc_handle.cpu_handle);
+
+    return alloc_handle;
+}
+
+void platform::d3d12_create_buffer_uav(ID3D12Device* device, d3d12_buffer& buffer, d3d12_desc_heap& shader_visible_heap,
+                                       d3d12_desc_heap& cpu_heap)
 {
     ZoneScoped;
     const D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc {

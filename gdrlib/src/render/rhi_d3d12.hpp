@@ -83,6 +83,9 @@ namespace rhi
 
     void d3d12_cmd_bind_pso(command_buffer cmd, pipeline pso);
     void d3d12_cmd_bind_index(command_buffer cmd, buffer index_buffer);
+    void d3d12_cmd_push_bindings(command_buffer cmd, pipeline pso, std::span<const binding> bindings);
+    void d3d12_cmd_push_constants(command_buffer cmd, pipeline pso, const void* data, u32 size, u32 offset);
+    void d3d12_cmd_push_bindless_set(command_buffer cmd, pipeline pso, bindless_set set, u32 binding);
 
     void d3d12_cmd_dispatch(command_buffer cmd, pipeline pso, uvec3 threads);
     void d3d12_cmd_dispatch_indirect(command_buffer cmd, buffer count_buffer, u32 buffer_offset);

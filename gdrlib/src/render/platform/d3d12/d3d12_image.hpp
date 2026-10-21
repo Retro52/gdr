@@ -50,6 +50,30 @@ namespace platform
                 d3d12_view_desc srv;
             };
         } descriptors = {};
+
+        d3d12_view_desc srv() const
+        {
+            assert2(view_types & d3d12_image_view_type::srv);
+            return view_types & d3d12_image_view_type::dsv ? this->descriptors.dsv_srv : this->descriptors.srv;
+        }
+
+        d3d12_view_desc uav() const
+        {
+            assert2(view_types & d3d12_image_view_type::uav);
+            return this->descriptors.uav;
+        }
+
+        d3d12_view_desc rtv() const
+        {
+            assert2(view_types & d3d12_image_view_type::rtv);
+            return this->descriptors.rtv;
+        }
+
+        d3d12_view_desc dsv() const
+        {
+            assert2(view_types & d3d12_image_view_type::dsv);
+            return this->descriptors.dsv;
+        }
     };
 
     struct d3d12_image

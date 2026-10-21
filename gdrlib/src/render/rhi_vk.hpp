@@ -83,8 +83,8 @@ namespace rhi
 
     void vk_cmd_bind_pso(command_buffer cmd, pipeline pso);
     void vk_cmd_bind_index(command_buffer cmd, buffer index_buffer);
-    void vk_cmd_push_constants(command_buffer cmd, pipeline pso, const void* data, u32 size, u32 offset);
     void vk_cmd_push_bindings(command_buffer cmd, pipeline pso, std::span<const binding> bindings);
+    void vk_cmd_push_constants(command_buffer cmd, pipeline pso, const void* data, u32 size, u32 offset);
     void vk_cmd_push_bindless_set(command_buffer cmd, pipeline pso, bindless_set set, u32 binding);
 
     void vk_cmd_dispatch(command_buffer cmd, pipeline pso, uvec3 threads);

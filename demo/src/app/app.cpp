@@ -507,7 +507,7 @@ int app::instance::run()
     f32 envmap_compensation_ev = 0.0f;
     f32 envmap_intensity       = 1250.0f;
 
-    bool enable_fsr_aa            = true;
+    bool enable_fsr_aa            = false;
     bool fsr_aa_rcas              = false;
     bool fsr_aa_reset             = false;
     bool freeze_cull_data         = false;

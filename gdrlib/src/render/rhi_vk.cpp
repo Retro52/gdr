@@ -1372,21 +1372,6 @@ void rhi::vk_cmd_bind_index(command_buffer cmd, buffer index_buffer)
     vkCmdBindIndexBuffer(vk_cmd->cmd_buffer, vk_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
 }
 
-void rhi::vk_cmd_push_constants(command_buffer cmd, pipeline pso, const void* data, const u32 size, const u32 offset)
-{
-    ZoneScoped;
-    const auto* vk_cmd = cast_from_handle<platform::vk_command_buffer>(cmd);
-    const auto* vk_pso = cast_from_handle<platform::vk_pipeline>(pso);
-
-    assert2(vk_cmd && vk_pso);
-    if (!vk_cmd || !vk_pso)
-    {
-        return;
-    }
-
-    vk_pso->push_constant(vk_cmd->cmd_buffer, offset, size, data);
-}
-
 void rhi::vk_cmd_push_bindings(command_buffer cmd, pipeline pso, const std::span<const binding> bindings)
 {
     ZoneScoped;
@@ -1409,6 +1394,21 @@ void rhi::vk_cmd_push_bindings(command_buffer cmd, pipeline pso, const std::span
     }
 
     vk_pso->push_descriptor_set(vk_cmd->cmd_buffer, vk_bindings.get());
+}
+
+void rhi::vk_cmd_push_constants(command_buffer cmd, pipeline pso, const void* data, const u32 size, const u32 offset)
+{
+    ZoneScoped;
+    const auto* vk_cmd = cast_from_handle<platform::vk_command_buffer>(cmd);
+    const auto* vk_pso = cast_from_handle<platform::vk_pipeline>(pso);
+
+    assert2(vk_cmd && vk_pso);
+    if (!vk_cmd || !vk_pso)
+    {
+        return;
+    }
+
+    vk_pso->push_constant(vk_cmd->cmd_buffer, offset, size, data);
 }
 
 void rhi::vk_cmd_push_bindless_set(command_buffer cmd, pipeline pso, bindless_set set, const u32 binding)

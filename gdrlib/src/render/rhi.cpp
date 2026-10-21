@@ -77,13 +77,11 @@ rhi::impl rhi::create_for_d3d12()
         .cmd_set_cull_mode  = d3d12_cmd_set_cull_mode,
         .cmd_set_depth_bias = d3d12_cmd_set_depth_bias,
 
-        .cmd_bind_pso   = d3d12_cmd_bind_pso,
-        .cmd_bind_index = d3d12_cmd_bind_index,
-#if 0
+        .cmd_bind_pso          = d3d12_cmd_bind_pso,
+        .cmd_bind_index        = d3d12_cmd_bind_index,
         .cmd_push_bindings     = d3d12_cmd_push_bindings,
         .cmd_push_constants    = d3d12_cmd_push_constants,
         .cmd_push_bindless_set = d3d12_cmd_push_bindless_set,
-#endif
 
         .cmd_dispatch          = d3d12_cmd_dispatch,
         .cmd_dispatch_indirect = d3d12_cmd_dispatch_indirect,

@@ -24,6 +24,8 @@ namespace platform
 
     void d3d12_destroy_buffer(d3d12_buffer& buffer);
 
+    d3d12_view_desc d3d12_create_buffer_cbv(ID3D12Device* device, const d3d12_buffer& buffer, d3d12_desc_heap& heap);
+
     void d3d12_create_buffer_uav(ID3D12Device* device, d3d12_buffer& buffer, d3d12_desc_heap& shader_visible_heap,
                                  d3d12_desc_heap& cpu_heap);
 
