@@ -90,13 +90,11 @@ rhi::impl rhi::create_for_d3d12()
 
         .cmd_draw = d3d12_cmd_draw,
 
-#if 0
         .cmd_draw_indexed_indirect       = d3d12_cmd_draw_indexed_indirect,
         .cmd_draw_indexed_indirect_count = d3d12_cmd_draw_indexed_indirect_count,
 
         .cmd_draw_mesh_indirect       = d3d12_cmd_draw_mesh_indirect,
         .cmd_draw_mesh_indirect_count = d3d12_cmd_draw_mesh_indirect_count,
-#endif
 
         .cmd_debug_label_begin = d3d12_cmd_debug_label_begin,
         .cmd_debug_label_end   = d3d12_cmd_debug_label_end,

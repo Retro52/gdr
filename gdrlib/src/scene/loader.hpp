@@ -110,6 +110,8 @@ namespace loader
 
     u32 get_max_lod_meshlets(const loader::primitive& prim);
 
+    material_buckets make_offset_table(const material_buckets& materials);
+
     result<meshes_data> load_meshes(const fs::path& path);
 
     result<texture_desc> load_texture(const fs::path& path);

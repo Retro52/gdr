@@ -141,8 +141,10 @@ namespace reflection
     template<typename EnumType>
     struct enum_counter
     {
+        using underlying_t = std::underlying_type_t<EnumType>;
+
         // NOLINTNEXTLINE(*-explicit-*)
-        enum_counter(u32 v) noexcept
+        enum_counter(underlying_t v) noexcept
             : m_value(v)
         {
             s_counter = m_value + 1;
@@ -155,12 +157,12 @@ namespace reflection
         }
 
         // NOLINTNEXTLINE(*-explicit-*)
-        operator u32() const noexcept { return m_value; }
+        operator underlying_t() const noexcept { return m_value; }
 
     private:
-        u32 m_value;
+        underlying_t m_value;
 
-        inline static u32 s_counter;
+        inline static underlying_t s_counter;
     };
 
     namespace detail

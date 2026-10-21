@@ -89,6 +89,16 @@ namespace rhi
 
     void d3d12_cmd_draw(command_buffer cmd, u32 vtx_count, u32 instance_count, u32 first_vertex, u32 first_instance);
 
+    void d3d12_cmd_draw_indexed_indirect(command_buffer cmd, buffer buffer, u64 offset, u32 count, u32 stride);
+
+    void d3d12_cmd_draw_indexed_indirect_count(command_buffer cmd, rhi::buffer buffer, u64 offset,
+                                               rhi::buffer count_buffer, u64 count_offset, u32 max_count, u32 stride);
+
+    void d3d12_cmd_draw_mesh_indirect(command_buffer cmd, buffer buffer, u64 offset, u32 count, u32 stride);
+
+    void d3d12_cmd_draw_mesh_indirect_count(command_buffer cmd, rhi::buffer buffer, u64 offset,
+                                            rhi::buffer count_buffer, u64 count_offset, u32 max_count, u32 stride);
+
     void d3d12_cmd_debug_label_begin(command_buffer cmd, context context, const debug_label& label);
     void d3d12_cmd_debug_label_end(command_buffer cmd, context context);
 
