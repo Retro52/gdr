@@ -49,8 +49,7 @@ static void vk_rhi_set_object_name_if_needed(const platform::vk_context& ctx, T 
 {
     ZoneScoped;
     if (!name || object == VK_NULL_HANDLE || !vkSetDebugUtilsObjectNameEXT
-        || (!ctx.enabled_device_features.supported(rhi::feature_flag::debug_labels)
-            || !ctx.enabled_device_features.wanted(rhi::feature_flag::debug_labels)))
+        || !ctx.enabled_device_features.enabled(rhi::feature_flag::debug_labels))
     {
         return;
     }

@@ -138,8 +138,10 @@ namespace platform
         std::map<index_t, u32> m_free_ranges;
     };
 
+    bool d3d12_desc_heap_type_is_shader_visible(D3D12_DESCRIPTOR_HEAP_TYPE type);
+
     result<d3d12_desc_heap> d3d12_create_desc_heap(ID3D12Device* device, D3D12_DESCRIPTOR_HEAP_TYPE type,
-                                                   u32 num_descriptors);
+                                                   u32 num_descriptors, bool force_cpu_only = false);
 
     void d3d12_destroy_desc_heap(d3d12_desc_heap& heap);
 }

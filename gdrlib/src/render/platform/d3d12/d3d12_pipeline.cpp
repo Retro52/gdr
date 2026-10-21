@@ -3,6 +3,8 @@
 #include <render/platform/d3d12/d3d12_pipeline.hpp>
 #include <render/platform/d3d12/d3d12_utils.hpp>
 
+#include <array>
+
 namespace platform
 {
     enum class PSVShaderKind : u8
@@ -406,6 +408,51 @@ namespace
     }
 }
 
+void platform::d3d12_pipeline::bind(ID3D12GraphicsCommandList9* cmd, const rhi::cull_mode cull_mode,
+                                    const vec3 depth_bias_params) const
+{
+    if (this->topology == D3D_PRIMITIVE_TOPOLOGY_UNDEFINED)
+    {
+        cmd->SetPipelineState(this->variants.front().Get());
+        cmd->SetComputeRootSignature(this->root_signature.Get());
+        return;
+    }
+
+    if (this->variants.size() == 1)
+    {
+        cmd->SetPipelineState(this->variants.front().Get());
+    }
+    else
+    {
+        ID3D12PipelineState* pso = nullptr;
+        switch (cull_mode)
+        {
+        case rhi::cull_mode::none :
+            pso = this->variants[d3d12_pso_dynstates::cull_mode_none].Get();
+            break;
+        case rhi::cull_mode::back :
+            pso = this->variants[d3d12_pso_dynstates::cull_mode_back].Get();
+            break;
+        case rhi::cull_mode::front :
+            pso = this->variants[d3d12_pso_dynstates::cull_mode_front].Get();
+            break;
+        default :
+            assert2("unsupported cull mode");
+            break;
+        }
+
+        cmd->SetPipelineState(pso ? pso : this->variants.front().Get());
+    }
+
+    if (depth_bias_params != vec3(0.0F))
+    {
+        cmd->RSSetDepthBias(depth_bias_params.x, depth_bias_params.y, depth_bias_params.z);
+    }
+
+    cmd->IASetPrimitiveTopology(this->topology);
+    cmd->SetGraphicsRootSignature(this->root_signature.Get());
+}
+
 auto platform::d3d12_parse_dxil(const bytes& data) -> result<d3d12_shader_meta>
 {
     ZoneScoped;
@@ -568,7 +615,10 @@ auto platform::d3d12_create_pipeline_compute(ID3D12Device2* device, const d3d12_
     platform::com_ptr<ID3D12PipelineState> pipeline;
     D3D12_RETURN_ON_FAIL(device->CreatePipelineState(&stream_desc, IID_PPV_ARGS(&pipeline)));
 
-    return d3d12_pipeline {.pso = pipeline, .root_signature = *rs, .work_group_size = shader.dxil_meta.threads};
+    cpp::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
+    variants.emplace_back(pipeline);
+
+    return d3d12_pipeline {.root_signature = *rs, .variants = variants, .work_group_size = shader.dxil_meta.threads};
 }
 
 auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12_shader* shaders,
@@ -618,40 +668,43 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
 
     CD3DX12_RASTERIZER_DESC raster(D3D12_DEFAULT);
     raster.FrontCounterClockwise = TRUE;
-    raster.CullMode              = D3D12_CULL_MODE_NONE;
-
-    desc.RasterizerState = raster;
 
     const bool has_depth = options.depth_format != rhi::image_format::none;
     CD3DX12_DEPTH_STENCIL_DESC1 depth(D3D12_DEFAULT);
     depth.DepthFunc   = d3d12_rhi_parse_comparison_func(options.depth_compare_op);
-    depth.DepthEnable = has_depth && options.depth_test_enable;
+    depth.DepthEnable = has_depth && options.enable_depth_test;
     depth.DepthWriteMask =
-        has_depth && options.depth_write_enable ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+        has_depth && options.enable_depth_write ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
     desc.DepthStencilState = depth;
+
+    if (options.enable_depth_bias)
+    {
+        desc.Flags = D3D12_PIPELINE_STATE_FLAG_DYNAMIC_DEPTH_BIAS;
+    }
 
     for (u32 i = 0; i < shaders_count; ++i)
     {
         D3D12_SHADER_BYTECODE* dst = nullptr;
         switch (shaders[i].dxil_meta.shader_type)
         {
-        case PSVShaderKind::Vertex :
-            dst = &desc.VS;
-            break;
         case PSVShaderKind::Pixel :
             dst = &desc.PS;
             break;
-        case PSVShaderKind::Amplification :
-            dst = &desc.AS;
-            break;
         case PSVShaderKind::Mesh :
             dst = &desc.MS;
+            break;
+        case PSVShaderKind::Vertex :
+            dst = &desc.VS;
+            break;
+        case PSVShaderKind::Amplification :
+            dst = &desc.AS;
             break;
         default :
             assert2m(false, "unknown shader stage");
             break;
         }
 
+        assert2(dst && "unsupported shader stage, dont do this pls");
         if (dst)
         {
             *dst = {
@@ -666,12 +719,39 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
         .pPipelineStateSubobjectStream = &desc,
     };
 
-    platform::com_ptr<ID3D12PipelineState> pipeline;
-    D3D12_RETURN_ON_FAIL(device->CreatePipelineState(&stream_desc, IID_PPV_ARGS(&pipeline)));
+    auto set_cull_mode = [&](const D3D12_CULL_MODE cull_mode)
+    {
+        raster.CullMode      = cull_mode;
+        desc.RasterizerState = raster;
+    };
+
+    cpp::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
+    if (!options.enable_dynstate_cull_mode)
+    {
+        variants.resize(1);
+        set_cull_mode(D3D12_CULL_MODE_BACK);
+        D3D12_RETURN_ON_FAIL(device->CreatePipelineState(&stream_desc, IID_PPV_ARGS(&variants[0])));
+    }
+    else
+    {
+        variants.resize(static_cast<u32>(d3d12_pso_dynstates::COUNT));
+
+        set_cull_mode(D3D12_CULL_MODE_NONE);
+        D3D12_RETURN_ON_FAIL(
+            device->CreatePipelineState(&stream_desc, IID_PPV_ARGS(&variants[d3d12_pso_dynstates::cull_mode_none])));
+
+        set_cull_mode(D3D12_CULL_MODE_BACK);
+        D3D12_RETURN_ON_FAIL(
+            device->CreatePipelineState(&stream_desc, IID_PPV_ARGS(&variants[d3d12_pso_dynstates::cull_mode_back])));
+
+        set_cull_mode(D3D12_CULL_MODE_FRONT);
+        D3D12_RETURN_ON_FAIL(
+            device->CreatePipelineState(&stream_desc, IID_PPV_ARGS(&variants[d3d12_pso_dynstates::cull_mode_front])));
+    }
 
     return d3d12_pipeline {
-        .pso            = pipeline,
         .root_signature = *rs,
+        .variants       = variants,
         .topology       = d3d12_rhi_parse_topology(options.topology),
     };
 }
@@ -679,6 +759,6 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
 void platform::d3d12_destroy_pipeline(d3d12_pipeline& pipeline)
 {
     ZoneScoped;
-    pipeline.pso.Reset();
+    pipeline.variants.clear();
     pipeline.root_signature.Reset();
 }

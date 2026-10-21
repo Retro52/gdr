@@ -28,12 +28,13 @@ namespace rhi
         u32 color_attachments_count        = 0;
         rhi::image_format color_formats[8] = {};
 
-        DECLARE_BIT_FLAG_PSO_OPTION(depth_test_enable, true);
-        DECLARE_BIT_FLAG_PSO_OPTION(depth_write_enable, true);
-        DECLARE_BIT_FLAG_PSO_OPTION(depth_bias_enable, false);
-        DECLARE_BIT_FLAG_PSO_OPTION(depth_clamp_enable, false);
-        DECLARE_BIT_FLAG_PSO_OPTION(blend_enable, false);
-        u32 padding : 27 = 0;
+        DECLARE_BIT_FLAG_PSO_OPTION(enable_depth_test, true);
+        DECLARE_BIT_FLAG_PSO_OPTION(enable_depth_write, true);
+        DECLARE_BIT_FLAG_PSO_OPTION(enable_depth_bias, false);
+        DECLARE_BIT_FLAG_PSO_OPTION(enable_depth_clamp, false);
+        DECLARE_BIT_FLAG_PSO_OPTION(enable_blend, false);
+        DECLARE_BIT_FLAG_PSO_OPTION(enable_dynstate_cull_mode, false);
+        u32 padding : 26 = 0;
 
         DECLARE_SIMPLE_PSO_OPTION(rhi::image_format, depth_format, image_format::none)
         DECLARE_SIMPLE_PSO_OPTION(rhi::compare_op, depth_compare_op, compare_op::greater)

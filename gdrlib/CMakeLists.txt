@@ -24,16 +24,9 @@ endif ()
 
 message(STATUS "SOURCES: ${SOURCES}")
 
-#TODO: get rid of codegen, it was bad idea :(
-include(../cmake/py_venv.cmake)
-include(../cmake/codegen/codegen.cmake)
-set(CODEGEN_ROOT "${CMAKE_BINARY_DIR}/.codegen")
-run_codegen(ROOT "${CODEGEN_ROOT}" SOURCES ${SOURCES})
-
 add_library(${PROJECT_NAME}
         STATIC
         ${SOURCES}
-        ${CODEGEN_GENERATED_HEADERS}
 )
 
 target_link_libraries(${PROJECT_NAME} PUBLIC
@@ -77,7 +70,4 @@ endif ()
 
 target_include_directories(${PROJECT_NAME} PUBLIC
         "${PROJECT_SOURCE_DIR}/src"
-        "${CODEGEN_ROOT}"
 )
-
-add_dependencies(${PROJECT_NAME} run_codegen)

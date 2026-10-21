@@ -58,3 +58,39 @@ void platform::d3d12_destroy_buffer(d3d12_buffer& buffer)
     buffer.va     = {};
     buffer.mapped = nullptr;
 }
+
+void platform::d3d12_create_buffer_uav(ID3D12Device* device, d3d12_buffer& buffer,
+                                       d3d12_desc_heap& shader_visible_heap, d3d12_desc_heap& cpu_heap)
+{
+    ZoneScoped;
+    const D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc {
+        .Format        = DXGI_FORMAT_R32_TYPELESS,
+        .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+        .Buffer        = {.FirstElement = 0,
+                          .NumElements  = static_cast<UINT>(buffer.size / 4),
+                          .Flags        = D3D12_BUFFER_UAV_FLAG_RAW},
+    };
+
+    buffer.uav     = shader_visible_heap.alloc();
+    buffer.uav_cpu = cpu_heap.alloc();
+
+    auto* resource = buffer.allocation->GetResource();
+    device->CreateUnorderedAccessView(resource, nullptr, &uav_desc, buffer.uav.cpu_handle);
+    device->CreateUnorderedAccessView(resource, nullptr, &uav_desc, buffer.uav_cpu.cpu_handle);
+}
+
+void platform::d3d12_destroy_buffer_uav(d3d12_buffer& buffer, d3d12_desc_heap& shader_visible_heap,
+                                        d3d12_desc_heap& cpu_heap)
+{
+    ZoneScoped;
+    if (!buffer.uav.cpu_handle.ptr)
+    {
+        return;
+    }
+
+    shader_visible_heap.free(buffer.uav);
+    cpu_heap.free(buffer.uav_cpu);
+
+    buffer.uav     = {};
+    buffer.uav_cpu = {};
+}

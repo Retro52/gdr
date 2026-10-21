@@ -65,8 +65,9 @@ namespace
         opt_get_enum<rhi::image_format>(json_options, "depth_format", options.depth_format);
 
         opt_get_enum(json_options, "topology", options.topology);
-        options.depth_bias_enable  = opt_get_bit(json_options, "depth_bias", options.depth_bias_enable);
-        options.depth_clamp_enable = opt_get_bit(json_options, "depth_clamp", options.depth_clamp_enable);
+        options.enable_depth_bias  = opt_get_bit(json_options, "depth_bias", options.enable_depth_bias);
+        options.enable_depth_clamp = opt_get_bit(json_options, "depth_clamp", options.enable_depth_clamp);
+        options.enable_depth_clamp = opt_get_bit(json_options, "dynstate_cull_mode", options.enable_dynstate_cull_mode);
 
         if (json_options.contains("color_formats"))
         {
@@ -75,7 +76,7 @@ namespace
             {
                 auto format = reflection::enum_from_string<rhi::image_format>(item.value().get<std::string>().c_str());
 
-                options.add_color_attachment(static_cast<rhi::image_format>(format));
+                options.add_color_attachment(format);
             }
         }
     }

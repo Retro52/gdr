@@ -16,15 +16,15 @@ namespace rhi
     REGISTER_FLAGS(feature_flag,
         validation          = 1 << 0,
         mesh_shading        = 1 << 1,
-        dynamic_render      = 1 << 2,
-        synchronization2    = 1 << 3,
+        dynamic_render      = 1 << 2, // TODO: drop this and make it a hard requirement?
+        synchronization2    = 1 << 3, // TODO: drop this and make it a hard requirement?
         draw_indirect       = 1 << 4,
         types_int8          = 1 << 5,
         pipeline_stats      = 1 << 6,
         sampler_min_max     = 1 << 7,
-        scalar_block_layout = 1 << 8,
-        portability_subset  = 1 << 9,
-        bindless_textures   = 1 << 10,
+        scalar_block_layout = 1 << 8, // TODO: drop this and make it a hard requirement?
+        portability_subset  = 1 << 9, // TODO: should this be marked as internal or smth?
+        bindless_textures   = 1 << 10,  // TODO: bad name tbh
         types_16bit         = 1 << 11,
         debug_labels        = 1 << 12,
         COUNT
@@ -659,6 +659,8 @@ namespace rhi
         {
             return (flag & supported_features) && requested(flag);
         }
+
+        [[nodiscard]] constexpr bool enabled(const feature_flag flag) const noexcept { return wanted(flag); }
 
         constexpr rendering_features_table& require(const feature_flag flag) noexcept
         {

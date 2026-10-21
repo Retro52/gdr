@@ -64,11 +64,9 @@ rhi::impl rhi::create_for_d3d12()
         .cmd_image_blit  = d3d12_cmd_image_blit,
         .cmd_copy_buffer = d3d12_cmd_copy_buffer,
 
-#if 0
         .cmd_clear_buffer         = d3d12_cmd_clear_buffer,
         .cmd_update_buffer        = d3d12_cmd_update_buffer,
         .cmd_copy_buffer_to_image = d3d12_cmd_copy_buffer_to_image,
-#endif
 
         .cmd_clear_depth_attachment = d3d12_cmd_clear_depth_attachment,
         .cmd_clear_color_attachment = d3d12_cmd_clear_color_attachment,
@@ -76,10 +74,8 @@ rhi::impl rhi::create_for_d3d12()
         .cmd_set_draw_state   = d3d12_cmd_set_draw_state,
         .cmd_clear_draw_state = d3d12_cmd_clear_draw_state,
 
-#if 0
         .cmd_set_cull_mode  = d3d12_cmd_set_cull_mode,
         .cmd_set_depth_bias = d3d12_cmd_set_depth_bias,
-#endif
 
         .cmd_bind_pso   = d3d12_cmd_bind_pso,
         .cmd_bind_index = d3d12_cmd_bind_index,
