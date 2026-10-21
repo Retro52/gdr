@@ -36,7 +36,8 @@
       "color_formats": [
         "r32g32ui"
       ],
-      "depth_format": "d32sf"
+      "depth_format": "d32sf",
+      "dynstate_cull_mode": true
     },
     "capabilities": [
       "mesh_ext"
@@ -52,7 +53,8 @@
       "color_formats": [
         "r32g32ui"
       ],
-      "depth_format": "d32sf"
+      "depth_format": "d32sf",
+      "dynstate_cull_mode": true
     },
     "capabilities": [
       "mesh_ext"
@@ -68,7 +70,8 @@
       "color_formats": [
         "r32g32ui"
       ],
-      "depth_format": "d32sf"
+      "depth_format": "d32sf",
+      "dynstate_cull_mode": true
     },
     "capabilities": [
       "mesh_ext"
@@ -84,7 +87,8 @@
       "color_formats": [
         "r32g32ui"
       ],
-      "depth_format": "d32sf"
+      "depth_format": "d32sf",
+      "dynstate_cull_mode": true
     },
     "capabilities": [
       "mesh_ext"
@@ -104,7 +108,8 @@
       "color_formats": [
         "r32g32ui"
       ],
-      "depth_format": "d32sf"
+      "depth_format": "d32sf",
+      "dynstate_cull_mode": true
     }
   },
   "indexed_render_ds_pipeline": {
@@ -116,7 +121,8 @@
       "color_formats": [
         "r32g32ui"
       ],
-      "depth_format": "d32sf"
+      "depth_format": "d32sf",
+      "dynstate_cull_mode": true
     }
   },
   "depth_reduce_pipeline": {

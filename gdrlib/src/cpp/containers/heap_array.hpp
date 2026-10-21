@@ -127,6 +127,20 @@ namespace cpp
             return m_data[i];
         }
 
+        template<typename E>
+        T& operator[](E v)
+            requires std::is_enum_v<E>
+        {
+            return this->operator[](static_cast<u64>(v));
+        }
+
+        template<typename E>
+        const T& operator[](E v) const
+            requires std::is_enum_v<E>
+        {
+            return this->operator[](static_cast<u64>(v));
+        }
+
         void push_back(const T& value)
         {
             ZoneScoped;

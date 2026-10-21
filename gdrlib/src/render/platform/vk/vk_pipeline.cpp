@@ -555,14 +555,20 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
         };
     }
 
-    constexpr VkDynamicState dynamic_state[] = {
-        VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_CULL_MODE, VK_DYNAMIC_STATE_DEPTH_BIAS};
-    constexpr u32 dynamic_state_count = COUNT_OF(dynamic_state);
+    cpp::local_array<VkDynamicState> dynamic_states = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    if (options.enable_depth_bias)
+    {
+        dynamic_states.emplace_back(VK_DYNAMIC_STATE_DEPTH_BIAS);
+    }
+    if (options.enable_dynstate_cull_mode)
+    {
+        dynamic_states.emplace_back(VK_DYNAMIC_STATE_CULL_MODE);
+    }
 
     const VkPipelineDynamicStateCreateInfo dynamic_state_create_info {
         .sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = dynamic_state_count,
-        .pDynamicStates    = dynamic_state,
+        .dynamicStateCount = static_cast<u32>(dynamic_states.size()),
+        .pDynamicStates    = dynamic_states.data(),
     };
 
     constexpr VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info {
@@ -583,12 +589,12 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
 
     const VkPipelineRasterizationStateCreateInfo rasterizer {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .depthClampEnable        = options.depth_clamp_enable,
+        .depthClampEnable        = options.enable_depth_clamp,
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode             = VK_POLYGON_MODE_FILL,
         .cullMode                = VK_CULL_MODE_BACK_BIT,
         .frontFace               = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-        .depthBiasEnable         = options.depth_bias_enable,
+        .depthBiasEnable         = options.enable_depth_bias,
         .lineWidth               = 1.0f,
     };
 
@@ -603,7 +609,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
     };
 
     const VkPipelineColorBlendAttachmentState color_blend_attachment_state {
-        .blendEnable         = options.blend_enable,
+        .blendEnable         = options.enable_blend,
         .srcColorBlendFactor = vk_rhi_parse_blend_factor(options.src_color_blend_factor),
         .dstColorBlendFactor = vk_rhi_parse_blend_factor(options.dst_color_blend_factor),
         .colorBlendOp        = vk_rhi_parse_blend_op(options.color_blend_op),
@@ -635,8 +641,8 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
     const VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info {
         .sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
         .pNext            = nullptr,
-        .depthTestEnable  = has_depth ? options.depth_test_enable : VK_FALSE,
-        .depthWriteEnable = has_depth ? options.depth_write_enable : VK_FALSE,
+        .depthTestEnable  = has_depth ? options.enable_depth_test : VK_FALSE,
+        .depthWriteEnable = has_depth ? options.enable_depth_write : VK_FALSE,
         .depthCompareOp   = has_depth ? vk_rhi_parse_compare_op(options.depth_compare_op) : VK_COMPARE_OP_NEVER,
         .minDepthBounds   = 0.0f,
         .maxDepthBounds   = 1.0f,

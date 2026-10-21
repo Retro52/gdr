@@ -239,21 +239,31 @@ static bool check_device_features(ID3D12Device* device, const D3D_SHADER_MODEL d
     D3D12_FEATURE_DATA_D3D12_OPTIONS4 d3d12_options4 {};
     D3D12_FEATURE_DATA_D3D12_OPTIONS7 d3d12_options7 {};
     D3D12_FEATURE_DATA_D3D12_OPTIONS12 d3d12_options12 {};
+    D3D12_FEATURE_DATA_D3D12_OPTIONS13 d3d12_options13 {};
+    D3D12_FEATURE_DATA_D3D12_OPTIONS16 d3d12_options16 {};
 
     const bool is_device_suitable =
         SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &d3d12_options0, sizeof(d3d12_options0)))
         && SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS4, &d3d12_options4, sizeof(d3d12_options4)))
         && SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &d3d12_options7, sizeof(d3d12_options7)))
         && SUCCEEDED(
-            device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12, &d3d12_options12, sizeof(d3d12_options12)));
+            device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12, &d3d12_options12, sizeof(d3d12_options12)))
+        && SUCCEEDED(
+            device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS13, &d3d12_options13, sizeof(d3d12_options13)))
+        && SUCCEEDED(
+            device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS16, &d3d12_options16, sizeof(d3d12_options16)));
 
-    if (!is_device_suitable)
+    // Who would have thought that requiring alignments for texture data could be a bad idea -_-
+    if (!is_device_suitable || !d3d12_options13.UnrestrictedBufferTextureCopyPitchSupported
+        || !d3d12_options16.DynamicDepthBiasSupported)
     {
         return false;
     }
 
     // shading-level feature anyway, so I just need to make sure to request proper SM
-    // FIXME: I think DirectX doesn't support some draw parameters, need to check
+    // TODO: d3d12 does not support DrawId param, so all the shaders should be emulating it somehow
+    // this may be the same workaround as I did for the MoltenVK, but MVK did not support mesh shaders,
+    // so it's a huge TBD if that will even work for d3d12.
     wanted_features.set_supported(rhi::feature_flag::draw_indirect, true);
     wanted_features.set_supported(rhi::feature_flag::dynamic_render, true);
     wanted_features.set_supported(rhi::feature_flag::sampler_min_max, true);
@@ -438,6 +448,10 @@ auto platform::d3d12_create_context(const window& window, const rhi::instance_de
         context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kD3D12_CBV_SRV_UAV_HeapMaxDescCount);
     RESULT_FORWARD_IF_FAILED(cbv_srv_uav_desc_heap);
 
+    auto cbv_srv_uav_cpu_desc_heap = d3d12_create_desc_heap(
+        context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kD3D12_CBV_SRV_UAV_CpuHeapMaxDescCount, true);
+    RESULT_FORWARD_IF_FAILED(cbv_srv_uav_cpu_desc_heap);
+
     auto sampler_desc_heap = d3d12_create_desc_heap(
         context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, kD3D12_Sampler_HeapMaxDescCount);
     RESULT_FORWARD_IF_FAILED(sampler_desc_heap);
@@ -450,10 +464,11 @@ auto platform::d3d12_create_context(const window& window, const rhi::instance_de
         d3d12_create_desc_heap(context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, kD3D12_DSV_HeapMaxDescCount);
     RESULT_FORWARD_IF_FAILED(dsv_desc_heap);
 
-    context.rtv_descriptor_heap         = *rtv_desc_heap;
-    context.dsv_descriptor_heap         = *dsv_desc_heap;
-    context.sampler_descriptor_heap     = *sampler_desc_heap;
-    context.cbv_srv_uav_descriptor_heap = *cbv_srv_uav_desc_heap;
+    context.rtv_descriptor_heap             = *rtv_desc_heap;
+    context.dsv_descriptor_heap             = *dsv_desc_heap;
+    context.sampler_descriptor_heap         = *sampler_desc_heap;
+    context.cbv_srv_uav_descriptor_heap     = *cbv_srv_uav_desc_heap;
+    context.cbv_srv_uav_cpu_descriptor_heap = *cbv_srv_uav_cpu_desc_heap;
     return context;
 }
 

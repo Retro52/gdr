@@ -4,8 +4,8 @@
 #include <cpp/containers/stack_string.hpp>
 #include <pod_types.hpp>
 
-#define REGISTER_ENUM(Name, ...)                                                        \
-    enum class Name : u32                                                               \
+#define REGISTER_ENUM_T(Name, Type, ...)                                                \
+    enum class Name : Type                                                              \
     {                                                                                   \
         __VA_ARGS__                                                                     \
     };                                                                                  \
@@ -23,7 +23,7 @@
             static cpp::stack_string names[count];                                      \
             static reflection::enum_value result[count];                                \
             static reflection::enum_counter<Name> __VA_ARGS__;                          \
-            static u32 integer_values[] = {__VA_ARGS__};                                \
+            static Type integer_values[] = {__VA_ARGS__};                               \
             reflection::parse_enum_values(#__VA_ARGS__, integer_values, names, result); \
             return result;                                                              \
         }();                                                                            \
@@ -31,15 +31,15 @@
         return values;                                                                  \
     }
 
-#define REGISTER_FLAGS(Name, ...)                                                                   \
-    enum class Name : u32                                                                           \
+#define REGISTER_FLAGS_T(Name, Type, ...)                                                           \
+    enum class Name : Type                                                                          \
     {                                                                                               \
         __VA_ARGS__                                                                                 \
     };                                                                                              \
                                                                                                     \
     struct Name##_bits                                                                              \
     {                                                                                               \
-        using underlying_t = u32;                                                                   \
+        using underlying_t = Type;                                                                  \
         using self_t       = Name##_bits;                                                           \
                                                                                                     \
     private:                                                                                        \
@@ -58,7 +58,7 @@
         [[nodiscard]] constexpr underlying_t raw() const noexcept { return m_data; }                \
                                                                                                     \
     private:                                                                                        \
-        u32 m_data = 0;                                                                             \
+        underlying_t m_data = 0;                                                                    \
     };                                                                                              \
                                                                                                     \
     consteval u64 enum_reflect_count(const Name* /*enum*/)                                          \
@@ -74,7 +74,7 @@
             static cpp::stack_string names[count];                                                  \
             static reflection::enum_value result[count];                                            \
             static reflection::enum_counter<Name> __VA_ARGS__;                                      \
-            static u32 integer_values[] = {__VA_ARGS__};                                            \
+            static Type integer_values[] = {__VA_ARGS__};                                           \
             reflection::parse_enum_values(#__VA_ARGS__, integer_values, names, result);             \
             return result;                                                                          \
         }();                                                                                        \
@@ -84,22 +84,22 @@
                                                                                                     \
     constexpr Name##_bits operator~(Name value)                                                     \
     {                                                                                               \
-        return static_cast<Name>(~static_cast<u32>(value));                                         \
+        return static_cast<Name>(~static_cast<Type>(value));                                        \
     }                                                                                               \
                                                                                                     \
     constexpr Name##_bits operator|(Name lhs, Name rhs)                                             \
     {                                                                                               \
-        return static_cast<Name>(static_cast<u32>(lhs) | static_cast<u32>(rhs));                    \
+        return static_cast<Name>(static_cast<Type>(lhs) | static_cast<Type>(rhs));                  \
     }                                                                                               \
                                                                                                     \
     constexpr Name##_bits operator|(Name##_bits lhs, Name rhs)                                      \
     {                                                                                               \
-        return static_cast<Name>(lhs.raw() | static_cast<u32>(rhs));                                \
+        return static_cast<Name>(lhs.raw() | static_cast<Type>(rhs));                               \
     }                                                                                               \
                                                                                                     \
     constexpr Name##_bits operator|(Name lhs, Name##_bits rhs)                                      \
     {                                                                                               \
-        return static_cast<Name>(static_cast<u32>(lhs) | rhs.raw());                                \
+        return static_cast<Name>(static_cast<Type>(lhs) | rhs.raw());                               \
     }                                                                                               \
                                                                                                     \
     constexpr Name##_bits operator|(Name##_bits lhs, Name##_bits rhs)                               \
@@ -109,17 +109,17 @@
                                                                                                     \
     constexpr Name##_bits operator&(Name lhs, Name rhs)                                             \
     {                                                                                               \
-        return static_cast<Name>(static_cast<u32>(lhs) & static_cast<u32>(rhs));                    \
+        return static_cast<Name>(static_cast<Type>(lhs) & static_cast<Type>(rhs));                  \
     }                                                                                               \
                                                                                                     \
     constexpr Name##_bits operator&(Name##_bits lhs, Name rhs)                                      \
     {                                                                                               \
-        return static_cast<Name>(lhs.raw() & static_cast<u32>(rhs));                                \
+        return static_cast<Name>(lhs.raw() & static_cast<Type>(rhs));                               \
     }                                                                                               \
                                                                                                     \
     constexpr Name##_bits operator&(Name lhs, Name##_bits rhs)                                      \
     {                                                                                               \
-        return static_cast<Name>(static_cast<u32>(lhs) & rhs.raw());                                \
+        return static_cast<Name>(static_cast<Type>(lhs) & rhs.raw());                               \
     }                                                                                               \
                                                                                                     \
     constexpr Name##_bits operator&(Name##_bits lhs, Name##_bits rhs)                               \
@@ -127,12 +127,15 @@
         return static_cast<Name>(lhs.raw() & rhs.raw());                                            \
     }
 
+#define REGISTER_ENUM(Name, ...)  REGISTER_ENUM_T(Name, u32, __VA_ARGS__)
+#define REGISTER_FLAGS(Name, ...) REGISTER_FLAGS_T(Name, u32, __VA_ARGS__)
+
 namespace reflection
 {
     struct enum_value
     {
         const char* name;
-        u32 value;
+        u64 value;
     };
 
     template<typename EnumType>
@@ -202,7 +205,7 @@ namespace reflection
     }
 
     template<typename T>
-    u32 enum_from_string(const char* str)
+    T enum_from_string(const char* str)
     {
         const auto count       = get_enum_values_count<T>();
         const auto enum_values = get_enum_values<T>();
@@ -211,12 +214,12 @@ namespace reflection
         {
             if (cpp::cx_streq(enum_values[i].name, str))
             {
-                return enum_values[i].value;
+                return static_cast<T>(enum_values[i].value);
             }
         }
 
         assert2m(false, "failed to convert string into an enum");
-        return 0;
+        return static_cast<T>(0);
     }
 
     template<typename T>
@@ -227,7 +230,7 @@ namespace reflection
 
         for (int i = 0; i < count; ++i)
         {
-            if (enum_values[i].value == static_cast<u32>(value))
+            if (enum_values[i].value == static_cast<u64>(value))
             {
                 return enum_values[i].name;
             }
@@ -239,7 +242,7 @@ namespace reflection
 
     constexpr u64 enum_values_count(const char* values)
     {
-        u32 count     = 1;
+        u64 count     = 1;
         const char* c = &values[0];
         while (const char cursor = *(c++))
         {
@@ -249,11 +252,12 @@ namespace reflection
         return count;
     }
 
-    constexpr void parse_enum_values(const char* values, u32 enum_counters[], cpp::stack_string enum_names[],
+    template<typename T>
+    constexpr void parse_enum_values(const char* values, T enum_counters[], cpp::stack_string enum_names[],
                                      enum_value enum_values[])
     {
         bool skip              = false;
-        u32 index              = 0;
+        u64 index              = 0;
         const char* str_ptr    = &values[0];
         const char* name_start = str_ptr;
         const char* name_end   = name_start;
@@ -279,7 +283,7 @@ namespace reflection
             case ';' :
                 enum_names[index]  = cpp::stack_string(name_start, name_end - name_start);
                 enum_values[index] = {.name  = enum_names[index].c_str(),
-                                      .value = static_cast<u32>(enum_counters[index])};
+                                      .value = static_cast<u64>(enum_counters[index])};
                 name_end = name_start = str_ptr;
 
                 skip = false;
@@ -294,7 +298,7 @@ namespace reflection
         if (name_start < name_end)
         {
             enum_names[index]  = cpp::stack_string(name_start, name_end - name_start);
-            enum_values[index] = {.name = enum_names[index].c_str(), .value = static_cast<u32>(enum_counters[index])};
+            enum_values[index] = {.name = enum_names[index].c_str(), .value = static_cast<u64>(enum_counters[index])};
         }
     }
 }

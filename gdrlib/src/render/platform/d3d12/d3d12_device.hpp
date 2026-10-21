@@ -16,10 +16,11 @@ namespace platform
     constexpr u32 kD3D12_CommandQueueDirect  = 2;
     constexpr u32 kD3D12_CommandQueuesCount  = 3;
 
-    constexpr u32 kD3D12_RTV_HeapMaxDescCount         = 64;
-    constexpr u32 kD3D12_DSV_HeapMaxDescCount         = 64;
-    constexpr u32 kD3D12_Sampler_HeapMaxDescCount     = 2048;
-    constexpr u32 kD3D12_CBV_SRV_UAV_HeapMaxDescCount = 262'144;
+    constexpr u32 kD3D12_RTV_HeapMaxDescCount            = 64;
+    constexpr u32 kD3D12_DSV_HeapMaxDescCount            = 64;
+    constexpr u32 kD3D12_Sampler_HeapMaxDescCount        = 2048;
+    constexpr u32 kD3D12_CBV_SRV_UAV_HeapMaxDescCount    = 262'144;
+    constexpr u32 kD3D12_CBV_SRV_UAV_CpuHeapMaxDescCount = 4096;
 
     // clang-format off
     REGISTER_FLAGS(swapchain_flag,
@@ -41,6 +42,7 @@ namespace platform
         d3d12_desc_heap dsv_descriptor_heap;
         d3d12_desc_heap sampler_descriptor_heap;
         d3d12_desc_heap cbv_srv_uav_descriptor_heap;
+        d3d12_desc_heap cbv_srv_uav_cpu_descriptor_heap;
 
         com_ptr<D3D12MA::Allocator> allocator;
 

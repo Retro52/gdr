@@ -7,10 +7,19 @@
 
 namespace platform
 {
-
     enum class PSVShaderKind : u8;
     enum class PSVResourceType : u32;
     enum class PSVResourceKind : u32;
+
+    // clang-format off
+    REGISTER_FLAGS(d3d12_pso_dynstates,
+        cull_mode_none,
+        cull_mode_back,
+        cull_mode_front,
+        not_set,
+        COUNT = not_set
+    );
+    // clang-format on
 
     struct d3d12_descriptor_set
     {
@@ -44,11 +53,13 @@ namespace platform
 
     struct d3d12_pipeline
     {
-        platform::com_ptr<ID3D12PipelineState> pso;
         platform::com_ptr<ID3D12RootSignature> root_signature;
+        cpp::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
 
         uvec3 work_group_size             = uvec3(0);
         D3D12_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+
+        void bind(ID3D12GraphicsCommandList9* cmd, rhi::cull_mode cull_mode, vec3 depth_bias_params) const;
     };
 
     result<d3d12_shader_meta> d3d12_parse_dxil(const bytes& data);

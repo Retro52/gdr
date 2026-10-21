@@ -66,12 +66,20 @@ namespace rhi
     void d3d12_cmd_copy_buffer(command_buffer cmd, buffer src_buffer, u64vec2 src_range, buffer dst_buffer,
                                u64 dst_offset);
 
+    void d3d12_cmd_clear_buffer(command_buffer cmd, buffer buffer, u64vec2 range, u32 value);
+    void d3d12_cmd_update_buffer(command_buffer cmd, buffer buffer, u64vec2 range, const void* data);
+    void d3d12_cmd_copy_buffer_to_image(command_buffer cmd, buffer src, image dst, image_layout layout,
+                                        std::span<const copy_image_info> regions);
+
     void d3d12_cmd_clear_depth_attachment(command_buffer cmd, image image, ds_clear_value value);
     void d3d12_cmd_clear_color_attachment(command_buffer cmd, image image, color_clear_value value);
 
     void d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const attachment_state_info> color_attachments,
                                   attachment_state_info depth_attachment, uvec4 viewport);
     void d3d12_cmd_clear_draw_state(command_buffer cmd);
+
+    void d3d12_cmd_set_cull_mode(command_buffer cmd, cull_mode mode);
+    void d3d12_cmd_set_depth_bias(command_buffer cmd, f32 constant_factor, f32 slope_factor, f32 clamp);
 
     void d3d12_cmd_bind_pso(command_buffer cmd, pipeline pso);
     void d3d12_cmd_bind_index(command_buffer cmd, buffer index_buffer);
