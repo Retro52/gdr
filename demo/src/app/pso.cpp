@@ -67,7 +67,7 @@ namespace
         opt_get_enum(json_options, "topology", options.topology);
         options.enable_depth_bias  = opt_get_bit(json_options, "depth_bias", options.enable_depth_bias);
         options.enable_depth_clamp = opt_get_bit(json_options, "depth_clamp", options.enable_depth_clamp);
-        options.enable_depth_clamp = opt_get_bit(json_options, "dynstate_cull_mode", options.enable_dynstate_cull_mode);
+        options.enable_dynstate_cull_mode = opt_get_bit(json_options, "dynstate_cull_mode", options.enable_dynstate_cull_mode);
 
         if (json_options.contains("color_formats"))
         {

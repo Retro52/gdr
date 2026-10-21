@@ -238,21 +238,6 @@ static u32 get_max_draw_commands(const u32 meshlets_count)
     return (meshlets_count + shader_constants::kTaskWorkGroups - 1) / shader_constants::kTaskWorkGroups;
 }
 
-static auto make_offset_table(const std::array<u32, shader_constants::kMatClassCount>& materials)
-    -> std::array<u32, shader_constants::kMatClassCount>
-{
-    std::array<u32, shader_constants::kMatClassCount> result {};
-
-    u32 sum = 0;
-    for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
-    {
-        result[i] = sum;
-        sum += materials[i];
-    }
-
-    return result;
-}
-
 static cpp::heap_array<loader::prim_info> collect_primitives(const cgltf_data* data,
                                                              cpp::heap_array<loader::mesh_info>& descriptors,
                                                              cpp::heap_array<cpp::stack_string>* debug_names)
@@ -355,41 +340,6 @@ static result<parsed_texture> read_texture(const fs::path& uri, loader::texture_
     return error("failed to load texture -- unsupported format?");
 }
 
-#if 0
-static result<platform::vk_image> upload_texture(const parsed_texture& texture, const platform::vk_renderer& renderer,
-                                               const platform::vk_buffer_transfer& scratch)
-{
-    const auto desc                           = desc_from_parse_result(texture);
-    const VkImageCreateInfo image_create_info = {
-        .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .pNext       = nullptr,
-        .imageType   = desc.depth > 1 ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D,
-        .format      = desc.format,
-        .extent      = {desc.width, desc.height, desc.depth},
-        .mipLevels   = desc.mips_count,
-        .arrayLayers = desc.arrays_count,
-        .samples     = VK_SAMPLE_COUNT_1_BIT,
-        .tiling      = VK_IMAGE_TILING_OPTIMAL,
-        .usage       = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
-    };
-
-    const auto image_r = platform::vk_create_image(
-        renderer.get_context().device, image_create_info, VK_IMAGE_ASPECT_COLOR_BIT, renderer.get_context().allocator);
-
-    RESULT_FORWARD_IF_FAILED(image_r);
-    platform::vk_upload_image(scratch,
-                            *image_r,
-                            static_cast<const u8*>(desc.pdata),
-                            desc.data_size,
-                            desc.width,
-                            desc.height,
-                            desc.mips_count,
-                            desc.block_size,
-                            desc.bits_per_block);
-    return *image_r;
-}
-#endif
-
 u32 loader::get_max_lod_tris(const mesh::raw_mesh& mesh)
 {
     u32 res = 0;
@@ -410,6 +360,20 @@ u32 loader::get_max_lod_meshlets(const loader::primitive& prim)
     }
 
     return res;
+}
+
+auto loader::make_offset_table(const material_buckets& materials) -> material_buckets
+{
+    material_buckets result {};
+
+    u32 sum = 0;
+    for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
+    {
+        result[i] = sum;
+        sum += materials[i];
+    }
+
+    return result;
 }
 
 auto loader::load_texture(const fs::path& path) -> result<texture_desc>

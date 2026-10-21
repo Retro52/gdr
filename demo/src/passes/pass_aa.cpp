@@ -59,19 +59,19 @@ void app::pass_aa::draw(const rhi::command_buffer cmd, const draw_params& params
 
     m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
 
-    // switch (backend)
-    // {
-    // case aa_backend::blit :
-    //     run_blit(cmd, params);
-    //     break;
-    // case aa_backend::fsr3 :
-    //     run_mv_reconstruct(cmd, params);
-    //     run_fsr3(cmd, params);
-    //     break;
-    // case aa_backend::fxaa :
+    switch (backend)
+    {
+    case aa_backend::blit :
+        run_blit(cmd, params);
+        break;
+    case aa_backend::fsr3 :
+        run_mv_reconstruct(cmd, params);
+        run_fsr3(cmd, params);
+        break;
+    case aa_backend::fxaa :
         run_fxaa(cmd, params);
-    //     break;
-    // }
+        break;
+    }
 
     m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
 }
@@ -205,9 +205,9 @@ void app::pass_aa::create_resources(const uvec2 render_res, const uvec2 display_
         create_color_image(m_rhi, render_res, rhi::image_format::r16g16sf, m_ctx, rhi::image_usage::transfer_src);
 
     output      = app::create_color_image(m_rhi, display_res, rhi::image_format::b10g11r11uf, m_ctx);
-    // ffx_context = *m_rhi.ffx_create_upscale_context(m_ctx,
-    //                                                 rhi::ffx_upscale_desc {
-    //                                                     .display_size    = display_res,
-    //                                                     .max_render_size = render_res,
-    //                                                 });
+    ffx_context = *m_rhi.ffx_create_upscale_context(m_ctx,
+                                                    rhi::ffx_upscale_desc {
+                                                        .display_size    = display_res,
+                                                        .max_render_size = render_res,
+                                                    });
 }

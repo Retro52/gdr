@@ -110,18 +110,17 @@ namespace
     T get_random(const T min, const T max)
     {
         ZoneScoped;
-        return min + (static_cast<T>(rand()) / RAND_MAX) * (max - min);
+        return min + static_cast<T>(static_cast<f64>(rand() * (max - min)) / static_cast<f64>(RAND_MAX));
     }
 
-#if !NO_POPULATE_MODE
-    loader::scene_info populate_scene(const u32 draw_count, const cpp::heap_array<mesh::raw_mesh>& primitives,
-                                      scene& scene, platform::vk_scene_geometry_pool& geometry_pool)
+    loader::scene_data populate_scene(const u32 draw_count, const cpp::heap_array<mesh::raw_mesh>& primitives,
+                                      scene& scene)
     {
         ZoneScoped;
 
         const u32 kVolumeItemsPerSide = std::lroundl(std::cbrt(draw_count));
 
-        loader::loader_context ctx;
+        loader::scene_data data;
         cpp::heap_array<loader::prim_layout> layouts(primitives.size());
 
         u64 total_vertices = 0;
@@ -130,39 +129,37 @@ namespace
         for (u32 p = 0; p < primitives.size(); ++p)
         {
             auto& layout         = layouts[p];
-            layout.prim_index    = p + geometry_pool.primitives.offset / sizeof(loader::primitive);
-            layout.vertex_offset = total_vertices + (geometry_pool.vertex.offset / sizeof(loader::vertex));
+            layout.prim_index    = p;
+            layout.vertex_offset = total_vertices;
 
             total_vertices += primitives[p].raw_vertices.size();
 
             for (u32 i = 0; i < primitives[p].lod_count; ++i)
             {
                 const auto& lod     = primitives[p].lod_array[i];
-                layout.lod_array[i] = {total_meshlets + (geometry_pool.meshlets.offset / sizeof(loader::meshlet)),
-                                       total_payload + geometry_pool.meshlets_payload.offset};
+                layout.lod_array[i] = {
+                    .meshlet_offset      = total_meshlets,
+                    .meshlet_data_offset = total_payload,
+                };
 
                 total_meshlets += lod.raw_meshlets.size();
                 total_payload += lod.raw_meshlets_payload.size();
             }
         }
 
-        ctx.primitives.resize(primitives.size());
-        ctx.vertices.resize(total_vertices);
-        ctx.meshlets.resize(total_meshlets);
-        ctx.meshlets_data.resize(total_payload);
-
-        ctx.materials.resize(draw_count);
-        cpp::heap_array<loader::instance> instances(draw_count);
+        data.instances.resize(draw_count);
+        data.materials.resize(draw_count);
+        data.vertices.resize(total_vertices);
+        data.meshlets.resize(total_meshlets);
+        data.meshlets_data.resize(total_payload);
+        data.primitives.resize(primitives.size());
 
         for (u32 i = 0; i < primitives.size(); ++i)
         {
-            loader::encode_raw_mesh(ctx, primitives[i], layouts[i]);
+            loader::encode_raw_mesh(data, primitives[i], layouts[i]);
         }
 
-        u64 triangles_max     = 0;
-        u64 visibility_offset = 0;
-
-        std::array<u32, shader_constants::kMatClassCount> mat_offset_table {};
+        data.counters.instances = draw_count;
         for (u32 i = 0; i < draw_count; ++i)
         {
             ZoneScopedN("create models within the scene");
@@ -172,7 +169,7 @@ namespace
             auto entity = scene.create_entity();
             entity.add_component<id_component>();
 
-            auto& instance = instances[i];
+            auto& instance = data.instances[i];
             vec3 position  = {
                 i % kVolumeItemsPerSide,
                 (i / kVolumeItemsPerSide) % kVolumeItemsPerSide,
@@ -191,16 +188,16 @@ namespace
             instance.rotation_quat =
                 glm::quat(vec3(get_random<f32>(-180, 180), get_random<f32>(-180, 180), get_random<f32>(-180, 180)));
 #else
-            instance.pos_and_scale = {position, 0.25F};
+            instance.pos_and_scale = {position, 1.0};
             instance.rotation_quat = glm::quat(vec3());
 #endif
 
             instance.material_index    = i;
-            instance.visibility_offset = visibility_offset;
+            instance.visibility_offset = data.counters.meshlets;
             instance.mesh_data_index   = layouts[id_random].prim_index;
-            instance.base_vertex       = ctx.primitives[id_random].base_vertex;
+            instance.base_vertex       = data.primitives[id_random].base_vertex;
 
-            auto& material          = ctx.materials[i];
+            auto& material          = data.materials[i];
             material.material_class = shader_constants::kMatClassOpaque;
             material.diffuse_factor = vec4(1.0F, 0.0F, 0.0F, 1.0);
 
@@ -209,33 +206,17 @@ namespace
                 glm::mix(0.0F, 1.0F, static_cast<f32>((i / kVolumeItemsPerSide) % kVolumeItemsPerSide) / kMixMax);
             material.met_roughness_factor.b = glm::mix(0.0F, 1.0F, static_cast<f32>(i % kVolumeItemsPerSide) / kMixMax);
 
-            triangles_max += loader::get_max_lod_tris(primitives[id_random]);
-            visibility_offset += loader::get_max_lod_meshlets(ctx.primitives[id_random]);
+            data.counters.triangles += loader::get_max_lod_tris(primitives[id_random]);
+            data.counters.meshlets += loader::get_max_lod_meshlets(data.primitives[id_random]);
 
-            mat_offset_table[material.material_class] +=
-                (loader::get_max_lod_meshlets(ctx.primitives[id_random]) + shader_constants::kTaskWorkGroups - 1)
+            data.counters.buckets[material.material_class] +=
+                (loader::get_max_lod_meshlets(data.primitives[id_random]) + shader_constants::kTaskWorkGroups - 1)
                 / shader_constants::kTaskWorkGroups;
         }
 
-        platform::vk_upload_data(
-            geometry_pool.transfer, geometry_pool.primitives, ctx.primitives.data(), ctx.primitives.size());
-        platform::vk_upload_data(
-            geometry_pool.transfer, geometry_pool.vertex, ctx.vertices.data(), ctx.vertices.size());
-        platform::vk_upload_data(
-            geometry_pool.transfer, geometry_pool.meshlets, ctx.meshlets.data(), ctx.meshlets.size());
-        platform::vk_upload_data(
-            geometry_pool.transfer, geometry_pool.materials, ctx.materials.data(), ctx.materials.size());
-        platform::vk_upload_data(
-            geometry_pool.transfer, geometry_pool.meshlets_payload, ctx.meshlets_data.data(), ctx.meshlets_data.size());
-        platform::vk_upload_data(geometry_pool.transfer, geometry_pool.instances, instances.data(), instances.size());
-
-        return {.meshes           = primitives.size(),
-                .meshlets         = visibility_offset,
-                .triangles        = triangles_max,
-                .primitives       = draw_count,
-                .mat_offset_table = mat_offset_table};
+        data.counters.buckets_offset = loader::make_offset_table(data.counters.buckets);
+        return data;
     }
-#endif
 }
 
 // dumb order of initialization issue here, but what can u do
@@ -249,7 +230,7 @@ static rhi::impl load_rhi(const app::argv_handler& args)
         logging::s_instance->set_log_level(static_cast<quill::LogLevel>(ll));
     }
 
-    const bool use_dx12 = args.read_numeric("--use_dx12") || true;
+    const bool use_dx12 = args.read_numeric("--use_dx12");
 
 #if GDR_ENABLE_DX12_BACKEND
     return use_dx12 ? rhi::create_for_d3d12() : rhi::create_for_vk();
@@ -276,8 +257,8 @@ static rhi::instance_desc get_instance_desc(auto& args)
                                         .require(rhi::feature_flag::scalar_block_layout)
                                         .require(rhi::feature_flag::synchronization2);
     return rhi::instance_desc {
-        .app_name        = "GDR",
-        .device_id_hint  = 0,
+        .app_name       = "GDR",
+        .device_id_hint = 0,
         // .device_id_hint  = static_cast<u32>(args.read_numeric("--device_id", rhi::kDeviceIdDealersChoice)),
         .device_features = features_table,
     };
@@ -416,7 +397,7 @@ int app::instance::run()
 
     gpu_upload_mgr upload_mgr(m_rhi, *context, 128_MB);
 
-    loader::scene_counters scene_counters;
+    loader::scene_data scene_data;
 
     const int instance_count = m_args.read_numeric("--instances");
     const int first_instance = m_args.get_positional_args_start();
@@ -426,8 +407,6 @@ int app::instance::run()
 
     // test scene stuff
     scene client_scene;
-    cpp::heap_array<rhi::image> textures;
-#if !NO_POPULATE_MODE
     if (instance_count > 0 && first_instance > 0)
     {
         cpp::heap_array<mesh::raw_mesh> meshes;
@@ -442,32 +421,30 @@ int app::instance::run()
             meshes.append(ctx->primitives);
         }
 
-        scene_counters = populate_scene(instance_count, meshes, client_scene, geometry_pool);
+        scene_data = populate_scene(instance_count, meshes, client_scene);
     }
     else
-#endif
     {
         ZoneScopedN("loader::load_scene");
-        const auto scene_data = *loader::load_scene(m_args.argv()[first_instance], client_scene);
-        scene_counters        = scene_data.counters;
-
-        cpp::local_array<rhi::bindless_set_write_info> updates;
-        for (u32 i = 0; i < scene_data.textures.size(); ++i)
-        {
-            const auto handle = upload_mgr.create_texture(scene_data.textures[i]);
-            textures.emplace_back(handle);
-            updates.push_back(rhi::bindless_set_write_info {.dst = handle, .index = i + 1});
-        }
-
-        m_rhi.update_bindless_set(*context, resources.bindless_textures, std::span {updates});
-
-        upload_mgr.submit(resources.vertex, scene_data.vertices.data(), scene_data.vertices.size());
-        upload_mgr.submit(resources.meshlets, scene_data.meshlets.data(), scene_data.meshlets.size());
-        upload_mgr.submit(resources.instances, scene_data.instances.data(), scene_data.instances.size());
-        upload_mgr.submit(resources.materials, scene_data.materials.data(), scene_data.materials.size());
-        upload_mgr.submit(resources.primitives, scene_data.primitives.data(), scene_data.primitives.size());
-        upload_mgr.submit(resources.meshlets_payload, scene_data.meshlets_data.data(), scene_data.meshlets_data.size());
+        scene_data = *loader::load_scene(m_args.argv()[first_instance], client_scene);
     }
+
+    cpp::heap_array<rhi::image> textures;
+    cpp::local_array<rhi::bindless_set_write_info> updates;
+    for (u32 i = 0; i < scene_data.textures.size(); ++i)
+    {
+        const auto handle = upload_mgr.create_texture(scene_data.textures[i]);
+        textures.emplace_back(handle);
+        updates.push_back(rhi::bindless_set_write_info {.dst = handle, .index = i + 1});
+    }
+
+    m_rhi.update_bindless_set(*context, resources.bindless_textures, std::span {updates});
+    upload_mgr.submit(resources.vertex, scene_data.vertices.data(), scene_data.vertices.size());
+    upload_mgr.submit(resources.meshlets, scene_data.meshlets.data(), scene_data.meshlets.size());
+    upload_mgr.submit(resources.instances, scene_data.instances.data(), scene_data.instances.size());
+    upload_mgr.submit(resources.materials, scene_data.materials.data(), scene_data.materials.size());
+    upload_mgr.submit(resources.primitives, scene_data.primitives.data(), scene_data.primitives.size());
+    upload_mgr.submit(resources.meshlets_payload, scene_data.meshlets_data.data(), scene_data.meshlets_data.size());
 
     entity camera = client_scene.empty();
     if (const auto loaded_camera = client_scene.get_view<entt::entity, camera_component>().front();
@@ -685,7 +662,7 @@ int app::instance::run()
 
                     shader_types::FrameCullData fcd {.pyramid_size  = gpass.hizb.base_size,
                                                      .viewport_size = m_window.get_size_in_px(),
-                                                     .draw_count    = static_cast<u32>(scene_counters.instances),
+                                                     .draw_count    = static_cast<u32>(scene_data.counters.instances),
                                                      .flags         = client_render_settings.flags};
                     build_frustum(fcd, projection, view);
                     (*static_cast<shader_types::FrameCullData*>(frame_cull_data_buffer.mapped)) = fcd;
@@ -732,7 +709,7 @@ int app::instance::run()
                 gpass.draw(
                     buffer,
                     resources,
-                    scene_counters,
+                    scene_data.counters,
                     pass_geometry::draw_params {
                         .view       = freeze_cull_data ? debug_camera_view : camera_view,
                         .projection = camera_proj_jittered,
@@ -743,7 +720,7 @@ int app::instance::run()
                 {
                     gpass.draw(buffer,
                                resources,
-                               scene_counters,
+                               scene_data.counters,
                                pass_geometry::draw_params {
                                    .view       = camera_view,
                                    .projection = camera_proj_jittered,
@@ -755,7 +732,7 @@ int app::instance::run()
 
                 gpass.draw(buffer,
                            resources,
-                           scene_counters,
+                           scene_data.counters,
                            pass_geometry::draw_params {
                                .view       = camera_view,
                                .projection = camera_proj_jittered,

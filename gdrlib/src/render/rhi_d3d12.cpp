@@ -1438,7 +1438,7 @@ void rhi::d3d12_cmd_dispatch(command_buffer cmd, pipeline pso, const uvec3 threa
 void rhi::d3d12_cmd_dispatch_indirect(command_buffer cmd, buffer count_buffer, const u32 buffer_offset)
 {
     ZoneScoped;
-    const auto* d3d12_cmd        = cast_from_handle<platform::d3d12_command_list>(cmd);
+    auto* d3d12_cmd              = cast_from_handle<platform::d3d12_command_list>(cmd);
     const auto* d3d12_cnt_buffer = cast_from_handle<platform::d3d12_buffer>(count_buffer);
 
     if (!d3d12_cmd || !d3d12_cnt_buffer)
@@ -1448,10 +1448,14 @@ void rhi::d3d12_cmd_dispatch_indirect(command_buffer cmd, buffer count_buffer, c
 
     if (const auto gfx_command_list = d3d12_rhi_get_gfx_command_list(d3d12_cmd))
     {
-        // FIXME
-        // wtf is ID3D12CommandSignature
         gfx_command_list->ExecuteIndirect(
-            nullptr, 1024 * 1024 * 1024, d3d12_cnt_buffer->allocation->GetResource(), buffer_offset, nullptr, 0);
+            d3d12_cmd->get_signature(
+                {.stride = sizeof(u32[3]), .type = platform::d3d12_command_signature_type::dispatch_indirect}),
+            1,
+            d3d12_cnt_buffer->allocation->GetResource(),
+            buffer_offset,
+            nullptr,
+            0);
     }
 }
 
@@ -1460,6 +1464,8 @@ void rhi::d3d12_cmd_draw(command_buffer cmd, const u32 vtx_count, const u32 inst
 {
     ZoneScoped;
     const auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd);
+
+    assert2(d3d12_cmd);
     if (!d3d12_cmd)
     {
         return;
@@ -1468,6 +1474,118 @@ void rhi::d3d12_cmd_draw(command_buffer cmd, const u32 vtx_count, const u32 inst
     if (const auto gfx_command_list = d3d12_rhi_get_gfx_command_list(d3d12_cmd))
     {
         gfx_command_list->DrawInstanced(vtx_count, instance_count, first_vertex, first_instance);
+    }
+}
+
+void rhi::d3d12_cmd_draw_indexed_indirect(command_buffer cmd, buffer buffer, const u64 offset, const u32 count,
+                                          const u32 stride)
+{
+    ZoneScoped;
+    auto* d3d12_cmd          = cast_from_handle<platform::d3d12_command_list>(cmd);
+    const auto* d3d12_buffer = cast_from_handle<platform::d3d12_buffer>(buffer);
+
+    assert2(stride < 0xFF);
+    assert2(d3d12_cmd && d3d12_buffer);
+    if (!d3d12_cmd || !d3d12_buffer)
+    {
+        return;
+    }
+
+    if (const auto gfx_command_list = d3d12_rhi_get_gfx_command_list(d3d12_cmd))
+    {
+        gfx_command_list->ExecuteIndirect(
+            d3d12_cmd->get_signature({.stride = static_cast<u8>(stride),
+                                      .type   = platform::d3d12_command_signature_type::draw_indexed_indirect}),
+            count,
+            d3d12_buffer->allocation->GetResource(),
+            offset,
+            nullptr,
+            0);
+    }
+}
+
+void rhi::d3d12_cmd_draw_indexed_indirect_count(command_buffer cmd, rhi::buffer buffer, const u64 offset,
+                                                rhi::buffer count_buffer, const u64 count_offset, const u32 max_count,
+                                                const u32 stride)
+{
+    ZoneScoped;
+    auto* d3d12_cmd              = cast_from_handle<platform::d3d12_command_list>(cmd);
+    const auto* d3d12_buffer     = cast_from_handle<platform::d3d12_buffer>(buffer);
+    const auto* d3d12_cnt_buffer = cast_from_handle<platform::d3d12_buffer>(count_buffer);
+
+    assert2(stride < 0xFF);
+    assert2(d3d12_cmd && d3d12_buffer && d3d12_cnt_buffer);
+    if (!d3d12_cmd || !d3d12_buffer || !d3d12_cnt_buffer)
+    {
+        return;
+    }
+
+    if (const auto gfx_command_list = d3d12_rhi_get_gfx_command_list(d3d12_cmd))
+    {
+        gfx_command_list->ExecuteIndirect(
+            d3d12_cmd->get_signature({.stride = static_cast<u8>(stride),
+                                      .type   = platform::d3d12_command_signature_type::draw_indexed_indirect}),
+            max_count,
+            d3d12_buffer->allocation->GetResource(),
+            offset,
+            d3d12_cnt_buffer->allocation->GetResource(),
+            count_offset);
+    }
+}
+
+void rhi::d3d12_cmd_draw_mesh_indirect(command_buffer cmd, buffer buffer, const u64 offset, const u32 count,
+                                       const u32 stride)
+{
+    ZoneScoped;
+    auto* d3d12_cmd          = cast_from_handle<platform::d3d12_command_list>(cmd);
+    const auto* d3d12_buffer = cast_from_handle<platform::d3d12_buffer>(buffer);
+
+    assert2(stride < 0xFF);
+    assert2(d3d12_cmd && d3d12_buffer);
+    if (!d3d12_cmd || !d3d12_buffer)
+    {
+        return;
+    }
+
+    if (const auto gfx_command_list = d3d12_rhi_get_gfx_command_list(d3d12_cmd))
+    {
+        gfx_command_list->ExecuteIndirect(
+            d3d12_cmd->get_signature({.stride = cpp::max<u8>(static_cast<u8>(stride), sizeof(u32[3])),
+                                      .type   = platform::d3d12_command_signature_type::draw_mesh_task_indirect}),
+            count,
+            d3d12_buffer->allocation->GetResource(),
+            offset,
+            nullptr,
+            0);
+    }
+}
+
+void rhi::d3d12_cmd_draw_mesh_indirect_count(command_buffer cmd, rhi::buffer buffer, const u64 offset,
+                                             rhi::buffer count_buffer, const u64 count_offset, const u32 max_count,
+                                             const u32 stride)
+{
+    ZoneScoped;
+    auto* d3d12_cmd              = cast_from_handle<platform::d3d12_command_list>(cmd);
+    const auto* d3d12_buffer     = cast_from_handle<platform::d3d12_buffer>(buffer);
+    const auto* d3d12_cnt_buffer = cast_from_handle<platform::d3d12_buffer>(count_buffer);
+
+    assert2(stride < 0xFF);
+    assert2(d3d12_cmd && d3d12_buffer && d3d12_cnt_buffer);
+    if (!d3d12_cmd || !d3d12_buffer || !d3d12_cnt_buffer)
+    {
+        return;
+    }
+
+    if (const auto gfx_command_list = d3d12_rhi_get_gfx_command_list(d3d12_cmd))
+    {
+        gfx_command_list->ExecuteIndirect(
+            d3d12_cmd->get_signature({.stride = static_cast<u8>(stride),
+                                      .type   = platform::d3d12_command_signature_type::draw_mesh_task_indirect}),
+            max_count,
+            d3d12_buffer->allocation->GetResource(),
+            offset,
+            d3d12_cnt_buffer->allocation->GetResource(),
+            count_offset);
     }
 }
 
