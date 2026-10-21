@@ -37,6 +37,9 @@ namespace platform
 
     struct d3d12_command_list
     {
+        u32 pc_size     = 0;
+        u8 pc_data[252] = {};
+
         ID3D12Device* device = nullptr;
 
         com_ptr<ID3D12CommandList> command_list   = nullptr;
@@ -61,5 +64,5 @@ namespace platform
 
     void d3d12_destroy_command_list(d3d12_command_list& command_list);
 
-    u64 d3d12_command_list_scratch_alloc(d3d12_command_list& command_list, u64 size);
+    u64 d3d12_command_list_scratch_alloc(d3d12_command_list& command_list, u64 size, u64 align = 1);
 }

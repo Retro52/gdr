@@ -72,10 +72,12 @@ void platform::d3d12_destroy_command_list(d3d12_command_list& command_list)
     command_list.command_list.Reset();
 }
 
-u64 platform::d3d12_command_list_scratch_alloc(d3d12_command_list& command_list, const u64 size)
+u64 platform::d3d12_command_list_scratch_alloc(d3d12_command_list& command_list, const u64 size, const u64 align)
 {
     ZoneScoped;
-    const u64 offset = command_list.scratch_head;
+
+    assert2m((align & (align - 1)) == 0, "align must be a power of two");
+    const u64 offset = (command_list.scratch_head + align - 1) & ~(align - 1);
 
     assert2m(offset + size <= kD3D12_CommandListScratchSize, "command list scratch exhausted");
     if (offset + size > kD3D12_CommandListScratchSize)

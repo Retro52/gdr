@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fs/fs.hpp>
+#include <render/platform/d3d12/d3d12_buffer.hpp>
 #include <render/platform/d3d12/d3d12_device.hpp>
 #include <render/rhi_pso_options.hpp>
 #include <result.hpp>
@@ -51,13 +52,53 @@ namespace platform
         d3d12_shader_meta dxil_meta;
     };
 
+    struct d3d12_pso_param_key
+    {
+        u32 slot;
+        u32 space;
+        D3D12_DESCRIPTOR_RANGE_TYPE resource_type;
+    };
+
+    struct d3d12_root_signature
+    {
+        constexpr static u32 kMaxSetSets         = 4;
+        constexpr static u32 kMaxSetZeroBindings = 32;
+        constexpr static u32 kMaxSetTypes        = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER + 1;
+        constexpr static u32 kInvalidDedup       = ~static_cast<u32>(0);
+
+        platform::com_ptr<ID3D12RootSignature> signature = nullptr;
+        u32 dedup[kMaxSetSets][kMaxSetTypes][kMaxSetZeroBindings];
+
+        d3d12_root_signature();
+
+        [[nodiscard]] u32 get_bind_index(d3d12_pso_param_key key) const;
+
+        template<typename Func>
+        void for_each_type(const u32 space, const u32 slot, Func&& cb) const
+        {
+            d3d12_pso_param_key key {.slot = slot, .space = space};
+            for (u32 i = 0; i < kMaxSetTypes; ++i)
+            {
+                if (this->dedup[space][i][slot] != kInvalidDedup)
+                {
+                    key.resource_type = static_cast<D3D12_DESCRIPTOR_RANGE_TYPE>(i);
+                    cb(key.resource_type, this->get_bind_index(key));
+                }
+            }
+        }
+    };
+
     struct d3d12_pipeline
     {
-        platform::com_ptr<ID3D12RootSignature> root_signature;
+        d3d12_root_signature rs;
         cpp::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
 
         uvec3 work_group_size             = uvec3(0);
         D3D12_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+
+        [[nodiscard]] bool is_compute() const noexcept;
+
+        [[nodiscard]] u32 get_bind_index(d3d12_pso_param_key key) const;
 
         void bind(ID3D12GraphicsCommandList9* cmd, rhi::cull_mode cull_mode, vec3 depth_bias_params) const;
     };

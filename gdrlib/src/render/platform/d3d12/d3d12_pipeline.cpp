@@ -303,20 +303,15 @@ namespace
         }
     }
 
-    cpp::heap_array<D3D12_ROOT_PARAMETER1> collect_root_signature_parameters(const platform::d3d12_shader* shaders,
-                                                                             const u32 shaders_count)
+    cpp::heap_array<D3D12_ROOT_PARAMETER1> collect_root_signature_parameters(
+        const platform::d3d12_shader* shaders, const u32 shaders_count,
+        decltype(platform::d3d12_root_signature::dedup)& dedup)
     {
         ZoneScoped;
-        u32 parameters[D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER + 1][4][32] {};
-        constexpr u32 kInvalidDedup = ~static_cast<u32>(0);
-        constexpr u32 kTotalParams  = COUNT_OF(parameters) * 4 * 32;
-
-        cpp::cx_fill(
-            reinterpret_cast<u32*>(parameters), reinterpret_cast<u32*>(parameters) + kTotalParams, kInvalidDedup);
-
-        cpp::heap_array<D3D12_ROOT_PARAMETER1> result;
 
         u32 descriptor_range_id = 0;
+
+        cpp::heap_array<D3D12_ROOT_PARAMETER1> result;
         static D3D12_DESCRIPTOR_RANGE1 s_descriptor_ranges[32];
 
         u32 size_in_dwords = 0;
@@ -329,8 +324,8 @@ namespace
                 auto& resource  = shader_meta.resources[j];
                 const auto type = get_descriptor_range_type(resource.resource_type);
 
-                auto& redirect = parameters[type][resource.space][resource.slot];
-                if (redirect != kInvalidDedup)
+                auto& redirect = dedup[resource.space][type][resource.slot];
+                if (redirect != platform::d3d12_root_signature::kInvalidDedup)
                 {
                     result[redirect].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
                     continue;
@@ -380,12 +375,13 @@ namespace
         return result;
     }
 
-    result<platform::com_ptr<ID3D12RootSignature>> create_root_signature(ID3D12Device* device,
-                                                                         const platform::d3d12_shader* shaders,
-                                                                         const u32 shaders_count)
+    result<platform::d3d12_root_signature> create_root_signature(ID3D12Device* device,
+                                                                 const platform::d3d12_shader* shaders,
+                                                                 const u32 shaders_count)
     {
         ZoneScoped;
-        const auto params = collect_root_signature_parameters(shaders, shaders_count);
+        platform::d3d12_root_signature rs;
+        const auto params = collect_root_signature_parameters(shaders, shaders_count, rs.dedup);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC root_signature_desc;
         root_signature_desc.Init_1_1(params.size(), params.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
@@ -398,14 +394,37 @@ namespace
         D3D12_RETURN_ON_FAIL(D3DX12SerializeVersionedRootSignature(
             &root_signature_desc, root_signature_version, &root_signature_blob, &err_blob));
 
-        platform::com_ptr<ID3D12RootSignature> root_signature;
         D3D12_RETURN_ON_FAIL(device->CreateRootSignature(0,
                                                          root_signature_blob->GetBufferPointer(),
                                                          root_signature_blob->GetBufferSize(),
-                                                         IID_PPV_ARGS(&root_signature)));
+                                                         IID_PPV_ARGS(&rs.signature)));
 
-        return root_signature;
+        return rs;
     }
+}
+
+platform::d3d12_root_signature::d3d12_root_signature()
+{
+    cpp::cx_fill(
+        reinterpret_cast<u32*>(dedup), reinterpret_cast<u32*>(dedup) + (sizeof(dedup) / sizeof(u32)), kInvalidDedup);
+}
+
+[[nodiscard]] u32 platform::d3d12_root_signature::get_bind_index(const d3d12_pso_param_key key) const
+{
+    const auto value = this->dedup[key.space][key.resource_type][key.slot];
+    assert2(value != platform::d3d12_root_signature::kInvalidDedup);
+
+    return value;
+}
+
+[[nodiscard]] bool platform::d3d12_pipeline::is_compute() const noexcept
+{
+    return this->topology == D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+}
+
+u32 platform::d3d12_pipeline::get_bind_index(const d3d12_pso_param_key key) const
+{
+    return this->rs.get_bind_index(key);
 }
 
 void platform::d3d12_pipeline::bind(ID3D12GraphicsCommandList9* cmd, const rhi::cull_mode cull_mode,
@@ -414,7 +433,7 @@ void platform::d3d12_pipeline::bind(ID3D12GraphicsCommandList9* cmd, const rhi::
     if (this->topology == D3D_PRIMITIVE_TOPOLOGY_UNDEFINED)
     {
         cmd->SetPipelineState(this->variants.front().Get());
-        cmd->SetComputeRootSignature(this->root_signature.Get());
+        cmd->SetComputeRootSignature(this->rs.signature.Get());
         return;
     }
 
@@ -450,7 +469,7 @@ void platform::d3d12_pipeline::bind(ID3D12GraphicsCommandList9* cmd, const rhi::
     }
 
     cmd->IASetPrimitiveTopology(this->topology);
-    cmd->SetGraphicsRootSignature(this->root_signature.Get());
+    cmd->SetGraphicsRootSignature(this->rs.signature.Get());
 }
 
 auto platform::d3d12_parse_dxil(const bytes& data) -> result<d3d12_shader_meta>
@@ -601,7 +620,7 @@ auto platform::d3d12_create_pipeline_compute(ID3D12Device2* device, const d3d12_
     RESULT_FORWARD_IF_FAILED(rs);
 
     CD3DX12_PIPELINE_STATE_STREAM2 desc = {};
-    desc.pRootSignature                 = rs->Get();
+    desc.pRootSignature                 = rs->signature.Get();
     desc.CS                             = {
                                     .pShaderBytecode = shader.dxil_bytecode.data(),
                                     .BytecodeLength  = shader.dxil_bytecode.size(),
@@ -618,7 +637,11 @@ auto platform::d3d12_create_pipeline_compute(ID3D12Device2* device, const d3d12_
     cpp::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
     variants.emplace_back(pipeline);
 
-    return d3d12_pipeline {.root_signature = *rs, .variants = variants, .work_group_size = shader.dxil_meta.threads};
+    return d3d12_pipeline {
+        .rs              = *rs,
+        .variants        = variants,
+        .work_group_size = shader.dxil_meta.threads,
+    };
 }
 
 auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12_shader* shaders,
@@ -630,7 +653,7 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
     RESULT_FORWARD_IF_FAILED(rs);
 
     CD3DX12_PIPELINE_STATE_STREAM2 desc = {};
-    desc.pRootSignature                 = rs->Get();
+    desc.pRootSignature                 = rs->signature.Get();
 
     switch (options.topology)
     {
@@ -750,9 +773,9 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
     }
 
     return d3d12_pipeline {
-        .root_signature = *rs,
-        .variants       = variants,
-        .topology       = d3d12_rhi_parse_topology(options.topology),
+        .rs       = *rs,
+        .variants = variants,
+        .topology = d3d12_rhi_parse_topology(options.topology),
     };
 }
 
@@ -760,5 +783,6 @@ void platform::d3d12_destroy_pipeline(d3d12_pipeline& pipeline)
 {
     ZoneScoped;
     pipeline.variants.clear();
-    pipeline.root_signature.Reset();
+    pipeline.rs.signature.Reset();
+    std::memset(pipeline.rs.dedup, d3d12_root_signature::kInvalidDedup, sizeof(pipeline.rs.dedup));
 }
