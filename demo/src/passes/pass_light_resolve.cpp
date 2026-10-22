@@ -42,22 +42,12 @@ void app::pass_light_resolve::draw(const rhi::command_buffer cmd, const common_r
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Light resolve");
 
-    constexpr rhi::global_barrier pre_barrier {
-        .before = {.stages = rhi::barrier_stage::color_attachment | rhi::barrier_stage::late_depth_stencil,
-                   .access = rhi::barrier_access::color_attachment_write | rhi::barrier_access::depth_stencil_write},
-        .after  = {.stages = rhi::barrier_stage::compute_shader,
-                   .access = rhi::barrier_access::storage_read | rhi::barrier_access::sampled_read                 },
-    };
-
     const rhi::image_barrier transition_barriers[] {
-        app::make_image_barrier(this->output, rhi::image_layout::common, rhi::image_aspect::color),
+        app::make_image_barrier(this->output, rhi::image_layout::discard, rhi::image_layout::storage),
+        app::make_image_barrier(params.color, rhi::image_layout::render_target_color, rhi::image_layout::storage),
     };
 
-    m_rhi.cmd_barriers(cmd,
-                       rhi::barrier_batch {
-                           .images  = std::span {transition_barriers},
-                           .globals = {&pre_barrier, 1},
-    });
+    m_rhi.cmd_barriers(cmd, {.images = std::span {transition_barriers}});
 
     const rhi::binding resolve_pass_bindings[] = {
         rhi::binding(rhi::attachment(output)),
@@ -89,15 +79,11 @@ void app::pass_light_resolve::draw(const rhi::command_buffer cmd, const common_r
 
     m_rhi.cmd_dispatch(cmd, resolve_pass, uvec3(m_render_res, 1));
 
-    constexpr rhi::global_barrier post_barrier {
-        .before = {.stages = rhi::barrier_stage::compute_shader, .access = rhi::barrier_access::storage_write},
-        .after  = {.stages = rhi::barrier_stage::compute_shader, .access = rhi::barrier_access::sampled_read },
+    const rhi::image_barrier post_barriers[] {
+        app::make_image_barrier(this->output, rhi::image_layout::storage, rhi::image_layout::common),
     };
 
-    m_rhi.cmd_barriers(cmd,
-                       rhi::barrier_batch {
-                           .globals = {&post_barrier, 1}
-    });
+    m_rhi.cmd_barriers(cmd, {.images = std::span {post_barriers}});
 }
 
 void app::pass_light_resolve::destroy_resources()

@@ -308,6 +308,8 @@ D3D12_BARRIER_LAYOUT platform::d3d12_rhi_parse_image_layout(const rhi::image_lay
         return D3D12_BARRIER_LAYOUT_UNDEFINED;
     case rhi::image_layout::present :
         return D3D12_BARRIER_LAYOUT_PRESENT;
+    case rhi::image_layout::storage :
+        return D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
     case rhi::image_layout::render_target_color :
         return D3D12_BARRIER_LAYOUT_RENDER_TARGET;
     case rhi::image_layout::render_target_depth_stencil :
@@ -522,6 +524,11 @@ D3D12_BARRIER_ACCESS platform::d3d12_rhi_parse_access_flags(const rhi::barrier_a
         case rhi::barrier_access::none :
             break;
         }
+    }
+
+    if (result & D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE)
+    {
+        result &= ~D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ;
     }
 
     return result == D3D12_BARRIER_ACCESS_COMMON ? D3D12_BARRIER_ACCESS_NO_ACCESS : result;

@@ -85,7 +85,7 @@ void app::csm::init(const rhi::impl& rhi, const rhi::command_buffer cmd)
 {
 #if 0
     const rhi::image_barrier barrier =
-        app::make_image_barrier(shadow_map, rhi::image_layout::common, rhi::image_aspect::depth);
+        app::make_image_barrier(shadow_map, rhi::image_layout::discard, rhi::image_layout::common, rhi::image_aspect::depth);
 
     const rhi::barrier_batch barriers {
         .images = {&barrier, 1}

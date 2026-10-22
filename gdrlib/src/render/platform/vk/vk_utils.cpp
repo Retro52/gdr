@@ -301,6 +301,7 @@ VkImageLayout platform::vk_rhi_parse_image_layout(const rhi::image_layout layout
         return VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
     default :
     case rhi::image_layout::common :
+    case rhi::image_layout::storage :
         return VK_IMAGE_LAYOUT_GENERAL;
     }
 }

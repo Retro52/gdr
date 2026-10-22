@@ -53,11 +53,11 @@ void app::pass_aa::draw(const rhi::command_buffer cmd, const draw_params& params
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "AA pass");
 
-    rhi::image_barrier sync[] = {
-        app::make_image_barrier(output, rhi::image_layout::common),
+    const rhi::image_barrier pre_barriers[] = {
+        app::make_image_barrier(output, rhi::image_layout::discard, rhi::image_layout::storage),
     };
 
-    m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
+    m_rhi.cmd_barriers(cmd, {.images = std::span(pre_barriers)});
 
     switch (backend)
     {
@@ -73,7 +73,10 @@ void app::pass_aa::draw(const rhi::command_buffer cmd, const draw_params& params
         break;
     }
 
-    m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
+    const rhi::image_barrier post_barriers[] = {
+        app::make_image_barrier(output, rhi::image_layout::storage, rhi::image_layout::storage),
+    };
+    m_rhi.cmd_barriers(cmd, {.images = std::span(post_barriers)});
 }
 
 void app::pass_aa::on_render_display_size_changed(const uvec2 new_render_size, const uvec2 new_display_size)
@@ -93,6 +96,11 @@ void app::pass_aa::run_blit(const rhi::command_buffer cmd, const draw_params& pa
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Copy AA");
 
+    const rhi::image_barrier pre_barriers[] = {
+        app::make_image_barrier(output, rhi::image_layout::storage, rhi::image_layout::common),
+    };
+    m_rhi.cmd_barriers(cmd, {.images = std::span(pre_barriers)});
+
     m_rhi.cmd_image_blit(cmd,
                          params.color,
                          output,
@@ -102,6 +110,11 @@ void app::pass_aa::run_blit(const rhi::command_buffer cmd, const draw_params& pa
                              .aspects    = rhi::image_aspect::color,
                              .filter     = rhi::sampler_filter::linear,
                          });
+
+    const rhi::image_barrier post_barriers[] = {
+        app::make_image_barrier(output, rhi::image_layout::common, rhi::image_layout::storage),
+    };
+    m_rhi.cmd_barriers(cmd, {.images = std::span(post_barriers)});
 }
 
 void app::pass_aa::run_fxaa(const rhi::command_buffer cmd, const draw_params& params) const
@@ -125,18 +138,6 @@ void app::pass_aa::run_fxaa(const rhi::command_buffer cmd, const draw_params& pa
     m_rhi.cmd_push_constants(cmd, fxaa_pass, &m_render_res, sizeof(m_render_res), sizeof(fxaa_params.camera_near));
 
     m_rhi.cmd_dispatch(cmd, fxaa_pass, uvec3(m_render_res, 1));
-
-    constexpr rhi::global_barrier barrier {
-        .before = {.stages = rhi::barrier_stage::compute_shader,   .access = rhi::barrier_access::storage_write      },
-        .after  = {.stages = rhi::barrier_stage::color_attachment,
-                   .access = rhi::barrier_access::color_attachment_read | rhi::barrier_access::color_attachment_write},
-    };
-
-    const rhi::barrier_batch barriers {
-        .globals = {&barrier, 1}
-    };
-
-    m_rhi.cmd_barriers(cmd, barriers);
 }
 
 void app::pass_aa::run_fsr3(const rhi::command_buffer cmd, const draw_params& params) const
@@ -163,13 +164,26 @@ void app::pass_aa::run_mv_reconstruct(const rhi::command_buffer cmd, const draw_
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Motion vectors reconstruction");
 
-    rhi::image_barrier sync[] = {
-        app::make_image_barrier(motion_vectors, rhi::image_layout::common),
+    const rhi::image_barrier clear_barriers[] = {
+        app::make_image_barrier(motion_vectors, rhi::image_layout::discard, rhi::image_layout::render_target_color),
     };
 
-    m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
-    m_rhi.cmd_clear_color_attachment(cmd, motion_vectors, rhi::color_clear_value {.f4 = vec4(0.0F)});
-    m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
+    m_rhi.cmd_barriers(cmd, {.images = std::span(clear_barriers)});
+    const rhi::attachment_state_info clear_attachments[] = {
+        {.attachment  = motion_vectors,
+         .load_op     = rhi::resource_load_op::clear,
+         .clear_value = {.color = {.f4 = vec4(0.0F)}}},
+    };
+
+    m_rhi.cmd_set_draw_state(
+        cmd, clear_attachments, rhi::null_attachment_state_info, {0, 0, m_render_res.x, m_render_res.y});
+    m_rhi.cmd_clear_draw_state(cmd);
+
+    const rhi::image_barrier write_barriers[] = {
+        app::make_image_barrier(motion_vectors, rhi::image_layout::render_target_color, rhi::image_layout::storage),
+    };
+
+    m_rhi.cmd_barriers(cmd, {.images = std::span(write_barriers)});
 
     const auto& mv_pass = m_pipelines[pso_id::mv_from_depth_pipeline];
     m_rhi.cmd_bind_pso(cmd, mv_pass);
@@ -184,7 +198,10 @@ void app::pass_aa::run_mv_reconstruct(const rhi::command_buffer cmd, const draw_
     m_rhi.cmd_push_constants(cmd, mv_pass, &m_render_res, sizeof(m_render_res), 0);
     m_rhi.cmd_dispatch(cmd, mv_pass, uvec3(m_render_res, 1));
 
-    m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
+    const rhi::image_barrier read_barriers[] = {
+        app::make_image_barrier(motion_vectors, rhi::image_layout::storage, rhi::image_layout::common),
+    };
+    m_rhi.cmd_barriers(cmd, {.images = std::span(read_barriers)});
 }
 
 void app::pass_aa::destroy_resources()
