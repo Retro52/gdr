@@ -50,7 +50,7 @@ void app::pass_light_resolve::draw(const rhi::command_buffer cmd, const common_r
     m_rhi.cmd_barriers(cmd, {.images = std::span {transition_barriers}});
 
     const rhi::binding resolve_pass_bindings[] = {
-        rhi::binding(rhi::attachment(output)),
+        rhi::binding(rhi::attachment(this->output)),
         rhi::binding(rhi::attachment(params.color)),
         params.indices,
         res.vertex,
@@ -96,5 +96,5 @@ void app::pass_light_resolve::create_resources(const uvec2 render_res)
 {
     ZoneScoped;
     m_render_res = render_res;
-    output       = app::create_color_image(m_rhi, render_res, rhi::image_format::b10g11r11uf, m_ctx);
+    output = app::create_color_image(m_rhi, render_res, rhi::image_format::b10g11r11uf, m_ctx, "light resolve output");
 }

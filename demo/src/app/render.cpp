@@ -104,15 +104,16 @@ void app::reset_draw_count_buffer(const rhi::impl& rhi, rhi::command_buffer cmd,
 }
 
 rhi::image app::create_color_image(const rhi::impl& rhi, const ivec2& size, const rhi::image_format format,
-                                   const rhi::context ctx, const rhi::image_usage extra_usage)
+                                   const rhi::context ctx, const char* dbg_name,
+                                   const rhi::image_usage_bits extra_usage)
 {
     ZoneScoped;
     const rhi::create_image_info info {
-        .format      = format,
-        .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
-        .usage_flags = rhi::image_usage::sampled | rhi::image_usage::storage | rhi::image_usage::transfer_dst
-                     | rhi::image_usage::attachment_color | extra_usage,
-        .dbg_name = "unnamed color image",
+        .format     = format,
+        .dimensions = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
+        .usage_flags =
+            rhi::image_usage::sampled | rhi::image_usage::storage | rhi::image_usage::transfer_dst | extra_usage,
+        .dbg_name = dbg_name ? dbg_name : "unnamed color image",
     };
 
     return *rhi.create_image(ctx, info);
@@ -149,12 +150,15 @@ void app::destroy_depth_pyramid(const rhi::impl& rhi, depth_pyramid_data& pyrami
 rhi::image app::create_vis_buffer_image(const rhi::impl& rhi, const ivec2& size, const rhi::context ctx)
 {
     ZoneScoped;
+    rhi::clear_value clear_value = {};
+    clear_value.color.u4         = uvec4(~0U);
     const rhi::create_image_info info {
         .format      = rhi::image_format::r32g32ui,
         .dimensions  = {static_cast<u32>(size.x), static_cast<u32>(size.y), 1},
         .usage_flags = rhi::image_usage::sampled | rhi::image_usage::transfer_src | rhi::image_usage::transfer_dst
                      | rhi::image_usage::attachment_color | rhi::image_usage::storage,
-        .dbg_name = "vis_buffer_image",
+        .optimized_clear_value = clear_value,
+        .dbg_name              = "vis_buffer_image",
     };
 
     return *rhi.create_image(ctx, info);
