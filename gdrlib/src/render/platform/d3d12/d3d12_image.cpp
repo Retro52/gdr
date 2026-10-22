@@ -332,7 +332,7 @@ auto platform::d3d12_create_image(D3D12MA::Allocator* allocator, const D3D12_RES
                                   const D3D12_RESOURCE_FLAGS flags) -> result<d3d12_image>
 {
     ZoneScoped;
-    d3d12_image result;
+    d3d12_image result {.layout = D3D12_BARRIER_LAYOUT_COMMON};
 
     const D3D12_RESOURCE_DESC buf_desc {
         .Dimension        = type,

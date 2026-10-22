@@ -1,3 +1,4 @@
+#include <app/render.hpp>
 #include <passes/pass_dbg_frustum.hpp>
 #include <passes/scoped_label.hpp>
 #include <tracy/Tracy.hpp>
@@ -14,23 +15,16 @@ void app::pass_dbg_frustum::draw(const rhi::command_buffer cmd, const draw_param
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Debug frustum pass");
 
-    constexpr rhi::barrier_stage_bits kAttachmentStages = rhi::barrier_stage::color_attachment
-                                                    | rhi::barrier_stage::early_depth_stencil
-                                                    | rhi::barrier_stage::late_depth_stencil;
-    constexpr rhi::barrier_access_bits kAttachmentAccess =
-        rhi::barrier_access::color_attachment_read | rhi::barrier_access::color_attachment_write
-        | rhi::barrier_access::depth_stencil_read | rhi::barrier_access::depth_stencil_write;
-
-    constexpr rhi::global_barrier barrier {
-        .before = {.stages = kAttachmentStages, .access = kAttachmentAccess},
-        .after  = {.stages = kAttachmentStages, .access = kAttachmentAccess},
+    const rhi::image_barrier pre_barriers[] {
+        app::make_image_barrier(
+            params.output.get_image(), rhi::image_layout::common, rhi::image_layout::render_target_color),
+        app::make_image_barrier(params.depth.get_image(),
+                                rhi::image_layout::common,
+                                rhi::image_layout::render_target_depth_stencil,
+                                rhi::image_aspect::depth),
     };
 
-    const rhi::barrier_batch barriers {
-        .globals = {&barrier, 1}
-    };
-
-    m_rhi.cmd_barriers(cmd, barriers);
+    m_rhi.cmd_barriers(cmd, {.images = std::span {pre_barriers}});
 
     const rhi::attachment_state_info color_attachments[] = {
         {.attachment = params.output,
@@ -57,5 +51,15 @@ void app::pass_dbg_frustum::draw(const rhi::command_buffer cmd, const draw_param
     m_rhi.cmd_draw(cmd, 24, 1, 0, 0);
 
     m_rhi.cmd_clear_draw_state(cmd);
-    m_rhi.cmd_barriers(cmd, barriers);
+
+    const rhi::image_barrier post_barriers[] {
+        app::make_image_barrier(
+            params.output.get_image(), rhi::image_layout::render_target_color, rhi::image_layout::common),
+        app::make_image_barrier(params.depth.get_image(),
+                                rhi::image_layout::render_target_depth_stencil,
+                                rhi::image_layout::common,
+                                rhi::image_aspect::depth),
+    };
+
+    m_rhi.cmd_barriers(cmd, {.images = std::span {post_barriers}});
 }

@@ -35,8 +35,11 @@ namespace app
     depth_pyramid_data create_depth_pyramid(const rhi::impl& rhi, const ivec2& size, rhi::image_format format,
                                             rhi::context ctx);
 
-    rhi::image_barrier make_image_barrier(rhi::image image, rhi::image_layout new_layout,
-                                          rhi::image_aspect_bits aspect = rhi::image_aspect::color);
+    rhi::barrier_scope layout_scope(rhi::image_layout layout);
+
+    rhi::image_barrier make_image_barrier(rhi::image image, rhi::image_layout old_layout, rhi::image_layout new_layout,
+                                          rhi::image_aspect_bits aspect = rhi::image_aspect::color,
+                                          uvec2 mips_range              = uvec2(0, rhi::kMipsAll));
 
     rhi::image_barrier make_image_barrier(rhi::image image, rhi::image_layout old_layout, rhi::image_layout new_layout,
                                           rhi::barrier_stage_bits src_stages, rhi::barrier_stage_bits dst_stages,

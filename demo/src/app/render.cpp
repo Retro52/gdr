@@ -214,24 +214,46 @@ app::depth_pyramid_data app::create_depth_pyramid(const rhi::impl& rhi, const iv
     return depth_pyramid;
 }
 
-rhi::image_barrier app::make_image_barrier(const rhi::image image, const rhi::image_layout new_layout,
-                                           const rhi::image_aspect_bits aspect)
+rhi::barrier_scope app::layout_scope(const rhi::image_layout layout)
+{
+    switch (layout)
+    {
+    case rhi::image_layout::discard :
+        return {.stages = rhi::barrier_stage::all_commands, .access = rhi::barrier_access::none};
+    case rhi::image_layout::common :
+        return {.stages = rhi::barrier_stage::all_commands,
+                .access = rhi::barrier_access::sampled_read | rhi::barrier_access::copy_read
+                        | rhi::barrier_access::copy_write};
+    case rhi::image_layout::storage :
+        return {.stages = rhi::barrier_stage::all_commands,
+                .access = rhi::barrier_access::storage_read | rhi::barrier_access::storage_write};
+    case rhi::image_layout::render_target_color :
+        return {.stages = rhi::barrier_stage::color_attachment,
+                .access = rhi::barrier_access::color_attachment_read | rhi::barrier_access::color_attachment_write};
+    case rhi::image_layout::render_target_depth_stencil :
+        return {.stages = rhi::barrier_stage::early_depth_stencil | rhi::barrier_stage::late_depth_stencil,
+                .access = rhi::barrier_access::depth_stencil_read | rhi::barrier_access::depth_stencil_write};
+    case rhi::image_layout::present :
+        return {.stages = rhi::barrier_stage::none, .access = rhi::barrier_access::none};
+    default :
+        assert2m(false, "unknown layout to derive barrier scope");
+        return {.stages = rhi::barrier_stage::all_commands, .access = rhi::barrier_access::none};
+    }
+}
+
+rhi::image_barrier app::make_image_barrier(const rhi::image image, const rhi::image_layout old_layout,
+                                           const rhi::image_layout new_layout, const rhi::image_aspect_bits aspect,
+                                           const uvec2 mips_range)
 {
     ZoneScoped;
-    constexpr auto kOverkillWriteAccess = rhi::barrier_access::copy_write | rhi::barrier_access::color_attachment_write
-                                        | rhi::barrier_access::storage_write | rhi::barrier_access::depth_stencil_write;
-    constexpr auto kOverkillReadAccess = rhi::barrier_access::copy_read | rhi::barrier_access::sampled_read
-                                       | rhi::barrier_access::color_attachment_read | rhi::barrier_access::storage_read
-                                       | rhi::barrier_access::depth_stencil_read;
-
-    return make_image_barrier(image,
-                              rhi::image_layout::current,
-                              new_layout,
-                              rhi::barrier_stage::all_commands,
-                              rhi::barrier_stage::all_commands,
-                              kOverkillWriteAccess,
-                              kOverkillWriteAccess | kOverkillReadAccess,
-                              aspect);
+    return rhi::image_barrier {
+        .image         = image,
+        .before        = layout_scope(old_layout),
+        .after         = layout_scope(new_layout),
+        .layout_before = old_layout,
+        .layout_after  = new_layout,
+        .range         = {.aspects = aspect, .mips_range = mips_range},
+    };
 }
 
 rhi::image_barrier app::make_image_barrier(const rhi::image image, const rhi::image_layout old_layout,

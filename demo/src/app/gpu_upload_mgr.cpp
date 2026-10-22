@@ -49,8 +49,10 @@ rhi::image app::gpu_upload_mgr::create_texture(const loader::texture_desc& textu
     m_rhi.cmd_reset(cmd);
     m_rhi.cmd_begin_recording(cmd);
 
+    // copy queues can't change layouts on d3d12 (where the image is already created in common),
+    // so 'current' keeps it a no-op there while vulkan still gets its UNDEFINED -> GENERAL transition
     const auto barrier = app::make_image_barrier(image,
-                                                 rhi::image_layout::discard,
+                                                 rhi::image_layout::current,
                                                  rhi::image_layout::common,
                                                  rhi::barrier_stage::none,
                                                  rhi::barrier_stage::copy,

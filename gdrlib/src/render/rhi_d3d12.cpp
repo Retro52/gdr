@@ -139,8 +139,8 @@ static D3D12_TEXTURE_BARRIER d3d12_rhi_parse_image_barrier(const rhi::image_barr
         .LayoutAfter  = new_layout,
         .pResource    = d3d12_image->resource.Get(),
         .Subresources = platform::d3d12_rhi_parse_image_range(image_barrier.range, counts.x, counts.y),
-        .Flags        = image_barrier.layout_after == rhi::image_layout::discard ? D3D12_TEXTURE_BARRIER_FLAG_DISCARD
-                                                                                 : D3D12_TEXTURE_BARRIER_FLAG_NONE,
+        .Flags        = image_barrier.layout_before == rhi::image_layout::discard ? D3D12_TEXTURE_BARRIER_FLAG_DISCARD
+                                                                                  : D3D12_TEXTURE_BARRIER_FLAG_NONE,
     };
 }
 
