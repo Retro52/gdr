@@ -572,7 +572,8 @@ auto rhi::d3d12_create_image(context context, const create_image_info& image_inf
                                      platform::d3d12_format_from_vk(static_cast<VkFormat>(image_info.format)),
                                      image_info.mips_count,
                                      d3d12_dimensions,
-                                     platform::d3d12_rhi_parse_image_usage(image_info.usage_flags));
+                                     platform::d3d12_rhi_parse_image_usage(image_info.usage_flags),
+                                     image_info.optimized_clear_value);
     RESULT_FORWARD_IF_FAILED(d3d12_image);
 
     const auto resource_desc = d3d12_image->resource->GetDesc();
@@ -1075,6 +1076,8 @@ void rhi::d3d12_cmd_image_blit(command_buffer cmd, image src, image dst, const b
     {
         return;
     }
+
+    LOG_ERROR("TODO: d3d12_cmd_image_blit is not implemented!");
 }
 
 void rhi::d3d12_cmd_copy_buffer(command_buffer cmd, buffer src_buffer, const u64vec2 src_range, buffer dst_buffer,

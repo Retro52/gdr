@@ -329,7 +329,8 @@ void platform::d3d12_destroy_image_view(d3d12_image_view& view, const d3d12_heap
 
 auto platform::d3d12_create_image(D3D12MA::Allocator* allocator, const D3D12_RESOURCE_DIMENSION type,
                                   const DXGI_FORMAT format, const u32 mips, const uvec3 dimensions,
-                                  const D3D12_RESOURCE_FLAGS flags) -> result<d3d12_image>
+                                  const D3D12_RESOURCE_FLAGS flags, rhi::clear_value optimized_clear_value)
+    -> result<d3d12_image>
 {
     ZoneScoped;
     d3d12_image result {.layout = D3D12_BARRIER_LAYOUT_COMMON};
@@ -348,8 +349,24 @@ auto platform::d3d12_create_image(D3D12MA::Allocator* allocator, const D3D12_RES
 
     constexpr D3D12MA::ALLOCATION_DESC ma_desc = {.HeapType = D3D12_HEAP_TYPE_DEFAULT};
 
+    const D3D12_CLEAR_VALUE* p_cv    = nullptr;
+    D3D12_CLEAR_VALUE op_clear_value = {.Format = format};
+    if (flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL)
+    {
+        p_cv                        = &op_clear_value;
+        op_clear_value.DepthStencil = {
+            .Depth   = optimized_clear_value.ds.depth,
+            .Stencil = optimized_clear_value.ds.stencil,
+        };
+    }
+    else if (flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET)
+    {
+        p_cv = &op_clear_value;
+        cpp::cx_copy_n(&op_clear_value.Color[0], &optimized_clear_value.color.f4.x, 4);
+    }
+
     D3D12_RETURN_ON_FAIL(allocator->CreateResource(
-        &ma_desc, &buf_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, &result.allocation, IID_PPV_ARGS(&result.resource)));
+        &ma_desc, &buf_desc, D3D12_RESOURCE_STATE_COMMON, p_cv, &result.allocation, IID_PPV_ARGS(&result.resource)));
 
     return result;
 }

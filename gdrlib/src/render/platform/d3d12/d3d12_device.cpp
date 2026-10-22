@@ -264,6 +264,7 @@ static bool check_device_features(ID3D12Device* device, const D3D_SHADER_MODEL d
     // TODO: d3d12 does not support DrawId param, so all the shaders should be emulating it somehow
     // this may be the same workaround as I did for the MoltenVK, but MVK did not support mesh shaders,
     // so it's a huge TBD if that will even work for d3d12.
+    wanted_features.set_supported(rhi::feature_flag::debug_labels, true);
     wanted_features.set_supported(rhi::feature_flag::draw_indirect, true);
     wanted_features.set_supported(rhi::feature_flag::dynamic_render, true);
     wanted_features.set_supported(rhi::feature_flag::sampler_min_max, true);
@@ -320,7 +321,7 @@ static HRESULT pick_and_create_device(platform::d3d12_context& ctx,
         platform::com_ptr<ID3D12Device10> device;
         {
             ZoneScopedN("D3D12CreateDevice");
-            if (FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&device))))
+            if (FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_2, IID_PPV_ARGS(&device))))
             {
                 LOG_DEBUG("Device #{} does not support the minimum feature level (12.0)", i);
                 continue;

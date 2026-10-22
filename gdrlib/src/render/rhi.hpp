@@ -156,6 +156,8 @@ namespace rhi
 
     struct impl
     {
+        const char* name = nullptr;
+
         create_context_pfn create_context;
         destroy_context_pfn destroy_context;
 

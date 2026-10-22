@@ -67,6 +67,10 @@ void app::pass_post_process::create_resources(const uvec2 display_res)
 {
     ZoneScoped;
     m_display_res = display_res;
-    output        = app::create_color_image(
-        m_rhi, display_res, rhi::image_format::r8g8b8a8un, m_ctx, rhi::image_usage::transfer_src);
+    output        = app::create_color_image(m_rhi,
+                                     display_res,
+                                     rhi::image_format::r8g8b8a8un,
+                                     m_ctx,
+                                     "post process output",
+                                     rhi::image_usage::transfer_src | rhi::image_usage::attachment_color);
 }

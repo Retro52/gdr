@@ -218,10 +218,14 @@ void app::pass_aa::create_resources(const uvec2 render_res, const uvec2 display_
     m_render_res  = render_res;
     m_display_res = display_res;
 
-    motion_vectors =
-        create_color_image(m_rhi, render_res, rhi::image_format::r16g16sf, m_ctx, rhi::image_usage::transfer_src);
+    motion_vectors = create_color_image(m_rhi,
+                                        render_res,
+                                        rhi::image_format::r16g16sf,
+                                        m_ctx,
+                                        "motion vectors",
+                                        rhi::image_usage::attachment_color | rhi::image_usage::transfer_src);
 
-    output      = app::create_color_image(m_rhi, display_res, rhi::image_format::b10g11r11uf, m_ctx);
+    output      = app::create_color_image(m_rhi, display_res, rhi::image_format::b10g11r11uf, m_ctx, "AA output");
     ffx_context = *m_rhi.ffx_create_upscale_context(m_ctx,
                                                     rhi::ffx_upscale_desc {
                                                         .display_size    = display_res,

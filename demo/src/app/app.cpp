@@ -257,9 +257,8 @@ static rhi::instance_desc get_instance_desc(auto& args)
                                         .require(rhi::feature_flag::scalar_block_layout)
                                         .require(rhi::feature_flag::synchronization2);
     return rhi::instance_desc {
-        .app_name       = "GDR",
-        .device_id_hint = 0,
-        // .device_id_hint  = static_cast<u32>(args.read_numeric("--device_id", rhi::kDeviceIdDealersChoice)),
+        .app_name        = "GDR",
+        .device_id_hint  = static_cast<u32>(args.read_numeric("--device_id", rhi::kDeviceIdDealersChoice)),
         .device_features = features_table,
     };
 }
@@ -821,10 +820,10 @@ int app::instance::run()
 
                 static f64 accumulated_time = 0.0;
                 accumulated_time            = accumulated_time * 0.95 + dt * 0.05;
-                const auto str              = cpp::stack_string::make_formatted(
-                    "[%s] CPU: %.3lfms",
-                    reflection::get_enum_name_at<debug_mode>(static_cast<u32>(draw_debug_mode)),
-                    accumulated_time * 1000.0F);
+                const auto str              = cpp::stack_string::make_formatted("[%s] [%s] CPU: %.3lfms",
+                                                                   reflection::string_from_enum(draw_debug_mode),
+                                                                   m_rhi.name,
+                                                                   accumulated_time * 1000.0F);
                 SDL_SetWindowTitle(m_window.get_native_handle().window, str.c_str());
 
                 FrameMark;

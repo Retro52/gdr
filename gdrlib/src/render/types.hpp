@@ -463,10 +463,11 @@ namespace rhi
     {
         image_format format = image_format::none;
 
-        u32 mips_count               = 1;
-        u32 layer_count              = 1;
-        uvec3 dimensions             = uvec3(1, 1, 1);
-        image_usage_bits usage_flags = image_usage::sampled;
+        u32 mips_count                    = 1;
+        u32 layer_count                   = 1;
+        uvec3 dimensions                  = uvec3(1, 1, 1);
+        image_usage_bits usage_flags      = image_usage::sampled;
+        clear_value optimized_clear_value = {.color = {.u4 = uvec4(0)}};
 
         const char* dbg_name = nullptr;
     };

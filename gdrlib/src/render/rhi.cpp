@@ -6,6 +6,8 @@
 rhi::impl rhi::create_for_d3d12()
 {
     constexpr rhi::impl result {
+        .name = "DirectX 12.2",
+
         .create_context         = d3d12_create_context,
         .destroy_context        = d3d12_destroy_context,
         .create_swapchain       = d3d12_create_swapchain,
@@ -113,6 +115,8 @@ rhi::impl rhi::create_for_d3d12()
 rhi::impl rhi::create_for_vk()
 {
     constexpr rhi::impl result {
+        .name = "Vulkan 1.4",
+
         .create_context         = vk_create_context,
         .destroy_context        = vk_destroy_context,
         .create_swapchain       = vk_create_swapchain,
