@@ -18,6 +18,8 @@
 #include <render/rhi_util.hpp>
 #include <tracy/Tracy.hpp>
 
+#include <render/platform/d3d12/d3d12_blit.comp.hlsl>
+
 template<typename T, typename H>
 static T* d3d12_rhi_object_from_handle(H handle)
 {
@@ -375,17 +377,32 @@ auto rhi::d3d12_create_command_buffer(context context, const queue_kind queue_ki
         d3d12_ctx->device.Get(), d3d12_ctx->allocator.Get(), type, shader_visible_heaps);
     RESULT_FORWARD_IF_FAILED(command_list);
 
+    if (type != D3D12_COMMAND_LIST_TYPE_COPY)
+    {
+        command_list->blit          = &d3d12_ctx->blit;
+        command_list->scratch_descs = {
+            .count  = platform::kD3D12_CommandListScratchDescs,
+            .stride = d3d12_ctx->cbv_srv_uav_descriptor_heap.stride,
+            .start  = d3d12_ctx->cbv_srv_uav_descriptor_heap.alloc(platform::kD3D12_CommandListScratchDescs),
+        };
+    }
+
     return create_handle<command_buffer>(*command_list);
 }
 
 void rhi::d3d12_destroy_command_buffer(context context, command_buffer& cmd)
 {
     ZoneScoped;
-    auto* d3d12_cmd       = cast_from_handle<platform::d3d12_command_list>(cmd);
-    const auto* d3d12_ctx = cast_from_handle<platform::d3d12_context>(context);
+    auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd);
+    auto* d3d12_ctx = cast_from_handle<platform::d3d12_context>(context);
 
     if (d3d12_ctx && d3d12_cmd)
     {
+        if (d3d12_cmd->scratch_descs.count > 0)
+        {
+            d3d12_ctx->cbv_srv_uav_descriptor_heap.free(d3d12_cmd->scratch_descs.start, d3d12_cmd->scratch_descs.count);
+        }
+
         platform::d3d12_destroy_command_list(*d3d12_cmd);
         clear_handle(d3d12_cmd, cmd);
     }
@@ -966,7 +983,9 @@ void rhi::d3d12_cmd_begin_recording(command_buffer cmd)
 
     if (const auto gfx_command_list = d3d12_rhi_get_gfx_command_list(d3d12_cmd))
     {
-        d3d12_cmd->scratch_head = 0;
+        d3d12_cmd->pc_size            = 0;
+        d3d12_cmd->scratch_head       = 0;
+        d3d12_cmd->scratch_descs_head = 0;
         D3D12_ASSERT_ON_FAIL(d3d12_cmd->allocator->Reset());
         D3D12_ASSERT_ON_FAIL(gfx_command_list->Reset(d3d12_cmd->allocator.Get(), nullptr));
 
@@ -1067,7 +1086,7 @@ void rhi::d3d12_cmd_barriers(command_buffer cmd, const barrier_batch& barriers)
 void rhi::d3d12_cmd_image_blit(command_buffer cmd, image src, image dst, const blit_image_info& info)
 {
     ZoneScoped;
-    const auto* d3d12_cmd       = cast_from_handle<platform::d3d12_command_list>(cmd);
+    auto* d3d12_cmd             = cast_from_handle<platform::d3d12_command_list>(cmd);
     const auto* d3d12_src_image = cast_from_handle<platform::d3d12_image>(src);
     const auto* d3d12_dst_image = cast_from_handle<platform::d3d12_image>(dst);
 
@@ -1077,7 +1096,127 @@ void rhi::d3d12_cmd_image_blit(command_buffer cmd, image src, image dst, const b
         return;
     }
 
-    LOG_ERROR("TODO: d3d12_cmd_image_blit is not implemented!");
+    assert2m(d3d12_cmd->blit, "blits are unavailable on a copy command list");
+    assert2m(d3d12_cmd->scratch_descs_head + 2 <= d3d12_cmd->scratch_descs.count, "blit descriptors exhausted");
+    assert2m(d3d12_src_image->layout == D3D12_BARRIER_LAYOUT_COMMON
+                 && d3d12_dst_image->layout == D3D12_BARRIER_LAYOUT_COMMON,
+             "blit images have to be in the common layout");
+
+    const auto gfx_command_list = d3d12_rhi_get_gfx_command_list<ID3D12GraphicsCommandList7>(d3d12_cmd);
+    if (!gfx_command_list || !d3d12_cmd->blit || d3d12_cmd->scratch_descs_head + 2 > d3d12_cmd->scratch_descs.count)
+    {
+        return;
+    }
+
+    const auto src_desc   = d3d12_src_image->resource->GetDesc();
+    const auto dst_desc   = d3d12_dst_image->resource->GetDesc();
+    const auto src_counts = d3d12_rhi_subresource_counts(src_desc);
+    const auto dst_counts = d3d12_rhi_subresource_counts(dst_desc);
+
+    const u32 layers = info.dst_layers.y == kLayersAll ? dst_counts.y - info.dst_layers.x : info.dst_layers.y;
+    const u32 descs  = d3d12_cmd->scratch_descs_head;
+    d3d12_cmd->scratch_descs_head += 2;
+
+    const platform::d3d12_image_view src_view {
+        .source     = d3d12_src_image->resource.Get(),
+        .desc       = {.mips   = uvec2(info.src_mip, 1),
+                       .layers = uvec2(info.src_layers.x, layers),
+                       .format = src_desc.Format,
+                       .kind   = image_view_kind::array_2d},
+        .view_types = platform::d3d12_image_view_type::srv,
+    };
+
+    const platform::d3d12_image_view dst_view {
+        .source     = d3d12_dst_image->resource.Get(),
+        .desc       = {.mips   = uvec2(info.dst_mip, 1),
+                       .layers = uvec2(info.dst_layers.x, layers),
+                       .format = dst_desc.Format,
+                       .kind   = image_view_kind::array_2d},
+        .view_types = platform::d3d12_image_view_type::uav,
+    };
+
+    platform::d3d12_write_srv(d3d12_cmd->device, src_view, d3d12_cmd->scratch_descs.cpu_at(descs));
+    platform::d3d12_write_uav(d3d12_cmd->device, dst_view, d3d12_cmd->scratch_descs.cpu_at(descs + 1));
+
+    const ivec2 src_extent = ivec2(info.src_extent) - ivec2(info.src_offset);
+    const ivec2 dst_extent = ivec2(info.dst_extent) - ivec2(info.dst_offset);
+    const uvec2 src_size =
+        uvec2(cpp::max<u64>(src_desc.Width >> info.src_mip, 1), cpp::max<u32>(src_desc.Height >> info.src_mip, 1));
+
+    const platform::blit_shader::d3d12_blit_params params {
+        .scale         = vec2(src_extent) / vec2(dst_extent),
+        .offset        = vec2(info.src_offset),
+        .inv_src_size  = 1.0F / vec2(src_size),
+        .dst_offset    = uvec2(info.dst_offset),
+        .dst_extent    = uvec2(dst_extent),
+        .linear_filter = info.filter == sampler_filter::linear,
+    };
+
+    const image_subresource_range src_range {
+        .aspects      = info.aspects,
+        .mips_range   = uvec2(info.src_mip, 1),
+        .layers_range = uvec2(info.src_layers.x, layers),
+    };
+
+    const image_subresource_range dst_range {
+        .aspects      = info.aspects,
+        .mips_range   = uvec2(info.dst_mip, 1),
+        .layers_range = uvec2(info.dst_layers.x, layers),
+    };
+
+    // the app syncs blits as copies, so the dispatch is bridged to the copy scope on both ends
+    const D3D12_TEXTURE_BARRIER src_barrier {
+        .SyncBefore   = D3D12_BARRIER_SYNC_ALL,
+        .SyncAfter    = D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+        .AccessBefore = D3D12_BARRIER_ACCESS_COPY_SOURCE,
+        .AccessAfter  = D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+        .LayoutBefore = D3D12_BARRIER_LAYOUT_COMMON,
+        .LayoutAfter  = D3D12_BARRIER_LAYOUT_COMMON,
+        .pResource    = d3d12_src_image->resource.Get(),
+        .Subresources = platform::d3d12_rhi_parse_image_range(src_range, src_counts.x, src_counts.y),
+    };
+
+    const D3D12_TEXTURE_BARRIER dst_barrier {
+        .SyncBefore   = D3D12_BARRIER_SYNC_ALL,
+        .SyncAfter    = D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+        .AccessBefore = D3D12_BARRIER_ACCESS_COPY_DEST,
+        .AccessAfter  = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+        .LayoutBefore = D3D12_BARRIER_LAYOUT_COMMON,
+        .LayoutAfter  = D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+        .pResource    = d3d12_dst_image->resource.Get(),
+        .Subresources = platform::d3d12_rhi_parse_image_range(dst_range, dst_counts.x, dst_counts.y),
+    };
+
+    D3D12_TEXTURE_BARRIER barriers[] = {src_barrier, dst_barrier};
+
+    const D3D12_BARRIER_GROUP barrier_group {
+        .Type             = D3D12_BARRIER_TYPE_TEXTURE,
+        .NumBarriers      = COUNT_OF(barriers),
+        .pTextureBarriers = barriers,
+    };
+
+    gfx_command_list->Barrier(1, &barrier_group);
+
+    const auto groups = d3d12_align_wg3(
+        uvec3(params.dst_extent, layers),
+        uvec3(platform::blit_shader::kD3D12_BlitGroupSize, platform::blit_shader::kD3D12_BlitGroupSize, 1));
+
+    gfx_command_list->SetPipelineState(d3d12_cmd->blit->pso.Get());
+    gfx_command_list->SetComputeRootSignature(d3d12_cmd->blit->signature.Get());
+    gfx_command_list->SetComputeRoot32BitConstants(0, sizeof(params) / sizeof(u32), &params, 0);
+    gfx_command_list->SetComputeRootDescriptorTable(1, d3d12_cmd->scratch_descs.gpu_at(descs));
+    gfx_command_list->Dispatch(groups.x, groups.y, groups.z);
+
+    for (auto& barrier : barriers)
+    {
+        barrier.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+        barrier.SyncAfter  = D3D12_BARRIER_SYNC_COPY;
+        std::swap(barrier.AccessBefore, barrier.AccessAfter);
+        std::swap(barrier.LayoutBefore, barrier.LayoutAfter);
+    }
+
+    gfx_command_list->Barrier(1, &barrier_group);
+    d3d12_rhi_refresh_pso_bind(d3d12_cmd);
 }
 
 void rhi::d3d12_cmd_copy_buffer(command_buffer cmd, buffer src_buffer, const u64vec2 src_range, buffer dst_buffer,

@@ -312,6 +312,20 @@ void platform::d3d12_write_srv(ID3D12Device* device, const d3d12_image_view& vie
     device->CreateShaderResourceView(view.source, &d3d12_desc, dst);
 }
 
+void platform::d3d12_write_uav(ID3D12Device* device, const d3d12_image_view& view,
+                               const D3D12_CPU_DESCRIPTOR_HANDLE dst)
+{
+    ZoneScoped;
+    assert2(view.source && (view.view_types & d3d12_image_view_type::uav));
+    if (!view.source)
+    {
+        return;
+    }
+
+    const auto d3d12_desc = d3d12_make_uav_desc(view.desc);
+    device->CreateUnorderedAccessView(view.source, nullptr, &d3d12_desc, dst);
+}
+
 void platform::d3d12_destroy_image_view(d3d12_image_view& view, const d3d12_heaps_view& heaps)
 {
     if (view.view_types & d3d12_image_view_type::dsv)

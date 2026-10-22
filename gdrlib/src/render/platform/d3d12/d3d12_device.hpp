@@ -2,6 +2,7 @@
 
 #include <cpp/containers/heap_array.hpp>
 #include <render/platform/d3d12/d3d12.hpp>
+#include <render/platform/d3d12/d3d12_blit.hpp>
 #include <render/platform/d3d12/d3d12_desc_heap.hpp>
 #include <render/platform/d3d12/d3d12_fence.hpp>
 #include <render/platform/d3d12/d3d12_image.hpp>
@@ -37,6 +38,8 @@ namespace platform
         com_ptr<IDXGIAdapter4> adapter       = nullptr;
         com_ptr<ID3D12InfoQueue1> info_queue = nullptr;
         com_ptr<ID3D12CommandQueue> queues[kD3D12_CommandQueuesCount];
+
+        d3d12_blit_pipeline blit;
 
         d3d12_desc_heap rtv_descriptor_heap;
         d3d12_desc_heap dsv_descriptor_heap;

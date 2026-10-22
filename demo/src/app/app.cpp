@@ -230,7 +230,7 @@ static rhi::impl load_rhi(const app::argv_handler& args)
         logging::s_instance->set_log_level(static_cast<quill::LogLevel>(ll));
     }
 
-    const bool use_dx12 = args.read_numeric("--use_dx12");
+    const bool use_dx12 = args.read_numeric("--use_dx12", 1);
 
 #if GDR_ENABLE_DX12_BACKEND
     return use_dx12 ? rhi::create_for_d3d12() : rhi::create_for_vk();

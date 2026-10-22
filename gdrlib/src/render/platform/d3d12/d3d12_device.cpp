@@ -5,7 +5,6 @@
 #include <render/platform/d3d12/d3d12_queue.hpp>
 #include <tracy/Tracy.hpp>
 
-// FIXME: extract into a utility
 static cpp::big_stack_string to_utf8(const wchar_t* wide)
 {
     ZoneScoped;
@@ -24,8 +23,8 @@ static cpp::stack_string format_bytes_number(u64 number)
 
     const char* magnitudes_per_thousand[] = {"KB", "MB", "GB", "TB"};
 
-    auto magnitude     = static_cast<i32>(std::log2(number) / 10);
-    const f64 fraction = static_cast<f64>(number) / std::pow(1024, magnitude);
+    const auto magnitude = static_cast<i32>(std::log2(number) / 10);
+    const f64 fraction   = static_cast<f64>(number) / std::pow(1024, magnitude);
     return cpp::stack_string::make_formatted("%.3lf %s", fraction, magnitudes_per_thousand[magnitude - 1]);
 }
 
@@ -321,9 +320,10 @@ static HRESULT pick_and_create_device(platform::d3d12_context& ctx,
         platform::com_ptr<ID3D12Device10> device;
         {
             ZoneScopedN("D3D12CreateDevice");
-            if (FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_2, IID_PPV_ARGS(&device))))
+            if (const auto ec = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&device)); FAILED(ec))
             {
-                LOG_DEBUG("Device #{} does not support the minimum feature level (12.0)", i);
+                D3D12_ASSERT_ON_FAIL(ec);
+                LOG_DEBUG("Device #{} creation failed (hr = {:#010x})", i, static_cast<u32>(ec));
                 continue;
             }
         }
@@ -376,6 +376,7 @@ void platform::d3d12_destroy_context(d3d12_context& ctx)
 {
     ZoneScoped;
 
+    ctx.blit = {};
     ctx.allocator.Reset();
     for (auto& queue : ctx.queues)
     {
@@ -445,6 +446,9 @@ auto platform::d3d12_create_context(const window& window, const rhi::instance_de
     context.queues[kD3D12_CommandQueueDirect]  = *queue_direct;
     context.queues[kD3D12_CommandQueueCompute] = *queue_compute;
 
+    auto blit = d3d12_create_blit_pipeline(context.device.Get());
+    RESULT_FORWARD_IF_FAILED(blit);
+
     auto cbv_srv_uav_desc_heap = d3d12_create_desc_heap(
         context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kD3D12_CBV_SRV_UAV_HeapMaxDescCount);
     RESULT_FORWARD_IF_FAILED(cbv_srv_uav_desc_heap);
@@ -465,6 +469,7 @@ auto platform::d3d12_create_context(const window& window, const rhi::instance_de
         d3d12_create_desc_heap(context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, kD3D12_DSV_HeapMaxDescCount);
     RESULT_FORWARD_IF_FAILED(dsv_desc_heap);
 
+    context.blit                            = *blit;
     context.rtv_descriptor_heap             = *rtv_desc_heap;
     context.dsv_descriptor_heap             = *dsv_desc_heap;
     context.sampler_descriptor_heap         = *sampler_desc_heap;
@@ -483,9 +488,6 @@ auto platform::d3d12_update_back_buffers(platform::d3d12_context& d3d12_context,
         auto& pfd = result[i];
         D3D12_RETURN_ON_FAIL(swapchain->GetBuffer(i, IID_PPV_ARGS(&pfd.image.resource)));
 
-        // back buffers get an rtv and nothing else, so they are built by hand rather than through
-        // d3d12_create_image_view - but they still have to describe themselves like any other view,
-        // or attachment clears and barriers have no metadata to work from
         pfd.image.view.source     = pfd.image.resource.Get();
         pfd.image.view.view_types = d3d12_image_view_type::rtv;
         pfd.image.view.desc       = d3d12_image_view_desc {
@@ -533,7 +535,8 @@ auto platform::d3d12_create_swapchain(d3d12_context& d3d12_context, const DXGI_F
         .Format      = format,
         .Stereo      = FALSE,
         .SampleDesc  = {.Count = 1, .Quality = 0},
-        .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_BACK_BUFFER,
+        .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_UNORDERED_ACCESS
+                     | DXGI_USAGE_BACK_BUFFER,
         .BufferCount = frames_in_flight,
         .Scaling     = DXGI_SCALING_NONE,
         .SwapEffect  = DXGI_SWAP_EFFECT_FLIP_DISCARD,
