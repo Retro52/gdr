@@ -15,8 +15,11 @@ file(GLOB_RECURSE SOURCES
 add_executable(${PROJECT_NAME} ${SOURCES} ${SHADERS} ${CODEGEN_GENERATED_HEADERS})
 add_dependencies(${PROJECT_NAME} shaders)
 
-add_ffx_dependency_vk   (${PROJECT_NAME})
-add_ffx_dependency_d3d12(${PROJECT_NAME})
+add_ffx_dependencies(
+        TARGET ${PROJECT_NAME}
+        BACKENDS VULKAN D3D12
+        COMPONENTS UPSCALE
+)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
         shaders

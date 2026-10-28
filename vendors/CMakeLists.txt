@@ -68,29 +68,53 @@ target_include_directories(ddspp INTERFACE ddspp)
 
 add_library(ffx_api INTERFACE)
 add_library(ffx::ffx_api ALIAS ffx_api)
-target_include_directories(ffx_api INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/fidelity-fx-sdk/ffx-api/include)
+target_include_directories(ffx_api
+        INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/fidelity-fx-sdk/Kits/FidelityFX/api/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/fidelity-fx-sdk/Kits/FidelityFX/upscalers/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/fidelity-fx-sdk/Kits/FidelityFX/framegeneration/include
+)
 
-function(add_ffx_dependency_vk TARGET)
-    if (WIN32)
-        get_target_property(FFX_API_SOURCE_DIR ffx::ffx_api SOURCE_DIR)
-        target_link_libraries(${TARGET}
-                PRIVATE
-                ${FFX_API_SOURCE_DIR}/fidelity-fx-sdk/PrebuiltSignedDLL/amd_fidelityfx_vk.lib)
-        add_custom_command(TARGET ${TARGET} POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${FFX_API_SOURCE_DIR}/fidelity-fx-sdk/PrebuiltSignedDLL/amd_fidelityfx_vk.dll $<TARGET_FILE_DIR:${TARGET}>)
+function(add_ffx_dependencies)
+    cmake_parse_arguments(FFX "" "TARGET" "COMPONENTS;BACKENDS" ${ARGN})
+    if (NOT WIN32)
+        return()
     endif ()
-endfunction()
 
-function(add_ffx_dependency_d3d12 TARGET)
-    if (WIN32)
-        get_target_property(FFX_API_SOURCE_DIR ffx::ffx_api SOURCE_DIR)
-        target_link_libraries(${TARGET}
+    foreach (FFX_BACKEND IN LISTS FFX_BACKENDS)
+        string(TOUPPER "${FFX_BACKEND}" FFX_BACKEND)
+        if (FFX_BACKEND STREQUAL "VULKAN")
+            list(APPEND FFX_INTERNAL_POSTFIXES "vk")
+        elseif (FFX_BACKEND STREQUAL "D3D12")
+            list(APPEND FFX_INTERNAL_POSTFIXES "dx12")
+        endif ()
+    endforeach ()
+
+    get_target_property(FFX_API_SOURCE_DIR ffx::ffx_api SOURCE_DIR)
+    set(FFX_API_ROOT_BIN "${FFX_API_SOURCE_DIR}/fidelity-fx-sdk/Kits/FidelityFX/signedbin")
+
+    foreach (FFX_POSTFIX IN LISTS FFX_INTERNAL_POSTFIXES)
+        target_link_libraries(${FFX_TARGET}
                 PRIVATE
-                ${FFX_API_SOURCE_DIR}/fidelity-fx-sdk/PrebuiltSignedDLL/amd_fidelityfx_dx12.lib)
-
-        add_custom_command(TARGET ${TARGET} POST_BUILD
+                ffx::ffx_api
+                ${FFX_API_ROOT_BIN}/amd_fidelityfx_loader_${FFX_POSTFIX}.lib)
+        add_custom_command(TARGET ${FFX_TARGET} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${FFX_API_SOURCE_DIR}/fidelity-fx-sdk/PrebuiltSignedDLL/amd_fidelityfx_dx12.dll $<TARGET_FILE_DIR:${TARGET}>)
-    endif ()
+                ${FFX_API_ROOT_BIN}/amd_fidelityfx_loader_${FFX_POSTFIX}.dll $<TARGET_FILE_DIR:${FFX_TARGET}>)
+
+        foreach (FFX_COMPONENT IN LISTS FFX_COMPONENTS)
+            string(TOUPPER "${FFX_COMPONENT}" FFX_COMPONENT)
+            if (FFX_COMPONENT STREQUAL "UPSCALE")
+                add_custom_command(TARGET ${FFX_TARGET} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${FFX_API_ROOT_BIN}/amd_fidelityfx_upscaler_${FFX_POSTFIX}.dll $<TARGET_FILE_DIR:${FFX_TARGET}>)
+            elseif (FFX_COMPONENT STREQUAL "FRAMEGEN")
+                add_custom_command(TARGET ${FFX_TARGET} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${FFX_API_ROOT_BIN}/amd_fidelityfx_framegeneration_${FFX_POSTFIX}.dll $<TARGET_FILE_DIR:${FFX_TARGET}>)
+            else ()
+                message(WARNING "Unknown VK FFX component ${FFX_COMPONENT}")
+            endif ()
+        endforeach ()
+    endforeach ()
 endfunction()

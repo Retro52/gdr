@@ -13,10 +13,6 @@
 #include <render/rhi_util.hpp>
 #include <render/rhi_vk.hpp>
 
-// clang-format off
-#include <ffx_api/vk/ffx_api_vk.hpp>
-// clang-format on
-
 struct vk_swapchain_sync_objects
 {
     VkFence fence {VK_NULL_HANDLE};

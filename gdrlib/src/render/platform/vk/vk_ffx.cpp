@@ -1,9 +1,9 @@
-#include <ffx_api/ffx_upscale.hpp>
+#include <ffx_upscale.hpp>
 #include <log.hpp>
 #include <render/platform/vk/vk_ffx.hpp>
 
 // clang-format off
-#include <ffx_api/vk/ffx_api_vk.hpp>
+#include <vk/ffx_api_vk.hpp>
 // clang-format on
 
 static PFN_vkVoidFunction VKAPI_PTR vk_ffx_get_device_proc_addr_wrapper(VkDevice device, const char* name)
@@ -94,9 +94,9 @@ result<ffx::Context> platform::vk_ffx_create_upscale_context(VkDevice device, Vk
 {
     ffx::Context ctx {};
     ffx::CreateBackendVKDesc backend_desc {};
-    backend_desc.vkDevice         = device;
-    backend_desc.vkPhysicalDevice = physical_device;
-    backend_desc.vkDeviceProcAddr = vk_ffx_get_device_proc_addr_wrapper;
+    backend_desc.deviceContext.vkDevice         = device;
+    backend_desc.deviceContext.vkPhysicalDevice = physical_device;
+    backend_desc.deviceContext.vkDeviceProcAddr = vk_ffx_get_device_proc_addr_wrapper;
 
     ffx::CreateContextDescUpscale upscale_desc {};
 

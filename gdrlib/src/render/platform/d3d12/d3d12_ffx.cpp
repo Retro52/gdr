@@ -1,10 +1,10 @@
-#include <ffx_api/ffx_upscale.hpp>
+#include <ffx_upscale.hpp>
 #include <log.hpp>
 #include <render/platform/d3d12/d3d12_ffx.hpp>
 #include <tracy/Tracy.hpp>
 
 // clang-format off
-#include <ffx_api/dx12/ffx_api_dx12.hpp>
+#include <dx12/ffx_api_dx12.hpp>
 // clang-format on
 
 FfxApiResource platform::d3d12_ffx_get_resource_wrapper(const d3d12_image& image)
