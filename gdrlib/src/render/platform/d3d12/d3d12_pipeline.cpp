@@ -751,7 +751,7 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
     };
 
     cpp::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
-    if (!options.enable_dynstate_cull_mode || true)
+    if (!options.enable_dynstate_cull_mode)
     {
         variants.resize(1);
         set_cull_mode(D3D12_CULL_MODE_BACK);

@@ -21,6 +21,9 @@
 #include <ddspp.h>
 #include <render/platform/d3d12/d3d12_blit.comp.hlsl>
 
+#define USE_PIX
+#include <WinPixEventRuntime/pix3.h>
+
 #define D3D12_BIND_RETURN_ON_INVALID_INDEX(index)               \
     if (index == platform::d3d12_root_signature::kInvalidDedup) \
         return;
@@ -2023,7 +2026,11 @@ void rhi::d3d12_cmd_debug_label_begin(command_buffer cmd, context context, const
 
     if (const auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd))
     {
-        d3d12_cmd->command_list->BeginEvent(1, label.label, static_cast<UINT>(cpp::cx_strlen(label.label) + 1));
+        const auto r = static_cast<u8>(label.color.r * 255.0F);
+        const auto g = static_cast<u8>(label.color.g * 255.0F);
+        const auto b = static_cast<u8>(label.color.b * 255.0F);
+
+        PIXBeginEvent(d3d12_cmd->command_list.Get(), PIX_COLOR(r, g, b), label.label);
     }
 }
 
@@ -2038,7 +2045,7 @@ void rhi::d3d12_cmd_debug_label_end(command_buffer cmd, context context)
 
     if (const auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd))
     {
-        d3d12_cmd->command_list->EndEvent();
+        PIXEndEvent(d3d12_cmd->command_list.Get());
     }
 }
 
