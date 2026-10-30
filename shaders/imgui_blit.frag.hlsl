@@ -1,4 +1,3 @@
-// TODO(dx12): D3D12 has no combined image samplers, the texture and its sampler are bound separately there (t0 + s0)
 #if defined(FOR_SAMPLER_2D)
 [[vk::combinedImageSampler]] Texture2D    u_source:         register(t0);
 [[vk::combinedImageSampler]] SamplerState u_source_sampler: register(s0);

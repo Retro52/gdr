@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cpp/containers/stack_string.hpp>
+#include <cpp/hash/crc_hash.hpp>
 #include <fs/path_utils.hpp>
 
 #include <filesystem>

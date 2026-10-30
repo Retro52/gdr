@@ -17,6 +17,14 @@ static D3D12_INDIRECT_ARGUMENT_TYPE d3d12_get_indirect_arg_type(const platform::
     }
 }
 
+void platform::d3d12_command_list::free_scratch(d3d12_desc_heap& heap) const
+{
+    if (this->scratch_descriptors.count > 0)
+    {
+        heap.free(this->scratch_descriptors.start, this->scratch_descriptors.count);
+    }
+}
+
 ID3D12CommandSignature* platform::d3d12_command_list::get_signature(const d3d12_command_signature_key signature)
 {
     const auto key = signature.hash();

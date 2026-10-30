@@ -17,9 +17,6 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
     meshlet_task.instance_id = instance_id;
     meshlet_task.base_vertex = meshes_data[mesh_instances[instance_id].mesh_data_index].base_vertex;
 
-    meshlets_count = 0;
-    GroupMemoryBarrierWithGroupSync();
-
     float3 sphere_center = float3(
         meshlets[meshlet_id].sphere_center[0],
         meshlets[meshlet_id].sphere_center[1],
@@ -82,12 +79,31 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
     emit = emit && (was_visible_last_frame || DBG_GET_BIT1(frame_cull[0].flags, kMeshletOcclusionCullBit) == 0);
 #endif
 
-    if (emit)
+    uint slot  = 0;
+    uint count = 0;
+
+    // That yields a bit better performance on some GPUs,
+    // and also serves a workaround for an AMD-specific default shader compiler synchronization bug
+    if (WaveGetLaneCount() == kTaskWorkGroups)
     {
-        uint idx;
-        InterlockedAdd(meshlets_count, 1, idx);
-        meshlet_task.meshlet_ids[idx] = meshlet_id;
+        slot  = WavePrefixCountBits(emit);
+        count = WaveActiveCountBits(emit);
     }
+    else
+    {
+        if (local_id.x == 0)
+            meshlets_count = 0;
+        GroupMemoryBarrierWithGroupSync();
+
+        if (emit)
+            InterlockedAdd(meshlets_count, 1, slot);
+        GroupMemoryBarrierWithGroupSync();
+
+        count = meshlets_count;
+    }
+
+    if (emit)
+        meshlet_task.meshlet_ids[slot] = meshlet_id;
 
 #ifdef FOR_LATE_OCCLUSION_TEST
     if (local_id.x < meshlets_in_task)
@@ -99,6 +115,5 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
     }
 #endif
 
-    GroupMemoryBarrierWithGroupSync();
-    DispatchMesh(meshlets_count, 1, 1, meshlet_task);
+    DispatchMesh(count, 1, 1, meshlet_task);
 }

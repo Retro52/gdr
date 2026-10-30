@@ -54,11 +54,16 @@ static void make_brdf_lut(const rhi::impl& impl, const rhi::command_buffer cmd, 
     impl.cmd_push_bindings(cmd, pso, std::span {bindings});
     impl.cmd_dispatch(cmd, pso, {resolution, resolution, 1});
 
-    const rhi::image_barrier barriers[] = {
-        app::make_image_barrier(brdf_lut, rhi::image_layout::storage, rhi::image_layout::common),
+    rhi::global_barrier barrier {
+        .before = {.stages = rhi::barrier_stage::compute_shader,                                       .access = rhi::barrier_access::storage_write},
+        .after  = {.stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::fragment_shader,
+                   .access = rhi::barrier_access::sampled_read                                                                                     },
     };
 
-    impl.cmd_barriers(cmd, {.images = std::span {barriers}});
+    impl.cmd_barriers(cmd,
+                      {
+                          .globals = std::span {&barrier, 1}
+    });
 }
 
 app::envmap::envmap(const rhi::impl& impl, rhi::context ctx, rhi::image_format format, const envmap_config& cfg)
@@ -164,12 +169,11 @@ rhi::binding app::envmap::get_pref_descriptor_info() const
 
 void app::envmap::init(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_data& pso)
 {
-    // env maps are left readable even when no sky map gets loaded, the lut is generated right away
-    const rhi::image_barrier barriers[] {
-        app::make_image_barrier(cubemap, rhi::image_layout::discard, rhi::image_layout::common),
-        app::make_image_barrier(brdf_lut, rhi::image_layout::discard, rhi::image_layout::storage),
-        app::make_image_barrier(convolution, rhi::image_layout::discard, rhi::image_layout::common),
-        app::make_image_barrier(prefiltered, rhi::image_layout::discard, rhi::image_layout::common),
+    rhi::image_barrier barriers[] {
+        app::make_image_barrier(cubemap, rhi::image_layout::common),
+        app::make_image_barrier(brdf_lut, rhi::image_layout::common),
+        app::make_image_barrier(convolution, rhi::image_layout::common),
+        app::make_image_barrier(prefiltered, rhi::image_layout::common),
     };
 
     impl.cmd_barriers(cmd, {.images = std::span {barriers}});
@@ -193,23 +197,21 @@ void app::envmap::load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_
 
             const rhi::pipeline& pass = pso[pso_id::equirect_unpack_pipeline];
 
-            const rhi::image_barrier pre_barriers[] {
-                app::make_image_barrier(cubemap, rhi::image_layout::common, rhi::image_layout::storage),
-            };
-
-            impl.cmd_barriers(cmd, {.images = std::span {pre_barriers}});
-
             impl.cmd_bind_pso(cmd, pass);
             impl.cmd_push_constants(cmd, pass, &env_resolution, sizeof(env_resolution), 0);
             impl.cmd_push_bindings(cmd, pass, std::span {pass_bindings});
             impl.cmd_dispatch(cmd, pass, uvec3(env_resolution, env_resolution, 6));
 
-            // mips are generated with copies, then the whole cube is sampled
-            const rhi::image_barrier post_barriers[] {
-                app::make_image_barrier(cubemap, rhi::image_layout::storage, rhi::image_layout::common),
+            rhi::global_barrier barriers[] {
+                rhi::global_barrier {
+                                     .before = {.stages = rhi::barrier_stage::compute_shader,
+                               .access = rhi::barrier_access::storage_write},
+                                     .after  = {.stages = rhi::barrier_stage::all_commands,
+                               .access = rhi::barrier_access::copy_read | rhi::barrier_access::copy_write},
+                                     },
             };
 
-            impl.cmd_barriers(cmd, {.images = std::span {post_barriers}});
+            impl.cmd_barriers(cmd, {.globals = std::span {barriers}});
         }
 
         {
@@ -237,23 +239,22 @@ void app::envmap::load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_
 
             const rhi::pipeline& pass = pso[pso_id::cubemap_convolute_pipeline];
 
-            const rhi::image_barrier pre_barriers[] {
-                app::make_image_barrier(convolution, rhi::image_layout::common, rhi::image_layout::storage),
-            };
-
-            impl.cmd_barriers(cmd, {.images = std::span {pre_barriers}});
-
             int push_constants[] = {irradiance_resolution, env_resolution};
             impl.cmd_bind_pso(cmd, pass);
             impl.cmd_push_constants(cmd, pass, push_constants, sizeof(push_constants), 0);
             impl.cmd_push_bindings(cmd, pass, std::span {pass_bindings});
             impl.cmd_dispatch(cmd, pass, uvec3(irradiance_resolution, irradiance_resolution, 6));
 
-            const rhi::image_barrier post_barriers[] {
-                app::make_image_barrier(convolution, rhi::image_layout::storage, rhi::image_layout::common),
+            rhi::global_barrier barriers[] {
+                rhi::global_barrier {
+                                     .before = {.stages = rhi::barrier_stage::compute_shader,
+                               .access = rhi::barrier_access::storage_write},
+                                     .after  = {.stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::fragment_shader,
+                               .access = rhi::barrier_access::sampled_read},
+                                     },
             };
 
-            impl.cmd_barriers(cmd, {.images = std::span {post_barriers}});
+            impl.cmd_barriers(cmd, {.globals = std::span {barriers}});
         }
 
         {
@@ -267,13 +268,6 @@ void app::envmap::load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_
                 i32 env_resolution;
                 f32 roughness;
             };
-
-            // every mip is written by its own dispatch, they don't depend on each other
-            const rhi::image_barrier pre_barriers[] {
-                app::make_image_barrier(prefiltered, rhi::image_layout::common, rhi::image_layout::storage),
-            };
-
-            impl.cmd_barriers(cmd, {.images = std::span {pre_barriers}});
 
             impl.cmd_bind_pso(cmd, pass);
             i32 mip_resolution = prefilter_resolution;
@@ -295,13 +289,17 @@ void app::envmap::load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_
                 impl.cmd_dispatch(cmd, pass, uvec3(mip_resolution, mip_resolution, 6));
 
                 mip_resolution >>= 1;
+                rhi::global_barrier barriers[] {
+                    rhi::global_barrier {
+                                         .before = {.stages = rhi::barrier_stage::compute_shader,
+                                   .access = rhi::barrier_access::storage_write},
+                                         .after  = {.stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::fragment_shader,
+                                   .access = rhi::barrier_access::sampled_read},
+                                         },
+                };
+
+                impl.cmd_barriers(cmd, {.globals = std::span {barriers}});
             }
-
-            const rhi::image_barrier post_barriers[] {
-                app::make_image_barrier(prefiltered, rhi::image_layout::storage, rhi::image_layout::common),
-            };
-
-            impl.cmd_barriers(cmd, {.images = std::span {post_barriers}});
         }
         return;
     }

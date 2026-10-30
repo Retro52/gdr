@@ -68,7 +68,7 @@ namespace rhi
     using destroy_sampler_pfn = void (*)(context context, sampler& sampler);
 
     using create_compute_pso_pfn  = result<pipeline> (*)(context context, shader shader,
-                                                        std::span<const bindless_set> sets);
+                                                        std::span<const bindless_set> sets, const pso_options& options);
     using create_graphics_pso_pfn = result<pipeline> (*)(context context, std::span<const shader> shaders,
                                                          std::span<const bindless_set> sets,
                                                          const pso_options& options);

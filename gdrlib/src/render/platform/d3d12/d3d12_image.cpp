@@ -232,7 +232,8 @@ static void d3d12_create_dsv_if_needed(ID3D12Device* device, ID3D12Resource* sou
 }
 
 static void d3d12_create_uav_if_needed(ID3D12Device* device, ID3D12Resource* source, platform::d3d12_image_view& dst,
-                                       platform::d3d12_desc_heap& heap, const platform::d3d12_image_view_desc& desc,
+                                       platform::d3d12_desc_heap& heap, platform::d3d12_desc_heap& cpu_heap,
+                                       const platform::d3d12_image_view_desc& desc,
                                        const platform::d3d12_image_view_type_bits flags)
 {
     if (!(flags & platform::d3d12_image_view_type::uav))
@@ -242,9 +243,13 @@ static void d3d12_create_uav_if_needed(ID3D12Device* device, ID3D12Resource* sou
 
     assert2(!(flags & platform::d3d12_image_view_type::dsv));
 
-    dst.descriptors.uav   = heap.alloc();
+    dst.descriptors.uav     = heap.alloc();
+    dst.descriptors.uav_cpu = cpu_heap.alloc();
+
     const auto d3d12_desc = d3d12_make_uav_desc(desc);
-    device->CreateUnorderedAccessView(source, nullptr, &d3d12_desc, dst.descriptors.uav.cpu_handle);
+    device->CreateUnorderedAccessView(source, nullptr, &d3d12_desc, dst.descriptors.uav_cpu.cpu_handle);
+    device->CopyDescriptorsSimple(
+        1, dst.descriptors.uav.cpu_handle, dst.descriptors.uav_cpu.cpu_handle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
 static void d3d12_create_rtv_if_needed(ID3D12Device* device, ID3D12Resource* source, platform::d3d12_image_view& dst,
@@ -281,8 +286,8 @@ auto platform::d3d12_create_image_view(ID3D12Device* device, ID3D12Resource* sou
 
     d3d12_create_dsv_if_needed(device, source, result, heaps.dsv_heap, desc, flags);
     d3d12_create_rtv_if_needed(device, source, result, heaps.rtv_heap, desc, flags);
-    d3d12_create_uav_if_needed(device, source, result, heaps.cbv_srv_uav_heap, desc, flags);
     d3d12_create_srv_if_needed(device, source, result, heaps.cbv_srv_uav_heap, desc, flags);
+    d3d12_create_uav_if_needed(device, source, result, heaps.cbv_srv_uav_heap, heaps.cbv_srv_uav_heap_cpu, desc, flags);
 
     return result;
 }
@@ -312,6 +317,20 @@ void platform::d3d12_write_srv(ID3D12Device* device, const d3d12_image_view& vie
     device->CreateShaderResourceView(view.source, &d3d12_desc, dst);
 }
 
+void platform::d3d12_write_uav(ID3D12Device* device, const d3d12_image_view& view,
+                               const D3D12_CPU_DESCRIPTOR_HANDLE dst)
+{
+    ZoneScoped;
+    assert2(view.source && (view.view_types & d3d12_image_view_type::uav));
+    if (!view.source)
+    {
+        return;
+    }
+
+    const auto d3d12_desc = d3d12_make_uav_desc(view.desc);
+    device->CreateUnorderedAccessView(view.source, nullptr, &d3d12_desc, dst);
+}
+
 void platform::d3d12_destroy_image_view(d3d12_image_view& view, const d3d12_heaps_view& heaps)
 {
     if (view.view_types & d3d12_image_view_type::dsv)
@@ -333,9 +352,9 @@ auto platform::d3d12_create_image(D3D12MA::Allocator* allocator, const D3D12_RES
     -> result<d3d12_image>
 {
     ZoneScoped;
-    d3d12_image result {.layout = D3D12_BARRIER_LAYOUT_COMMON};
+    d3d12_image result;
 
-    const D3D12_RESOURCE_DESC buf_desc {
+    const D3D12_RESOURCE_DESC1 buf_desc {
         .Dimension        = type,
         .Width            = dimensions.x,
         .Height           = dimensions.y,
@@ -365,8 +384,14 @@ auto platform::d3d12_create_image(D3D12MA::Allocator* allocator, const D3D12_RES
         cpp::cx_copy_n(&op_clear_value.Color[0], &optimized_clear_value.color.f4.x, 4);
     }
 
-    D3D12_RETURN_ON_FAIL(allocator->CreateResource(
-        &ma_desc, &buf_desc, D3D12_RESOURCE_STATE_COMMON, p_cv, &result.allocation, IID_PPV_ARGS(&result.resource)));
+    D3D12_RETURN_ON_FAIL(allocator->CreateResource3(&ma_desc,
+                                                    &buf_desc,
+                                                    D3D12_BARRIER_LAYOUT_COMMON,
+                                                    p_cv,
+                                                    0,
+                                                    nullptr,
+                                                    &result.allocation,
+                                                    IID_PPV_ARGS(&result.resource)));
 
     return result;
 }
@@ -376,6 +401,4 @@ void platform::d3d12_destroy_image(d3d12_image& image)
     ZoneScoped;
     image.resource.Reset();
     image.allocation.Reset();
-
-    image.layout = D3D12_BARRIER_LAYOUT_UNDEFINED;
 }

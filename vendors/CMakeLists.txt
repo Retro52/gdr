@@ -96,8 +96,7 @@ function(add_ffx_dependencies)
     foreach (FFX_POSTFIX IN LISTS FFX_INTERNAL_POSTFIXES)
         target_link_libraries(${FFX_TARGET}
                 PRIVATE
-                ffx::ffx_api
-                ${FFX_API_ROOT_BIN}/amd_fidelityfx_loader_${FFX_POSTFIX}.lib)
+                ffx::ffx_api)
         add_custom_command(TARGET ${FFX_TARGET} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${FFX_API_ROOT_BIN}/amd_fidelityfx_loader_${FFX_POSTFIX}.dll $<TARGET_FILE_DIR:${FFX_TARGET}>)

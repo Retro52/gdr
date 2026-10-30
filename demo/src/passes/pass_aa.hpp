@@ -7,7 +7,7 @@
 
 namespace app
 {
-    REGISTER_ENUM(aa_backend, blit, fxaa, fsr3);
+    REGISTER_ENUM(aa_backend, blit, fxaa, fsr);
 
     struct pass_aa
     {
@@ -17,7 +17,7 @@ namespace app
             f32 camera_far  = kF32Max;
         };
 
-        struct fsr3_params
+        struct fsr_params
         {
             rhi::buffer mv_matrices;
             rhi::ffx_upscale_params ffx_upscale;
@@ -31,11 +31,11 @@ namespace app
             union
             {
                 fxaa_params fxaa;
-                fsr3_params ffx;
+                fsr_params ffx;
             } params;
         };
 
-        aa_backend backend = aa_backend::fsr3;
+        aa_backend backend = aa_backend::fsr;
 
         rhi::image output               = rhi::null_image;
         rhi::image motion_vectors       = rhi::null_image;
@@ -64,7 +64,7 @@ namespace app
 
         void run_fxaa(rhi::command_buffer cmd, const draw_params& params) const;
 
-        void run_fsr3(rhi::command_buffer cmd, const draw_params& params) const;
+        void run_fsr(rhi::command_buffer cmd, const draw_params& params) const;
 
         void run_mv_reconstruct(rhi::command_buffer cmd, const draw_params& params) const;
 

@@ -331,7 +331,6 @@ namespace rhi
         current,
         common,
         present,
-        storage,
         render_target_color,
         render_target_depth_stencil,
         COUNT

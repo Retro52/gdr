@@ -324,14 +324,21 @@ namespace
                 auto& resource  = shader_meta.resources[j];
                 const auto type = get_descriptor_range_type(resource.resource_type);
 
-                auto& redirect = dedup[resource.space][type][resource.slot];
-                if (redirect != platform::d3d12_root_signature::kInvalidDedup)
+                auto key =
+                    platform::d3d12_pso_param_key {
+                        .slot          = static_cast<u16>(resource.slot),
+                        .space         = static_cast<u16>(resource.space),
+                        .resource_type = type,
+                    }
+                        .hash();
+
+                if (const auto redirect_it = dedup.find(key); redirect_it != dedup.end())
                 {
-                    result[redirect].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+                    result[redirect_it->second].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
                     continue;
                 }
 
-                redirect   = result.size();
+                dedup[key] = result.size();
                 auto* rptr = &result.emplace_back();
 
                 rptr->ShaderVisibility = get_shader_visibility(shader_meta.shader_type);
@@ -354,11 +361,10 @@ namespace
                     size_in_dwords += 1;
                     auto* ptr = &s_descriptor_ranges[descriptor_range_id++];
 
-                    ptr->Flags              = resource.size > 0 ? D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE
-                                                                : D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
-                    ptr->RegisterSpace      = resource.space;
-                    ptr->BaseShaderRegister = resource.slot;
-                    ptr->NumDescriptors     = resource.size > 0 ? resource.size : 1;
+                    ptr->Flags                                = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
+                    ptr->RegisterSpace                        = resource.space;
+                    ptr->BaseShaderRegister                   = resource.slot;
+                    ptr->NumDescriptors                       = resource.size > 0 ? resource.size : 1;
                     ptr->OffsetInDescriptorsFromTableStart    = 0;
                     ptr->RangeType                            = type;
                     rptr->DescriptorTable.NumDescriptorRanges = 1;
@@ -403,18 +409,15 @@ namespace
     }
 }
 
-platform::d3d12_root_signature::d3d12_root_signature()
-{
-    cpp::cx_fill(
-        reinterpret_cast<u32*>(dedup), reinterpret_cast<u32*>(dedup) + (sizeof(dedup) / sizeof(u32)), kInvalidDedup);
-}
-
 [[nodiscard]] u32 platform::d3d12_root_signature::get_bind_index(const d3d12_pso_param_key key) const
 {
-    const auto value = this->dedup[key.space][key.resource_type][key.slot];
-    assert2(value != platform::d3d12_root_signature::kInvalidDedup);
+    if (const auto it = dedup.find(key.hash()); it != dedup.end())
+    {
+        return it->second;
+    }
 
-    return value;
+    assert2m(false, "root signature failed to dedup pipeline param");
+    return platform::d3d12_root_signature::kInvalidDedup;
 }
 
 [[nodiscard]] bool platform::d3d12_pipeline::is_compute() const noexcept
@@ -437,39 +440,35 @@ void platform::d3d12_pipeline::bind(ID3D12GraphicsCommandList9* cmd, const rhi::
         return;
     }
 
-    if (this->variants.size() == 1)
-    {
-        cmd->SetPipelineState(this->variants.front().Get());
-    }
-    else
-    {
-        ID3D12PipelineState* pso = nullptr;
-        switch (cull_mode)
-        {
-        case rhi::cull_mode::none :
-            pso = this->variants[d3d12_pso_dynstates::cull_mode_none].Get();
-            break;
-        case rhi::cull_mode::back :
-            pso = this->variants[d3d12_pso_dynstates::cull_mode_back].Get();
-            break;
-        case rhi::cull_mode::front :
-            pso = this->variants[d3d12_pso_dynstates::cull_mode_front].Get();
-            break;
-        default :
-            assert2("unsupported cull mode");
-            break;
-        }
-
-        cmd->SetPipelineState(pso ? pso : this->variants.front().Get());
-    }
+    cmd->IASetPrimitiveTopology(this->topology);
+    cmd->SetGraphicsRootSignature(this->rs.signature.Get());
 
     if (depth_bias_params != vec3(0.0F))
     {
         cmd->RSSetDepthBias(depth_bias_params.x, depth_bias_params.y, depth_bias_params.z);
     }
 
-    cmd->IASetPrimitiveTopology(this->topology);
-    cmd->SetGraphicsRootSignature(this->rs.signature.Get());
+    if (this->variants.size() == 1)
+    {
+        cmd->SetPipelineState(this->variants.front().Get());
+        return;
+    }
+
+    switch (cull_mode)
+    {
+    case rhi::cull_mode::none :
+        cmd->SetPipelineState(this->variants[d3d12_pso_dynstates::cull_mode_none].Get());
+        break;
+    case rhi::cull_mode::back :
+        cmd->SetPipelineState(this->variants[d3d12_pso_dynstates::cull_mode_back].Get());
+        break;
+    case rhi::cull_mode::front :
+        cmd->SetPipelineState(this->variants[d3d12_pso_dynstates::cull_mode_front].Get());
+        break;
+    default :
+        assert2("unsupported cull mode");
+        break;
+    }
 }
 
 auto platform::d3d12_parse_dxil(const bytes& data) -> result<d3d12_shader_meta>
@@ -560,9 +559,12 @@ auto platform::d3d12_parse_dxil(const bytes& data) -> result<d3d12_shader_meta>
         auto& dst = dxil_meta.resources[i];
         auto& src = psv0_data.resource_bindings[i];
 
+        const u32 lower = src.data.v1.LowerBound;
+        const u32 upper = src.data.v1.UpperBound;
+
         dst.slot  = src.data.v1.LowerBound;
-        dst.size  = src.data.v1.UpperBound - src.data.v1.LowerBound;
         dst.space = src.data.v1.Space;
+        dst.size  = upper == UINT_MAX ? UINT_MAX : (upper == lower ? 0u : upper - lower + 1u);
 
         dst.resource_type = src.data.v1.Type;
         dst.resource_kind = src.data.v2.Kind;
@@ -749,7 +751,7 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
     };
 
     cpp::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
-    if (!options.enable_dynstate_cull_mode)
+    if (!options.enable_dynstate_cull_mode || true)
     {
         variants.resize(1);
         set_cull_mode(D3D12_CULL_MODE_BACK);
@@ -782,7 +784,8 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
 void platform::d3d12_destroy_pipeline(d3d12_pipeline& pipeline)
 {
     ZoneScoped;
-    pipeline.variants.clear();
+    pipeline.rs.dedup.clear();
     pipeline.rs.signature.Reset();
-    std::memset(pipeline.rs.dedup, d3d12_root_signature::kInvalidDedup, sizeof(pipeline.rs.dedup));
+
+    pipeline.variants.clear();
 }

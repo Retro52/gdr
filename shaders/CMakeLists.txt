@@ -1,5 +1,8 @@
 project(shaders)
 
+add_library(${PROJECT_NAME} INTERFACE)
+target_include_directories(${PROJECT_NAME} INTERFACE ${PROJECT_SOURCE_DIR}/include)
+
 function(parse_shader_profile SHADER_FILE)
     get_filename_component(SHADER_NAME "${SHADER_FILE}" NAME_WLE)
     get_filename_component(SHADER_EXTENSION "${SHADER_NAME}" LAST_EXT)
@@ -22,20 +25,18 @@ function(parse_shader_profile SHADER_FILE)
 endfunction()
 
 function(collect_shader_deps_recursive FILE_PATH)
-    get_filename_component(ABS_PATH "${FILE_PATH}" ABSOLUTE)
-
     get_property(VISITED GLOBAL PROPERTY _SHADER_DEPS_VISITED)
-    list(FIND VISITED "${ABS_PATH}" IDX)
+    list(FIND VISITED "${FILE_PATH}" IDX)
     if (NOT IDX EQUAL -1)
         return()
     endif ()
 
-    set_property(GLOBAL APPEND PROPERTY _SHADER_DEPS_VISITED "${ABS_PATH}")
-    set_property(GLOBAL APPEND PROPERTY _SHADER_DEPS_ACCUMULATOR "${ABS_PATH}")
+    set_property(GLOBAL APPEND PROPERTY _SHADER_DEPS_VISITED "${FILE_PATH}")
+    set_property(GLOBAL APPEND PROPERTY _SHADER_DEPS_ACCUMULATOR "${FILE_PATH}")
 
-    if (EXISTS "${ABS_PATH}")
-        file(READ "${ABS_PATH}" CONTENT)
-        get_filename_component(FILE_DIRECTORY "${ABS_PATH}" DIRECTORY)
+    if (EXISTS "${FILE_PATH}")
+        file(READ "${FILE_PATH}" CONTENT)
+        get_filename_component(FILE_DIRECTORY "${FILE_PATH}" DIRECTORY)
 
         string(REGEX MATCHALL "#include[ \t]*[<\"][^>\"]+[>\"]" INCLUDES "${CONTENT}")
 
@@ -80,90 +81,97 @@ function(parse_shader_config SHADER_CONFIG)
     set(SHADER_DEF ${SHADER_DEF_LOCAL} PARENT_SCOPE)
 endfunction()
 
-find_package(Vulkan REQUIRED COMPONENTS glslc glslangValidator)
-
-find_program(DXC_EXECUTABLE
-        NAMES dxc
-        HINTS "$ENV{VULKAN_SDK}/bin"
-)
-
-find_program(SPIRV_CROSS_EXECUTABLE
-        NAMES spirv-cross
-        HINTS "$ENV{VULKAN_SDK}/bin"
-        REQUIRED
-)
-
-file(READ "${PROJECT_SOURCE_DIR}/shaders.cfg" SHADERS_CONFIG)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/shaders.cfg")
-
-string(STRIP "${SHADERS_CONFIG}" SHADERS_CONFIG)
-string(REPLACE ";" "__SKIP__" SHADERS_CONFIG "${SHADERS_CONFIG}")
-string(REPLACE "\n" ";" SHADERS_CONFIG "${SHADERS_CONFIG}")
-
-set(SHADERS_BIN_FOLDER "${PROJECT_SOURCE_DIR}/bin")
-set(SHADERS_BIN_FOLDER "${SHADERS_BIN_FOLDER}" PARENT_SCOPE)
-
-set(DXC_SPIRV_CONFIG_FLAGS "$<IF:$<CONFIG:Debug>,-Zi,-O3>")
-set(DXC_DXIL_CONFIG_FLAGS "$<IF:$<CONFIG:Debug>,-Zi$<SEMICOLON>-Qembed_debug,-O3>")
-
-foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
-    if (NOT SHADER_CONFIG)
-        continue()
-    endif ()
-
-    string(FIND "${SHADER_CONFIG}" "__SKIP__" SC_COMMENTED_OUT)
-    if ("${SC_COMMENTED_OUT}" EQUAL 0)
-        continue()
-    endif ()
-
-    parse_shader_config("${SHADER_CONFIG}")
-    parse_shader_profile("${SHADER}")
-    collect_shader_dependencies("${SHADER}" SHADER_DEPENDENCIES)
-
-    set(SHADER_INPUT_PATH "${PROJECT_SOURCE_DIR}/${SHADER}")
-    set(SHADER_BIN_OUTPUT "${SHADERS_BIN_FOLDER}/${SHADER_BIN}")
-
-    if (APPLE)
-        list(APPEND SHADER_DEF "-DEMULATE_DRAW_ID")
-        list(APPEND SHADER_DEF "-DEMULATE_SAMPLER_REDUCE")
-    endif ()
-
-    if (NOT DXC_EXECUTABLE)
-        message(FATAL_ERROR "HLSL shader '${SHADER}' requires dxc, which was not found")
-    endif ()
-
-    add_custom_command(
-            OUTPUT "${SHADER_BIN_OUTPUT}.spv"
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
-            COMMAND ${DXC_EXECUTABLE} -spirv -fspv-target-env=vulkan1.3 -T ${SHADER_PROFILE} -E main -WX
-            -enable-16bit-types -fvk-use-dx-layout -fvk-support-nonzero-base-vertex -fvk-support-nonzero-base-instance
-            ${DXC_SPIRV_CONFIG_FLAGS} ${SHADER_DEF}
-            -Fo "${SHADER_BIN_OUTPUT}.spv" "${SHADER_INPUT_PATH}"
-            DEPENDS ${SHADER_DEPENDENCIES}
-            COMMENT "Compiling HLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.spv'"
-            COMMAND_EXPAND_LISTS
+function(add_shaders_dependency TARGET SHADERS_BIN_FOLDER)
+    find_package(
+            Vulkan
+            REQUIRED
+            COMPONENTS glslc glslangValidator
     )
-    list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.spv")
 
-    if (WIN32 AND GDR_ENABLE_DX12_BACKEND)
+    find_program(
+            DXC_EXECUTABLE
+            NAMES dxc
+            HINTS "$ENV{VULKAN_SDK}/bin"
+    )
+
+    find_program(
+            SPIRV_CROSS_EXECUTABLE
+            NAMES spirv-cross
+            HINTS "$ENV{VULKAN_SDK}/bin"
+            REQUIRED
+    )
+
+    get_target_property(SHADERS_SOURCE_DIR shaders SOURCE_DIR)
+
+    file(READ "${SHADERS_SOURCE_DIR}/shaders.cfg" SHADERS_CONFIG)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SHADERS_SOURCE_DIR}/shaders.cfg")
+
+    string(STRIP "${SHADERS_CONFIG}" SHADERS_CONFIG)
+    string(REPLACE ";" "__SKIP__" SHADERS_CONFIG "${SHADERS_CONFIG}")
+    string(REPLACE "\n" ";" SHADERS_CONFIG "${SHADERS_CONFIG}")
+
+    set(DXC_SPIRV_CONFIG_FLAGS "$<IF:$<CONFIG:Debug>,-Zi,-O3>")
+    set(DXC_DXIL_CONFIG_FLAGS "$<IF:$<CONFIG:Debug>,-Zi$<SEMICOLON>-Qembed_debug,-O3>")
+
+    foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
+        if (NOT SHADER_CONFIG)
+            continue()
+        endif ()
+
+        string(FIND "${SHADER_CONFIG}" "__SKIP__" SC_COMMENTED_OUT)
+        if ("${SC_COMMENTED_OUT}" EQUAL 0)
+            continue()
+        endif ()
+
+        parse_shader_config("${SHADER_CONFIG}")
+        parse_shader_profile("${SHADER}")
+
+        set(SHADER_INPUT_PATH "${SHADERS_SOURCE_DIR}/${SHADER}")
+        collect_shader_dependencies("${SHADER_INPUT_PATH}" SHADER_DEPENDENCIES)
+
+        set(SHADER_BIN_OUTPUT "${SHADERS_BIN_FOLDER}/${SHADER_BIN}")
+
+        if (APPLE)
+            list(APPEND SHADER_DEF "-DEMULATE_DRAW_ID")
+            list(APPEND SHADER_DEF "-DEMULATE_SAMPLER_REDUCE")
+        endif ()
+
+        if (NOT DXC_EXECUTABLE)
+            message(FATAL_ERROR "HLSL shader '${SHADER}' requires dxc, which was not found")
+        endif ()
+
         add_custom_command(
-                OUTPUT "${SHADER_BIN_OUTPUT}.dxl"
+                OUTPUT "${SHADER_BIN_OUTPUT}.spv"
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
-                COMMAND ${DXC_EXECUTABLE} -T ${SHADER_PROFILE} -E main -WX
-                -enable-16bit-types -Wno-ignored-attributes
-                ${DXC_DXIL_CONFIG_FLAGS} ${SHADER_DEF} -DEMULATE_DRAW_ID
-                -Fo "${SHADER_BIN_OUTPUT}.dxl" "${SHADER_INPUT_PATH}"
+                COMMAND ${DXC_EXECUTABLE} -spirv -fspv-target-env=vulkan1.3 -T ${SHADER_PROFILE} -E main -WX
+                -enable-16bit-types -fvk-use-dx-layout -fvk-support-nonzero-base-vertex -fvk-support-nonzero-base-instance
+                ${DXC_SPIRV_CONFIG_FLAGS} ${SHADER_DEF}
+                -Fo "${SHADER_BIN_OUTPUT}.spv" "${SHADER_INPUT_PATH}"
                 DEPENDS ${SHADER_DEPENDENCIES}
-                COMMENT "Compiling HLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.dxl'"
+                COMMENT "Compiling HLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.spv'"
                 COMMAND_EXPAND_LISTS
         )
-        list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.dxl")
-    endif ()
-endforeach ()
+        list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.spv")
 
-set(BUILD_TARGET_NAME ${PROJECT_NAME}_build)
-add_custom_target(${BUILD_TARGET_NAME} ALL DEPENDS ${BIN_SHADERS})
+        if (WIN32 AND GDR_ENABLE_DX12_BACKEND)
+            add_custom_command(
+                    OUTPUT "${SHADER_BIN_OUTPUT}.dxl"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
+                    COMMAND ${DXC_EXECUTABLE} -T ${SHADER_PROFILE} -E main -WX
+                    -enable-16bit-types -Wno-ignored-attributes /Zi
+                    ${DXC_DXIL_CONFIG_FLAGS} ${SHADER_DEF} -DEMULATE_DRAW_ID
+                    -Fo "${SHADER_BIN_OUTPUT}.dxl" "${SHADER_INPUT_PATH}"
+                    DEPENDS ${SHADER_DEPENDENCIES}
+                    COMMENT "Compiling HLSL shader '${SHADER}' to '${SHADER_BIN_OUTPUT}.dxl'"
+                    COMMAND_EXPAND_LISTS
+            )
+            list(APPEND BIN_SHADERS "${SHADER_BIN_OUTPUT}.dxl")
+        endif ()
+    endforeach ()
 
-add_library(${PROJECT_NAME} INTERFACE)
-add_dependencies(${PROJECT_NAME} ${BUILD_TARGET_NAME})
-target_include_directories(${PROJECT_NAME} INTERFACE ${PROJECT_SOURCE_DIR}/include)
+    set(BUILD_TARGET_NAME ${TARGET}_shaders_build)
+    add_custom_target(${BUILD_TARGET_NAME} ALL DEPENDS ${BIN_SHADERS})
+
+    target_link_libraries(${TARGET} PRIVATE shaders)
+    add_dependencies(${TARGET} ${BUILD_TARGET_NAME})
+endfunction()

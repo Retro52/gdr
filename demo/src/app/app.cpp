@@ -7,6 +7,7 @@
 #include <app/pso.hpp>
 #include <app/render.hpp>
 #include <camera_controller.hpp>
+#include <debug.hpp>
 #include <events.hpp>
 #include <glm/common.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -39,7 +40,7 @@ namespace
 {
     REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_ambient, lit_specular, uv, normal, tangent, depth, velocity,
                   world_pos, color, metallic, roughness, albedo_texture, normal_texture, orm_texture, triangle_id,
-                  instance_id, triangle_face);
+                  meshlet_id, instance_id, triangle_face);
 
     struct frames_tracker
     {
@@ -241,24 +242,36 @@ static rhi::impl load_rhi(const app::argv_handler& args)
 
 static rhi::instance_desc get_instance_desc(auto& args)
 {
-    constexpr auto features_table = rhi::rendering_features_table()
-#if !defined(NDEBUG)
-                                        .request(rhi::feature_flag::validation)
-                                        .request(rhi::feature_flag::debug_labels)
-#endif
+    auto features_table = rhi::rendering_features_table()
 #if !defined(__APPLE__)
-                                        .require(rhi::feature_flag::sampler_min_max)
+                              .require(rhi::feature_flag::sampler_min_max)
 #endif
-                                        .request(rhi::feature_flag::mesh_shading)
-                                        .require(rhi::feature_flag::types_16bit)
-                                        .require(rhi::feature_flag::draw_indirect)
-                                        .require(rhi::feature_flag::dynamic_render)
-                                        .require(rhi::feature_flag::bindless_textures)
-                                        .require(rhi::feature_flag::scalar_block_layout)
-                                        .require(rhi::feature_flag::synchronization2);
+                              .request(rhi::feature_flag::debug_labels)
+                              .request(rhi::feature_flag::mesh_shading)
+                              .require(rhi::feature_flag::types_16bit)
+                              .require(rhi::feature_flag::draw_indirect)
+                              .require(rhi::feature_flag::dynamic_render)
+                              .require(rhi::feature_flag::bindless_textures)
+                              .require(rhi::feature_flag::scalar_block_layout)
+                              .require(rhi::feature_flag::synchronization2);
+
+#if defined(NDEBUG)
+    if (args.read_numeric("--validation", 0))
+#else
+    if (args.read_numeric("--validation", 1))
+#endif
+    {
+        features_table.request(rhi::feature_flag::validation);
+    }
+
+    if (args.read_numeric("--labels", 1))
+    {
+        features_table.request(rhi::feature_flag::debug_labels);
+    }
+
     return rhi::instance_desc {
         .app_name        = "GDR",
-        .device_id_hint  = static_cast<u32>(args.read_numeric("--device_id", rhi::kDeviceIdDealersChoice)),
+        .device_id_hint  = static_cast<u32>(args.read_numeric("--device_id", 0)),
         .device_features = features_table,
     };
 }
@@ -266,7 +279,7 @@ static rhi::instance_desc get_instance_desc(auto& args)
 static window create_app_window()
 {
     return window {
-        "GDR", {.position = {200, 200}, .fullscreen = false}
+        "GDR", {.position = {50, 50}, .fullscreen = false}
     };
 }
 
@@ -284,6 +297,13 @@ int app::instance::run()
     {
         LOG_ERROR("No arguments specified, forgot to pass gltf scene?");
         return -1;
+    }
+
+    const bool wait_for_debugger = m_args.read_numeric("--wait_for_debugger");
+    while (wait_for_debugger && !debug::is_debugger_present())
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        LOG_INFO("Blocked waiting for the debugger");
     }
 
     auto context = m_rhi.create_context(m_window, get_instance_desc(m_args));
@@ -427,8 +447,7 @@ int app::instance::run()
         ZoneScopedN("loader::load_scene");
         scene_data = *loader::load_scene(m_args.argv()[first_instance], client_scene);
     }
-
-    cpp::heap_array<rhi::image> textures;
+    cpp::local_array<rhi::image> textures;
     cpp::local_array<rhi::bindless_set_write_info> updates;
     for (u32 i = 0; i < scene_data.textures.size(); ++i)
     {
@@ -506,7 +525,7 @@ int app::instance::run()
     f32 envmap_compensation_ev = 0.0f;
     f32 envmap_intensity       = 1250.0f;
 
-    bool enable_fsr_aa            = false;
+    bool enable_fsr_aa            = true;
     bool fsr_aa_rcas              = false;
     bool fsr_aa_reset             = false;
     bool freeze_cull_data         = false;
@@ -662,7 +681,7 @@ int app::instance::run()
                     shader_types::FrameCullData fcd {.pyramid_size  = gpass.hizb.base_size,
                                                      .viewport_size = m_window.get_size_in_px(),
                                                      .draw_count    = static_cast<u32>(scene_data.counters.instances),
-                                                     .flags         = client_render_settings.flags};
+                                                     .flags         = 0xFFFFFFFF};
                     build_frustum(fcd, projection, view);
                     (*static_cast<shader_types::FrameCullData*>(frame_cull_data_buffer.mapped)) = fcd;
                 }
@@ -693,7 +712,7 @@ int app::instance::run()
                 };
 
                 aa_pass.next_jitter();
-                aa_pass.backend      = enable_fsr_aa ? aa_backend::fsr3 : aa_backend::fxaa;
+                aa_pass.backend      = enable_fsr_aa ? aa_backend::fsr : aa_backend::fxaa;
                 camera_proj_jittered = aa_pass.get_jittered_matrix(camera_proj);
 
                 auto& motion_vectors_buffer = resources.motion_vector_data_buffer();
@@ -754,7 +773,7 @@ int app::instance::run()
                 };
                 lpass.draw(buffer, resources, light_params);
 
-                const pass_aa::fsr3_params fsr3_params {
+                const pass_aa::fsr_params fsr_params {
                     .mv_matrices = resources.motion_vector_data_buffer().buffer,
                     .ffx_upscale =
                         {
@@ -777,8 +796,8 @@ int app::instance::run()
 
                 switch (aa_pass.backend)
                 {
-                case aa_backend::fsr3 :
-                    params.params.ffx = fsr3_params;
+                case aa_backend::fsr :
+                    params.params.ffx = fsr_params;
                     break;
                 case aa_backend::fxaa :
                     params.params.fxaa = {.camera_near = camera_data.near_plane};
@@ -885,5 +904,7 @@ int app::instance::run()
         m_rhi.destroy_image(*context, texture);
     }
 
+    m_rhi.destroy_swapchain(*context, *swapchain);
+    m_rhi.destroy_context(*context);
     return 0;
 }

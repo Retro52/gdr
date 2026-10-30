@@ -45,5 +45,6 @@ CMakeCache.txt
 *.gltf
 
 # local data files
+bin*
 data
 CLAUDE.md

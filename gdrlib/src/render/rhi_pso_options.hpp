@@ -1,15 +1,13 @@
 #pragma once
 
-#include <volk.h>
-
-#include <reflection/enum.hpp>
 #include <render/types.hpp>
 
 namespace rhi
 {
 #define DECLARE_SIMPLE_PSO_OPTION(TYPE, NAME, DEFAULT) \
     TYPE NAME = DEFAULT;                               \
-    pso_options& set_##NAME(const TYPE& value)         \
+    template<typename T>                               \
+    pso_options& set_##NAME(T&& value)                 \
     {                                                  \
         this->NAME = value;                            \
         return *this;                                  \
@@ -36,6 +34,7 @@ namespace rhi
         DECLARE_BIT_FLAG_PSO_OPTION(enable_dynstate_cull_mode, false);
         u32 padding : 26 = 0;
 
+        DECLARE_SIMPLE_PSO_OPTION(const char*, dbg_name, nullptr)
         DECLARE_SIMPLE_PSO_OPTION(rhi::image_format, depth_format, image_format::none)
         DECLARE_SIMPLE_PSO_OPTION(rhi::compare_op, depth_compare_op, compare_op::greater)
         DECLARE_SIMPLE_PSO_OPTION(rhi::topology, topology, topology::list_triangles)
