@@ -256,7 +256,9 @@ static bool check_device_features(ID3D12Device* device, const D3D_SHADER_MODEL d
 
     // Who would have thought that requiring alignments for texture data could be a bad idea -_-
     if (!is_device_suitable || !d3d12_options13.UnrestrictedBufferTextureCopyPitchSupported
-        || !d3d12_options16.DynamicDepthBiasSupported)
+        || !d3d12_options16.DynamicDepthBiasSupported || !d3d12_options12.EnhancedBarriersSupported
+        || !d3d12_options4.Native16BitShaderOpsSupported
+        || d3d12_options0.ResourceBindingTier < D3D12_RESOURCE_BINDING_TIER_3)
     {
         return false;
     }
@@ -266,29 +268,13 @@ static bool check_device_features(ID3D12Device* device, const D3D_SHADER_MODEL d
     // this may be the same workaround as I did for the MoltenVK, but MVK did not support mesh shaders,
     // so it's a huge TBD if that will even work for d3d12.
     wanted_features.set_supported(rhi::feature_flag::debug_labels, true);
-    wanted_features.set_supported(rhi::feature_flag::draw_indirect, true);
-    wanted_features.set_supported(rhi::feature_flag::dynamic_render, true);
-    wanted_features.set_supported(rhi::feature_flag::sampler_min_max, true);
     wanted_features.set_supported(rhi::feature_flag::pipeline_stats, true);
+    wanted_features.set_supported(rhi::feature_flag::sampler_min_max, true);
     wanted_features.set_supported(rhi::feature_flag::portability_subset, false);
-
-    // not directly portable afaik
-    wanted_features.set_supported(rhi::feature_flag::types_int8, false);
-    wanted_features.set_supported(rhi::feature_flag::scalar_block_layout, true);
 
     wanted_features.set_supported(rhi::feature_flag::mesh_shading,
                                   device_shader_model >= D3D_SHADER_MODEL_6_5
                                       && d3d12_options7.MeshShaderTier > D3D12_MESH_SHADER_TIER_NOT_SUPPORTED);
-
-    wanted_features.set_supported(rhi::feature_flag::synchronization2, d3d12_options12.EnhancedBarriersSupported);
-
-    wanted_features.set_supported(rhi::feature_flag::types_16bit,
-                                  device_shader_model >= D3D_SHADER_MODEL_6_2
-                                      && d3d12_options4.Native16BitShaderOpsSupported);
-
-    wanted_features.set_supported(rhi::feature_flag::bindless_textures,
-                                  device_shader_model >= D3D_SHADER_MODEL_6_6
-                                      && d3d12_options0.ResourceBindingTier >= D3D12_RESOURCE_BINDING_TIER_3);
 
     return wanted_features.all_required_supported();
 }

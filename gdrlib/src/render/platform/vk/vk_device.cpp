@@ -5,7 +5,6 @@
 #include <cpp/containers/hash_set.hpp>
 #include <cpp/containers/heap_array.hpp>
 #include <cpp/containers/stack_string.hpp>
-#include <cpp/hash/crc_hash.hpp>
 #include <log.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
@@ -17,6 +16,279 @@
 using namespace platform;
 
 #define ENABLE_SYNC_VALIDATION 0
+
+template<typename T>
+struct vk_feature_span;
+#define FEATURE_SPAN(T, first, last)                                                                    \
+    template<>                                                                                          \
+    struct vk_feature_span<T>                                                                           \
+    {                                                                                                   \
+        static constexpr u64 begin = offsetof(T, first);                                                \
+        static constexpr u64 count = (offsetof(T, last) + sizeof(VkBool32) - begin) / sizeof(VkBool32); \
+    };                                                                                                  \
+    using T##Span = vk_feature_span<T>;
+
+FEATURE_SPAN(VkPhysicalDeviceFeatures, robustBufferAccess, inheritedQueries)
+FEATURE_SPAN(VkPhysicalDeviceVulkan11Features, storageBuffer16BitAccess, shaderDrawParameters)
+FEATURE_SPAN(VkPhysicalDeviceVulkan12Features, samplerMirrorClampToEdge, subgroupBroadcastDynamicId)
+FEATURE_SPAN(VkPhysicalDeviceVulkan13Features, robustImageAccess, maintenance4)
+FEATURE_SPAN(VkPhysicalDeviceVulkan14Features, globalPriorityQuery, pushDescriptor)
+FEATURE_SPAN(VkPhysicalDeviceMeshShaderFeaturesEXT, taskShader, meshShaderQueries)
+FEATURE_SPAN(VkPhysicalDeviceShaderFloat8FeaturesEXT, shaderFloat8, shaderFloat8CooperativeMatrix)
+FEATURE_SPAN(VkPhysicalDevicePortabilitySubsetFeaturesKHR, constantAlphaColorBlendFactors,
+             vertexAttributeAccessBeyondStride)
+#undef FEATURE_SPAN
+
+struct vk_feature_chain
+{
+private:
+    void** m_pNext = nullptr;
+    cpp::heap_array<const char*> m_dvc_extensions;
+
+public:
+    VkPhysicalDeviceFeatures2 core {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+    VkPhysicalDeviceVulkan11Features vk11 {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
+    VkPhysicalDeviceVulkan12Features vk12 {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+    VkPhysicalDeviceVulkan13Features vk13 {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+    VkPhysicalDeviceVulkan14Features vk14 {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES};
+    VkPhysicalDeviceMeshShaderFeaturesEXT mesh {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
+    VkPhysicalDevicePortabilitySubsetFeaturesKHR port {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR};
+
+    vk_feature_chain()
+        : m_pNext(&core.pNext)
+    {
+        prepend(vk11);
+        prepend(vk12);
+        prepend(vk13);
+        prepend(vk14);
+    }
+
+    vk_feature_chain(VkPhysicalDevice device)
+        : vk_feature_chain(device, get_device_extensions(device))
+    {
+    }
+
+    vk_feature_chain(VkPhysicalDevice device, const cpp::heap_array<VkExtensionProperties>& extensions)
+        : vk_feature_chain()
+    {
+        setup_ext_query(extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        setup_ext_query(extensions, VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
+        setup_ext_query(extensions, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+#if !defined(__APPLE__)
+        TRACY_ONLY(setup_ext_query(extensions, VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME));
+#endif
+
+        setup_ext_query(mesh, extensions, VK_EXT_MESH_SHADER_EXTENSION_NAME);
+        setup_ext_query(port, extensions, VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
+
+        vkGetPhysicalDeviceFeatures2(device, &this->core);
+
+        this->mesh.primitiveFragmentShadingRateMeshShader = VK_FALSE;
+    }
+
+    vk_feature_chain(const rhi::rendering_features_table& table)
+        : vk_feature_chain()
+    {
+        init_from_requests(table);
+    }
+
+    vk_feature_chain(const vk_feature_chain&)            = delete;
+    vk_feature_chain& operator=(const vk_feature_chain&) = delete;
+
+    template<typename T>
+    static std::span<VkBool32> vk_feat_flags_span(T& f)
+    {
+        auto* p = reinterpret_cast<u8*>(&f) + vk_feature_span<T>::begin;
+        return {reinterpret_cast<VkBool32*>(p), vk_feature_span<T>::count};
+    }
+
+    template<typename T>
+    static std::span<const VkBool32> vk_feat_flags_span(const T& f)
+    {
+        auto* p = reinterpret_cast<const u8*>(&f) + vk_feature_span<T>::begin;
+        return {reinterpret_cast<const VkBool32*>(p), vk_feature_span<T>::count};
+    }
+
+    template<typename T>
+    static bool supports(const T& required, const T& supported)
+    {
+        const auto req = vk_feat_flags_span(required);
+        const auto sup = vk_feat_flags_span(supported);
+        for (u64 i = 0; i < req.size(); ++i)
+        {
+            if (req[i] && !sup[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    static cpp::heap_array<VkExtensionProperties> get_device_extensions(VkPhysicalDevice device)
+    {
+        u32 ext_count = 0;
+        vkEnumerateDeviceExtensionProperties(device, nullptr, &ext_count, nullptr);
+
+        cpp::heap_array<VkExtensionProperties> extensions(ext_count);
+        vkEnumerateDeviceExtensionProperties(device, nullptr, &ext_count, extensions.data());
+
+        return extensions;
+    }
+
+    bool has_extension(std::string_view name) const
+    {
+        return std::ranges::any_of(this->m_dvc_extensions.begin(),
+                                   this->m_dvc_extensions.end(),
+                                   [&](const auto& e)
+                                   {
+                                       return name == e;
+                                   });
+    }
+
+    static bool has_extension(const cpp::heap_array<VkExtensionProperties>& extensions, std::string_view name)
+    {
+        return std::ranges::any_of(extensions.begin(),
+                                   extensions.end(),
+                                   [&](const auto& e)
+                                   {
+                                       return name == e.extensionName;
+                                   });
+    }
+
+    template<typename T>
+    void prepend(T&& desc)
+    {
+        *this->m_pNext = &desc;
+        this->m_pNext  = &desc.pNext;
+        desc.pNext     = nullptr;
+    }
+
+    void setup_ext_query(const cpp::heap_array<VkExtensionProperties>& extensions, const char* extension)
+    {
+        if (has_extension(extensions, extension))
+        {
+            m_dvc_extensions.emplace_back(extension);
+        }
+    }
+
+    template<typename T>
+    void setup_ext_query(T&& desc, const cpp::heap_array<VkExtensionProperties>& extensions, const char* extension)
+    {
+        if (has_extension(extensions, extension))
+        {
+            prepend(desc);
+            m_dvc_extensions.emplace_back(extension);
+        }
+    }
+
+    bool satisfies(const vk_feature_chain& required) const
+    {
+        for (const char* extension : required.m_dvc_extensions)
+        {
+            if (!this->has_extension(extension))
+            {
+                return false;
+            }
+        }
+
+        // clang-format off
+        return supports(required.core.features, this->core.features)
+                && supports(required.vk11, this->vk11)
+                && supports(required.vk12, this->vk12)
+                && supports(required.vk13, this->vk13)
+                && supports(required.vk14, this->vk14)
+                && supports(required.mesh, this->mesh)
+                && supports(required.port, this->port);
+        // clang-format on
+    }
+
+    // this is an approx. set of requirements for the device, to check if it is suitable
+    // I used to compose all requirements by hand, but it was getting a bit tedious
+    // so now I enable everything (that is of interest to me), and this stuff is only used to choose
+    // the appropriate device.
+    void init_from_requests(const rhi::rendering_features_table& table)
+    {
+#if !defined(__APPLE__)
+        this->core.features.geometryShader = VK_TRUE;
+        this->vk12.drawIndirectCount       = VK_TRUE;
+#endif
+
+        this->m_dvc_extensions.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        this->m_dvc_extensions.emplace_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
+        this->m_dvc_extensions.emplace_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+#if !defined(__APPLE__) && TRACY_ENABLE
+        this->m_dvc_extensions.emplace_back(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME);
+#endif
+
+        this->core.features.samplerAnisotropy                    = VK_TRUE;
+        this->core.features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+        this->core.features.multiDrawIndirect                    = VK_TRUE;
+        this->core.features.depthClamp                           = VK_TRUE;
+        this->core.features.samplerAnisotropy                    = VK_TRUE;
+        this->core.features.shaderInt16                          = VK_TRUE;
+        this->core.features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+        this->core.features.pipelineStatisticsQuery              = table.required(rhi::feature_flag::pipeline_stats);
+
+        this->vk11.shaderDrawParameters               = VK_TRUE;
+        this->vk11.storageBuffer16BitAccess           = VK_TRUE;
+        this->vk11.uniformAndStorageBuffer16BitAccess = VK_TRUE;
+
+        this->vk12.storageBuffer8BitAccess                      = VK_TRUE;
+        this->vk12.shaderFloat16                                = VK_TRUE;
+        this->vk12.descriptorIndexing                           = VK_TRUE;
+        this->vk12.shaderSampledImageArrayNonUniformIndexing    = VK_TRUE;
+        this->vk12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+        this->vk12.descriptorBindingPartiallyBound              = VK_TRUE;
+        this->vk12.descriptorBindingVariableDescriptorCount     = VK_TRUE;
+        this->vk12.runtimeDescriptorArray                       = VK_TRUE;
+        this->vk12.scalarBlockLayout                            = VK_TRUE;
+        this->vk12.timelineSemaphore                            = VK_TRUE;
+        this->vk12.samplerFilterMinmax                          = table.required(rhi::feature_flag::sampler_min_max),
+
+        this->vk13.synchronization2               = VK_TRUE;
+        this->vk13.dynamicRendering               = VK_TRUE;
+        this->vk13.maintenance4                   = VK_TRUE;
+        this->vk13.shaderDemoteToHelperInvocation = VK_TRUE;
+
+        this->vk14.maintenance5   = VK_TRUE;
+        this->vk14.maintenance6   = VK_TRUE;
+        this->vk14.pushDescriptor = VK_TRUE;
+
+        if (!table.required(rhi::feature_flag::validation))
+        {
+            this->vk11.protectedMemory             = VK_FALSE;
+            this->vk13.robustImageAccess           = VK_FALSE;
+            this->core.features.robustBufferAccess = VK_FALSE;
+        }
+
+        if (table.required(rhi::feature_flag::mesh_shading))
+        {
+            this->mesh = {
+                .sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
+                .taskShader = VK_TRUE,
+                .meshShader = VK_TRUE,
+            };
+            prepend(this->mesh);
+            this->m_dvc_extensions.emplace_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
+        }
+
+        if (table.required(rhi::feature_flag::portability_subset))
+        {
+            this->port = {
+                .sType                     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR,
+                .mutableComparisonSamplers = VK_TRUE,
+            };
+            prepend(this->port);
+            this->m_dvc_extensions.emplace_back("VK_KHR_portability_subset");
+        }
+    }
+
+    u32 dvc_extensions_count() const { return m_dvc_extensions.size(); }
+
+    const char* const* dvc_extensions() const { return m_dvc_extensions.data(); }
+};
 
 static const char* device_type_to_str(VkPhysicalDeviceType type)
 {
@@ -47,8 +319,8 @@ static cpp::stack_string format_bytes_number(u64 number)
 
     const char* magnitudes_per_thousand[] = {"KB", "MB", "GB", "TB"};
 
-    auto magnitude     = static_cast<i32>(std::log2(number) / 10);
-    const f64 fraction = static_cast<f64>(number) / std::pow(1024, magnitude);
+    const auto magnitude = static_cast<i32>(std::log2(number) / 10);
+    const f64 fraction   = static_cast<f64>(number) / std::pow(1024, magnitude);
     return cpp::stack_string::make_formatted("%.3lf %s", fraction, magnitudes_per_thousand[magnitude - 1]);
 }
 
@@ -191,7 +463,7 @@ static VkResult video_driver_create_surface(const window& window, VkInstance ins
     return VK_ERROR_FEATURE_NOT_PRESENT;
 }
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(const VkDebugUtilsMessageSeverityFlagBitsEXT severity,
                                                VkDebugUtilsMessageTypeFlagsEXT,
                                                const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void*)
 {
@@ -200,18 +472,46 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBi
         return VK_FALSE;
     }
 
+    constexpr const char* kFilterPhrases[] = {
+        // FSR 4.1.2 hidden requirements or errors
+        "SPIR-V Extension SPV_EXT_float8 was declared",
+        "SPIR-V Extension SPV_NV_cooperative_matrix2 was declared",
+        "SPIR-V Extension SPV_KHR_cooperative_matrix was declared",
+
+        "SPIR-V Capability CooperativeMatrixKHR was declared",
+        "SPIR-V Capability Float8CooperativeMatrixEXT was declared",
+        "SPIR-V Capability CooperativeMatrixConversionsNV was declared",
+
+        "Expected Use of Matrix type and Result Type to be identical",
+        "Cannot store to OpTypeImage, OpTypeSampler, OpTypeSampledImage, or OpTypeAccelerationStructureKHR objects",
+        "OpImage format of VK_FORMAT_R16G16B16A16_SFLOAT which has 4 components, but the OpImageWrite Texel operand only contains 3 components",
+    };
+
+    std::string_view msg(pCallbackData->pMessage);
+    const bool filtered_out = std::ranges::any_of(kFilterPhrases,
+                                                  [&](const char* p)
+                                                  {
+                                                      return msg.find(p) != std::string_view::npos;
+                                                  });
+
+    if (filtered_out)
+    {
+        LOG_INFO("Filtered-out validation message: {}", pCallbackData->pMessage);
+        return VK_FALSE;
+    }
+
     if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
-        LOG_ERROR("validation error: {}", pCallbackData->pMessage);
+        LOG_ERROR("Validation error: {}", msg);
         assert2m(false, pCallbackData->pMessage);
     }
     else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
     {
-        LOG_WARNING("validation warning: {}", pCallbackData->pMessage);
+        LOG_WARNING("Validation warning: {}", pCallbackData->pMessage);
     }
     else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)
     {
-        LOG_INFO("validation message: {}", pCallbackData->pMessage);
+        LOG_INFO("Validation message: {}", pCallbackData->pMessage);
     }
 
     return VK_FALSE;
@@ -353,7 +653,6 @@ static cpp::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysical
 }
 
 static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfaceKHR surface,
-                                                const ext_array& required_extensions,
                                                 rhi::rendering_features_table& features_table)
 {
     ZoneScoped;
@@ -390,118 +689,15 @@ static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfa
     cpp::heap_array<VkExtensionProperties> device_extensions(device_extensions_count);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &device_extensions_count, device_extensions.data());
 
-    cpp::hash_set not_found_extensions(required_extensions.size());
-    for (auto& ext : required_extensions)
-    {
-        const auto key = cpp::crc::crc32(ext, cpp::cx_strlen(ext));
-        not_found_extensions.set(key, key);
-    }
-
-    for (const auto& extension : device_extensions)
-    {
-        const auto key = cpp::crc::crc32(extension.extensionName, cpp::cx_strlen(extension.extensionName));
-        not_found_extensions.erase(key, key);
-
-        if (key == "VK_KHR_portability_subset"_crc32)
-        {
-            features_table.require(rhi::feature_flag::portability_subset);
-            features_table.set_supported(rhi::feature_flag::portability_subset, true);
-        }
-    }
-
-    VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
-
-    VkPhysicalDeviceVulkan14Features vk14_features {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
-                                                    .pNext = &mesh_features};
-
-    VkPhysicalDeviceVulkan13Features vk13_features {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-                                                    .pNext = &vk14_features};
-
-    VkPhysicalDeviceVulkan12Features vk12_features {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-                                                    .pNext = &vk13_features};
-
-    VkPhysicalDeviceVulkan11Features vk11_features {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-        .pNext = &vk12_features,
-    };
-
-    VkPhysicalDeviceFeatures2 device_features2 {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-                                                .pNext = &vk11_features};
-    vkGetPhysicalDeviceFeatures2(device, &device_features2);
-
-    features_table.set_supported(rhi::feature_flag::dynamic_render, vk13_features.dynamicRendering);
-    features_table.set_supported(rhi::feature_flag::scalar_block_layout, vk12_features.scalarBlockLayout);
-    features_table.set_supported(rhi::feature_flag::synchronization2, vk13_features.synchronization2);
-    features_table.set_supported(rhi::feature_flag::sampler_min_max, vk12_features.samplerFilterMinmax);
-
-    features_table.set_supported(rhi::feature_flag::types_int8, vk12_features.storageBuffer8BitAccess);
+    const vk_feature_chain supported(device, device_extensions);
     features_table.set_supported(rhi::feature_flag::mesh_shading,
-                                 vk13_features.maintenance4 && mesh_features.meshShader && mesh_features.taskShader);
-    features_table.set_supported(rhi::feature_flag::draw_indirect,
-#if !defined(__APPLE__)
-                                 vk12_features.drawIndirectCount &&
-#endif
-                                     device_features2.features.multiDrawIndirect && vk11_features.shaderDrawParameters);
-    features_table.set_supported(rhi::feature_flag::pipeline_stats, device_features2.features.pipelineStatisticsQuery);
+                                 supported.mesh.meshShader && supported.mesh.taskShader);
 
-    features_table.set_supported(rhi::feature_flag::bindless_textures,
-                                 vk12_features.descriptorIndexing && vk12_features.runtimeDescriptorArray
-                                     && vk12_features.descriptorBindingPartiallyBound
-                                     && vk12_features.descriptorBindingVariableDescriptorCount
-                                     && vk12_features.shaderSampledImageArrayNonUniformIndexing
-                                     && vk12_features.descriptorBindingSampledImageUpdateAfterBind);
+    features_table.set_supported(rhi::feature_flag::sampler_min_max, supported.vk12.samplerFilterMinmax);
+    features_table.set_supported(rhi::feature_flag::pipeline_stats, supported.core.features.pipelineStatisticsQuery);
 
-    features_table.set_supported(rhi::feature_flag::types_16bit,
-                                 device_features2.features.shaderInt16 && vk12_features.shaderFloat16
-                                     && vk11_features.storageBuffer16BitAccess
-                                     && vk11_features.uniformAndStorageBuffer16BitAccess);
-
-    // clang-format off
-    return not_found_extensions.empty() && features_table.all_required_supported()
-        && vk12_features.timelineSemaphore
-        && vk13_features.shaderDemoteToHelperInvocation
-        && vk14_features.maintenance5
-        && vk14_features.maintenance6
-        && device_features2.features.samplerAnisotropy
-        && device_features2.features.shaderStorageImageWriteWithoutFormat;
-    // clang-format on
-}
-
-static ext_array build_extensions_from_feature_table(const rhi::rendering_features_table& features_table,
-                                                     const bool required_only = false)
-{
-    ext_array array;
-    array.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-    array.emplace_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
-#if !defined(__APPLE__)
-    TRACY_ONLY(array.emplace_back(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME));
-#endif
-    for (u32 i = 0; i < cpp::cx_get_enum_bit_count(rhi::feature_flag::COUNT); ++i)
-    {
-        const auto feature = static_cast<rhi::feature_flag>(1 << i);
-        if ((required_only && features_table.required(feature))
-            || (features_table.requested(feature) && features_table.supported(feature)))
-        {
-            switch (feature)
-            {
-            case rhi::feature_flag::mesh_shading :
-                array.emplace_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
-                array.emplace_back(VK_KHR_MAINTENANCE_4_EXTENSION_NAME);
-                break;
-            case rhi::feature_flag::types_int8 :
-                array.emplace_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
-                break;
-            case rhi::feature_flag::portability_subset :
-                array.emplace_back("VK_KHR_portability_subset");
-                break;
-            default :
-                break;
-            }
-        }
-    }
-
-    return array;
+    const vk_feature_chain required(features_table);
+    return supported.satisfies(required) && features_table.all_required_supported();
 }
 
 static u32 rate_device(VkPhysicalDevice physical_device)
@@ -548,7 +744,6 @@ static void log_device_features_table(const char* name, const rhi::rendering_fea
 }
 
 static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
-                                             const ext_array& required_extensions,
                                              rhi::rendering_features_table& required_features, u32 wanted_index)
 {
     ZoneScoped;
@@ -579,7 +774,7 @@ static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR s
                   driver_properties.driverName,
                   driver_properties.driverInfo);
 
-        if (!check_device_basic_features_support(device, surface, required_extensions, required_features))
+        if (!check_device_basic_features_support(device, surface, required_features))
         {
             LOG_DEBUG("Device #{} does not support all required features", i);
             log_device_features_table(properties2.properties.deviceName, required_features);
@@ -717,110 +912,20 @@ static VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhy
     return vmaCreateAllocator(&allocator_create_info, allocator);
 }
 
-static VkResult create_vulkan_device(const rhi::rendering_features_table& rendering_features,
-                                     const ext_array& device_extensions, VkPhysicalDevice phys_device,
-                                     VkSurfaceKHR surface, VkDevice* device)
+static VkResult create_vulkan_device(VkPhysicalDevice phys_device, VkSurfaceKHR surface, VkDevice* device)
 {
+    const vk_feature_chain features(phys_device);
     const auto queue_create_info = get_queue_create_info(phys_device, surface);
 
-    void** pNext = nullptr;
-    auto prepend = [&](void* desc)
-    {
-        *pNext = desc;
-        pNext  = reinterpret_cast<void**>(static_cast<u8*>(desc) + sizeof(void*));
-    };
-
-    VkPhysicalDeviceVulkan14Features vk14_features {
-        .sType          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
-        .maintenance5   = VK_TRUE,
-        .maintenance6   = VK_TRUE,
-        .pushDescriptor = VK_TRUE,
-    };
-
-    VkPhysicalDeviceVulkan13Features vk13_features {
-        .sType                          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        .shaderDemoteToHelperInvocation = VK_TRUE,
-        .synchronization2               = rendering_features.wanted(rhi::feature_flag::synchronization2),
-        .dynamicRendering               = rendering_features.wanted(rhi::feature_flag::dynamic_render),
-        .maintenance4                   = rendering_features.wanted(rhi::feature_flag::mesh_shading),
-    };
-
-    VkPhysicalDeviceVulkan12Features vk12_features {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-#if !defined(__APPLE__)
-        .drawIndirectCount = rendering_features.wanted(rhi::feature_flag::draw_indirect),
-#endif
-        .storageBuffer8BitAccess                      = rendering_features.wanted(rhi::feature_flag::types_int8),
-        .shaderFloat16                                = rendering_features.wanted(rhi::feature_flag::types_16bit),
-        .descriptorIndexing                           = rendering_features.wanted(rhi::feature_flag::bindless_textures),
-        .shaderSampledImageArrayNonUniformIndexing    = rendering_features.wanted(rhi::feature_flag::bindless_textures),
-        .descriptorBindingSampledImageUpdateAfterBind = rendering_features.wanted(rhi::feature_flag::bindless_textures),
-        .descriptorBindingPartiallyBound              = rendering_features.wanted(rhi::feature_flag::bindless_textures),
-        .descriptorBindingVariableDescriptorCount     = rendering_features.wanted(rhi::feature_flag::bindless_textures),
-        .runtimeDescriptorArray                       = rendering_features.wanted(rhi::feature_flag::bindless_textures),
-        .samplerFilterMinmax                          = rendering_features.wanted(rhi::feature_flag::sampler_min_max),
-        .scalarBlockLayout = rendering_features.wanted(rhi::feature_flag::scalar_block_layout),
-        .timelineSemaphore = VK_TRUE,
-    };
-
-    VkPhysicalDeviceVulkan11Features vk11_features {
-        .sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-        .storageBuffer16BitAccess           = rendering_features.wanted(rhi::feature_flag::types_16bit),
-        .uniformAndStorageBuffer16BitAccess = rendering_features.wanted(rhi::feature_flag::types_16bit),
-        .shaderDrawParameters               = rendering_features.wanted(rhi::feature_flag::draw_indirect),
-    };
-
-    VkPhysicalDeviceFeatures2 device_features {
-        .sType    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .features = {
-#if !defined(__APPLE__)
-                     .geometryShader = VK_TRUE,
-#endif
-                     .multiDrawIndirect                    = rendering_features.wanted(rhi::feature_flag::draw_indirect),
-                     .depthClamp                           = VK_TRUE,
-                     .samplerAnisotropy                    = VK_TRUE,
-                     .pipelineStatisticsQuery              = rendering_features.wanted(rhi::feature_flag::pipeline_stats),
-                     .shaderStorageImageWriteWithoutFormat = VK_TRUE,
-                     .shaderInt16                          = rendering_features.wanted(rhi::feature_flag::types_16bit),
-                     }
-    };
-
-    VkDeviceCreateInfo device_create_info {
+    const VkDeviceCreateInfo device_create_info {
         .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext                   = &device_features,
+        .pNext                   = &features.core,
         .queueCreateInfoCount    = static_cast<u32>(queue_create_info.size()),
         .pQueueCreateInfos       = queue_create_info.data(),
-        .enabledExtensionCount   = static_cast<u32>(device_extensions.size()),
-        .ppEnabledExtensionNames = device_extensions.data(),
+        .enabledExtensionCount   = features.dvc_extensions_count(),
+        .ppEnabledExtensionNames = features.dvc_extensions(),
         .pEnabledFeatures        = nullptr,
     };
-
-    pNext = &device_features.pNext;
-    prepend(&vk11_features);
-    prepend(&vk12_features);
-    prepend(&vk13_features);
-    prepend(&vk14_features);
-
-    // Optional structs
-    VkPhysicalDeviceMeshShaderFeaturesEXT mesh_features {};
-    if (rendering_features.wanted(rhi::feature_flag::mesh_shading))
-    {
-        mesh_features = {.sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
-                         .taskShader = true,
-                         .meshShader = true};
-        prepend(&mesh_features);
-    }
-
-    VkPhysicalDevicePortabilitySubsetFeaturesKHR portability_features {};
-    if (rendering_features.wanted(rhi::feature_flag::portability_subset))
-    {
-        portability_features = {
-            .sType                     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR,
-            .mutableComparisonSamplers = true,
-        };
-
-        prepend(&portability_features);
-    }
 
     return vkCreateDevice(phys_device, &device_create_info, nullptr, device);
 }
@@ -894,19 +999,11 @@ static result<vk_context> create_vk_context(const window& window, const rhi::ins
     VK_RETURN_ON_FAIL(video_driver_create_surface(window, context.instance, &context.surface));
 
     // here context.enabled_device_features is populated with all supported features, both required and requested
-    context.physical_device = pick_physical_device(context.instance,
-                                                   context.surface,
-                                                   build_extensions_from_feature_table(desc.device_features, true),
-                                                   context.enabled_device_features,
-                                                   desc.device_id_hint);
+    context.physical_device =
+        pick_physical_device(context.instance, context.surface, context.enabled_device_features, desc.device_id_hint);
 
     // build new extensions table with required + (requested & supported) extensions included
-    context.enabled_device_extensions = build_extensions_from_feature_table(context.enabled_device_features);
-    VK_RETURN_ON_FAIL(create_vulkan_device(context.enabled_device_features,
-                                           context.enabled_device_extensions,
-                                           context.physical_device,
-                                           context.surface,
-                                           &context.device));
+    VK_RETURN_ON_FAIL(create_vulkan_device(context.physical_device, context.surface, &context.device));
     VK_RETURN_ON_FAIL(
         create_vma_allocator(context.instance, context.device, context.physical_device, &context.allocator));
 
@@ -1125,7 +1222,6 @@ void platform::vk_destroy_context(vk_context& ctx)
     ZoneScoped;
 
     ctx.instance_extensions.clear();
-    ctx.enabled_device_extensions.clear();
 
     VK_DO_IF_NOT_NULL(ctx.device, vkDeviceWaitIdle(ctx.device));
     VK_DO_IF_NOT_NULL(ctx.allocator, vmaDestroyAllocator(ctx.allocator));

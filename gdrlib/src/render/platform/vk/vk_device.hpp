@@ -29,15 +29,11 @@ namespace platform
         u32 family    = VK_QUEUE_FAMILY_IGNORED;
     };
 
-    using ext_array = cpp::heap_array<const char*>;
-
     struct vk_context
     {
         vk_queue_data queues[rhi::kQueueTypesCount];
 
-        ext_array instance_extensions;
-        ext_array enabled_device_extensions;
-
+        cpp::heap_array<const char*> instance_extensions;
         rhi::rendering_features_table enabled_device_features;
 
         VkInstance instance                      = VK_NULL_HANDLE;

@@ -1,12 +1,10 @@
-#include <types.hpp>
-
 #include <app/app.hpp>
-#include <app/csm.hpp>
 #include <app/envmap.hpp>
 #include <app/gpu_upload_mgr.hpp>
 #include <app/pso.hpp>
 #include <app/render.hpp>
 #include <camera_controller.hpp>
+#include <cpp/containers/local_array.hpp>
 #include <debug.hpp>
 #include <events.hpp>
 #include <glm/common.hpp>
@@ -25,6 +23,7 @@
 #include <scene/mesh_load.hpp>
 #include <scene/scene.hpp>
 #include <tracy/Tracy.hpp>
+#include <types.hpp>
 #include <window.hpp>
 
 #define NO_POPULATE_MODE 1
@@ -246,14 +245,7 @@ static rhi::instance_desc get_instance_desc(auto& args)
 #if !defined(__APPLE__)
                               .require(rhi::feature_flag::sampler_min_max)
 #endif
-                              .request(rhi::feature_flag::debug_labels)
-                              .request(rhi::feature_flag::mesh_shading)
-                              .require(rhi::feature_flag::types_16bit)
-                              .require(rhi::feature_flag::draw_indirect)
-                              .require(rhi::feature_flag::dynamic_render)
-                              .require(rhi::feature_flag::bindless_textures)
-                              .require(rhi::feature_flag::scalar_block_layout)
-                              .require(rhi::feature_flag::synchronization2);
+                              .request(rhi::feature_flag::mesh_shading);
 
 #if defined(NDEBUG)
     if (args.read_numeric("--validation", 0))
@@ -343,10 +335,6 @@ int app::instance::run()
         *context,
         rhi::image_format::r16g16b16a16sf,
         {.env_resolution = 1024, .brdf_lut_resolution = 512, .prefilter_resolution = 128, .irradiance_resolution = 32}
-    };
-
-    app::csm csm {
-        m_rhi, *context, rhi::image_format::d32sf, {.resolution = 2048, .max_range = 500.0F, .split_lambda = 0.65F}
     };
 
     bool exit                   = false;
@@ -526,7 +514,7 @@ int app::instance::run()
     f32 envmap_intensity       = 1250.0f;
 
     bool enable_fsr_aa            = true;
-    bool fsr_aa_rcas              = false;
+    bool fsr_aa_rcas              = true;
     bool fsr_aa_reset             = false;
     bool freeze_cull_data         = false;
     bool enable_meshlets_pipeline = mesh_shading_supported;
@@ -619,8 +607,6 @@ int app::instance::run()
         auto cmd   = *m_rhi.create_command_buffer(*context, rhi::queue_kind::gfx);
 
         m_rhi.cmd_begin_recording(cmd);
-        csm.init(m_rhi, cmd);
-
         envmap.init(m_rhi, cmd, pipelines);
         if (!env_map.empty())
         {
@@ -870,7 +856,6 @@ int app::instance::run()
     aa_pass.shutdown();
     pp_pass.shutdown();
 
-    csm.shutdown(m_rhi, *context);
     envmap.shutdown(m_rhi, *context);
 
     watcher.shutdown();

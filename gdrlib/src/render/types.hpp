@@ -15,18 +15,11 @@ namespace rhi
     // clang-format off
     REGISTER_FLAGS(feature_flag,
         validation          = 1 << 0,
-        mesh_shading        = 1 << 1,
-        dynamic_render      = 1 << 2, // TODO: drop this and make it a hard requirement?
-        synchronization2    = 1 << 3, // TODO: drop this and make it a hard requirement?
-        draw_indirect       = 1 << 4,
-        types_int8          = 1 << 5,
-        pipeline_stats      = 1 << 6,
-        sampler_min_max     = 1 << 7,
-        scalar_block_layout = 1 << 8, // TODO: drop this and make it a hard requirement?
-        portability_subset  = 1 << 9, // TODO: should this be marked as internal or smth?
-        bindless_textures   = 1 << 10,  // TODO: bad name tbh
-        types_16bit         = 1 << 11,
-        debug_labels        = 1 << 12,
+        debug_labels        = 1 << 1,
+        mesh_shading        = 1 << 2,
+        pipeline_stats      = 1 << 3,
+        sampler_min_max     = 1 << 4,
+        portability_subset  = 1 << 5, // TODO: should this be marked as internal or smth?
         COUNT
     );
 
