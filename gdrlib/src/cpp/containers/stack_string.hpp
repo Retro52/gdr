@@ -2,11 +2,12 @@
 
 #include <assert2.hpp>
 #include <cpp/alg_constexpr.hpp>
-#include <cpp/hash/crc_hash.hpp>
 
 #include <cstdio>
 
 #if ENABLE_STL
+#include <cpp/hash/crc_hash.hpp>
+
 #include <string>
 #include <string_view>
 #endif
@@ -23,7 +24,7 @@ namespace cpp
     class stack_string_base
     {
     public:
-        using char_type = char;
+        using char_type           = char;
         constexpr static u64 npos = ~static_cast<u64>(0);
 
     public:
@@ -50,7 +51,7 @@ namespace cpp
 #if ENABLE_STL
         // String view support
         // NOLINTNEXTLINE(*-explicit-constructor)
-        [[maybe_unused]] constexpr stack_string_base(std::string_view sv)
+        /* implicit */ [[maybe_unused]] constexpr stack_string_base(std::string_view sv)
             : stack_string_base(sv.data(), sv.length())
         {
         }
@@ -62,7 +63,7 @@ namespace cpp
         }
 #endif
 
-        explicit constexpr stack_string_base(const char* str, u64 len) { set_value(str, len); }
+        explicit constexpr stack_string_base(const char* str, const u64 len) { set_value(str, len); }
 
         constexpr void clear() { cpp::cx_fill(&m_str[0], m_str + N, 0); }
 

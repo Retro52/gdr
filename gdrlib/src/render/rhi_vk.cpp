@@ -1,5 +1,3 @@
-#include <volk.h>
-
 #include <cpp/containers/local_array.hpp>
 #include <render/platform/vk/vk_buffer.hpp>
 #include <render/platform/vk/vk_command_buffer.hpp>
@@ -12,6 +10,8 @@
 #include <render/platform/vk/vk_utils.hpp>
 #include <render/rhi_util.hpp>
 #include <render/rhi_vk.hpp>
+
+#include <volk.h>
 
 struct vk_swapchain_sync_objects
 {
@@ -695,8 +695,8 @@ void rhi::vk_destroy_sampler(context context, sampler& sampler)
     }
 }
 
-auto rhi::vk_create_compute_pso(context context, shader shader, const std::span<const bindless_set> sets)
-    -> result<pipeline>
+auto rhi::vk_create_compute_pso(context context, shader shader, const std::span<const bindless_set> sets,
+                                const pso_options& options) -> result<pipeline>
 {
     ZoneScoped;
     const auto* vk_ctx    = cast_from_handle<platform::vk_context>(context);
@@ -723,6 +723,7 @@ auto rhi::vk_create_compute_pso(context context, shader shader, const std::span<
     auto vk_pso = platform::vk_pipeline::create_compute(vk_ctx->device, *vk_shader, vk_desc_sets, sets.size());
 
     RESULT_FORWARD_IF_FAILED(vk_pso);
+    vk_rhi_set_object_name_if_needed(*vk_ctx, vk_pso->m_pipeline, options.dbg_name);
     return create_handle<pipeline>(*vk_pso);
 }
 
@@ -765,6 +766,7 @@ auto rhi::vk_create_graphics_pso(context context, const std::span<const shader> 
         vk_ctx->device, vk_shaders.data(), vk_shaders.size(), vk_desc_sets.data(), vk_desc_sets.size(), options);
 
     RESULT_FORWARD_IF_FAILED(vk_pso);
+    vk_rhi_set_object_name_if_needed(*vk_ctx, vk_pso->m_pipeline, options.dbg_name);
     return create_handle<pipeline>(*vk_pso);
 }
 
@@ -1543,14 +1545,7 @@ void rhi::vk_cmd_debug_label_begin(command_buffer cmd, context context, const de
 {
     const auto* vk_cmd = cast_from_handle<platform::vk_command_buffer>(cmd);
     const auto* vk_ctx = cast_from_handle<platform::vk_context>(context);
-    if (!vk_cmd || !vk_ctx)
-    {
-        return;
-    }
-
-    assert2(vk_ctx->enabled_device_features.supported(rhi::feature_flag::debug_labels));
-    if (!vk_ctx->enabled_device_features.supported(rhi::feature_flag::debug_labels)
-        || !vk_ctx->enabled_device_features.wanted(rhi::feature_flag::debug_labels))
+    if (!vk_cmd || !vk_ctx || !vk_ctx->enabled_device_features.wanted(rhi::feature_flag::debug_labels))
     {
         return;
     }
@@ -1738,6 +1733,8 @@ void rhi::vk_present(command_buffer cmd, swapchain swapchain, queue submit, queu
     vk_sc->frame_index = (vk_sc->frame_index + 1) % vk_sc->sync_objects.size();
 }
 
+static platform::ffx_module g_ffx_module;
+
 auto rhi::vk_ffx_create_upscale_context(context ctx, const ffx_upscale_desc& desc) -> result<ffx_context>
 {
     ZoneScoped;
@@ -1749,7 +1746,8 @@ auto rhi::vk_ffx_create_upscale_context(context ctx, const ffx_upscale_desc& des
         return error("failed to access context");
     }
 
-    auto vk_ffx_ctx = platform::vk_ffx_create_upscale_context(vk_ctx->device, vk_ctx->physical_device, desc);
+    auto vk_ffx_ctx =
+        platform::vk_ffx_create_upscale_context(g_ffx_module, vk_ctx->device, vk_ctx->physical_device, desc);
     RESULT_FORWARD_IF_FAILED(vk_ffx_ctx);
 
     return create_handle<ffx_context>(*vk_ffx_ctx);
@@ -1763,7 +1761,7 @@ void rhi::vk_ffx_destroy_context(ffx_context& ffx_ctx)
     assert2(vk_ffx_ctx);
     if (vk_ffx_ctx)
     {
-        ffx::DestroyContext(*vk_ffx_ctx);
+        g_ffx_module.DestroyContext(*vk_ffx_ctx);
         clear_handle(vk_ffx_ctx, ffx_ctx);
     }
 }
@@ -1780,7 +1778,7 @@ auto rhi::vk_ffx_upscale_query_jitter(ffx_context ffx_ctx, const u32 render_widt
         return error("failed to access context");
     }
 
-    return platform::vk_ffx_get_jitter_offset(*vk_ffx_ctx, render_width, display_width, jitter_index);
+    return platform::vk_ffx_get_jitter_offset(g_ffx_module, *vk_ffx_ctx, render_width, display_width, jitter_index);
 }
 
 void rhi::vk_ffx_upscale_dispatch(ffx_context ffx_ctx, command_buffer cmd, const ffx_upscale_params& params,
@@ -1814,5 +1812,5 @@ void rhi::vk_ffx_upscale_dispatch(ffx_context ffx_ctx, command_buffer cmd, const
         .reactive                     = query(resources.reactive),
         .transparency_and_composition = query(resources.transparency_and_composition),
     };
-    platform::vk_ffx_dispatch_upscale(*vk_ffx_ctx, vk_cmd->cmd_buffer, params, vk_resources);
+    platform::vk_ffx_dispatch_upscale(g_ffx_module, *vk_ffx_ctx, vk_cmd->cmd_buffer, params, vk_resources);
 }

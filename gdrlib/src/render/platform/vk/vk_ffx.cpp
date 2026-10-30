@@ -1,6 +1,7 @@
 #include <ffx_upscale.hpp>
 #include <log.hpp>
 #include <render/platform/vk/vk_ffx.hpp>
+#include <tracy/Tracy.hpp>
 
 // clang-format off
 #include <vk/ffx_api_vk.hpp>
@@ -8,24 +9,13 @@
 
 static PFN_vkVoidFunction VKAPI_PTR vk_ffx_get_device_proc_addr_wrapper(VkDevice device, const char* name)
 {
-    const auto cpp_name   = cpp::stack_string(name);
-    const auto cpp_ending = cpp_name.substring(cpp_name.length() - 3, 3);
-    if (cpp_ending != "KHR" && cpp_ending != "EXT")
-    {
-        return vkGetDeviceProcAddr(device, name);
-    }
-
-    const auto core_test_name = cpp_name.substring(0, cpp_name.length() - 3);
-    if (const auto core_fn = vkGetDeviceProcAddr(device, core_test_name.c_str()))
-    {
-        return core_fn;
-    }
-
+    ZoneScoped;
     return vkGetDeviceProcAddr(device, name);
 }
 
 FfxApiResource platform::vk_ffx_get_resource_wrapper(const vk_image& image)
 {
+    ZoneScoped;
     const VkImageCreateInfo create_info {
         .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .flags       = image.meta.layers_count == 6 ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0U,
@@ -46,6 +36,7 @@ FfxApiResource platform::vk_ffx_get_resource_wrapper(const vk_image& image)
 
 FfxApiResourceState platform::vk_ffx_get_resource_state(const VkImageLayout layout)
 {
+    ZoneScoped;
     switch (layout)
     {
     case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL :
@@ -66,32 +57,13 @@ FfxApiResourceState platform::vk_ffx_get_resource_state(const VkImageLayout layo
     }
 }
 
-result<vec2> platform::vk_ffx_get_jitter_offset(ffx::Context context, const u32 render_width, const u32 display_width,
-                                                const i32 jitter_index)
-{
-    i32 jitter_phase_size;
-    ffx::QueryDescUpscaleGetJitterPhaseCount get_jitter_phase_desc {};
-    get_jitter_phase_desc.renderWidth    = render_width;
-    get_jitter_phase_desc.displayWidth   = display_width;
-    get_jitter_phase_desc.pOutPhaseCount = &jitter_phase_size;
-
-    FFX_RETURN_ON_FAIL(ffx::Query(context, get_jitter_phase_desc));
-
-    vec2 result;
-    ffx::QueryDescUpscaleGetJitterOffset get_current_jitter_desc {};
-    get_current_jitter_desc.index      = jitter_index;
-    get_current_jitter_desc.phaseCount = jitter_phase_size;
-    get_current_jitter_desc.pOutX      = &result.x;
-    get_current_jitter_desc.pOutY      = &result.y;
-
-    FFX_RETURN_ON_FAIL(ffx::Query(context, get_current_jitter_desc));
-
-    return result;
-}
-
-result<ffx::Context> platform::vk_ffx_create_upscale_context(VkDevice device, VkPhysicalDevice physical_device,
+result<ffx::Context> platform::vk_ffx_create_upscale_context(platform::ffx_module& module, VkDevice device,
+                                                             VkPhysicalDevice physical_device,
                                                              const rhi::ffx_upscale_desc& desc)
 {
+    ZoneScoped;
+    module.lazy_load("./amd_fidelityfx_loader_vk.dll");
+
     ffx::Context ctx {};
     ffx::CreateBackendVKDesc backend_desc {};
     backend_desc.deviceContext.vkDevice         = device;
@@ -105,13 +77,49 @@ result<ffx::Context> platform::vk_ffx_create_upscale_context(VkDevice device, Vk
     upscale_desc.flags =
         FFX_UPSCALE_ENABLE_HIGH_DYNAMIC_RANGE | FFX_UPSCALE_ENABLE_AUTO_EXPOSURE | FFX_UPSCALE_ENABLE_DEPTH_INVERTED;
 
-    FFX_RETURN_ON_FAIL(ffx::CreateContext(ctx, nullptr, upscale_desc, backend_desc));
+    ffx::CreateContextDescUpscaleVersion version_desc {};
+    version_desc.version = FFX_UPSCALER_VERSION;
+
+    FFX_RETURN_ON_FAIL(module.CreateContext(ctx, nullptr, upscale_desc, backend_desc, version_desc));
+
+    ffxQueryGetProviderVersion version_query = {};
+    version_query.header.type                = FFX_API_QUERY_DESC_TYPE_GET_PROVIDER_VERSION;
+
+    FFX_ASSERT_ON_FAIL(module.Query(ctx, version_query));
+    LOG_INFO("FSR version: {}", version_query.versionName);
+
     return ctx;
 }
 
-void platform::vk_ffx_dispatch_upscale(ffx::Context context, VkCommandBuffer cmd, const rhi::ffx_upscale_params& params,
+result<vec2> platform::vk_ffx_get_jitter_offset(const platform::ffx_module& module, ffx::Context context,
+                                                const u32 render_width, const u32 display_width, const i32 jitter_index)
+{
+    ZoneScoped;
+    i32 jitter_phase_size;
+    ffx::QueryDescUpscaleGetJitterPhaseCount get_jitter_phase_desc {};
+    get_jitter_phase_desc.renderWidth    = render_width;
+    get_jitter_phase_desc.displayWidth   = display_width;
+    get_jitter_phase_desc.pOutPhaseCount = &jitter_phase_size;
+
+    FFX_RETURN_ON_FAIL(module.Query(context, get_jitter_phase_desc));
+
+    vec2 result;
+    ffx::QueryDescUpscaleGetJitterOffset get_current_jitter_desc {};
+    get_current_jitter_desc.index      = jitter_index;
+    get_current_jitter_desc.phaseCount = jitter_phase_size;
+    get_current_jitter_desc.pOutX      = &result.x;
+    get_current_jitter_desc.pOutY      = &result.y;
+
+    FFX_RETURN_ON_FAIL(module.Query(context, get_current_jitter_desc));
+
+    return result;
+}
+
+void platform::vk_ffx_dispatch_upscale(const platform::ffx_module& module, ffx::Context context, VkCommandBuffer cmd,
+                                       const rhi::ffx_upscale_params& params,
                                        const platform::ffx_upscale_resources& desc)
 {
+    ZoneScoped;
     ffx::DispatchDescUpscale dispatch_desc {};
 
     dispatch_desc.commandList = cmd;
@@ -157,5 +165,5 @@ void platform::vk_ffx_dispatch_upscale(ffx::Context context, VkCommandBuffer cmd
         dispatch_desc.cameraNear = params.camera_near_plane;
     }
 
-    FFX_ASSERT_ON_FAIL(ffx::Dispatch(context, dispatch_desc));
+    FFX_ASSERT_ON_FAIL(module.Dispatch(context, dispatch_desc));
 }

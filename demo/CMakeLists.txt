@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.17)
 
 project(gdr LANGUAGES C CXX VERSION 1.0)
 
+set(BIN_FOLDER "${CMAKE_SOURCE_DIR}/bin-${CMAKE_BUILD_TYPE}")
+
+include(cmake/utils.cmake)
+set_bin_dst(${BIN_FOLDER})
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -21,8 +26,9 @@ add_ffx_dependencies(
         COMPONENTS UPSCALE
 )
 
+add_shaders_dependency(${PROJECT_NAME} "${BIN_FOLDER}/shaders")
+
 target_link_libraries(${PROJECT_NAME} PRIVATE
-        shaders
         gdrlib
 )
 

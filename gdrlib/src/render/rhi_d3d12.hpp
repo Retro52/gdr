@@ -36,7 +36,8 @@ namespace rhi
     result<sampler> d3d12_create_sampler(context context, const create_sampler_info& sampler_info);
     void d3d12_destroy_sampler(context context, sampler& sampler);
 
-    result<pipeline> d3d12_create_compute_pso(context context, shader shader, std::span<const bindless_set> sets);
+    result<pipeline> d3d12_create_compute_pso(context context, shader shader, std::span<const bindless_set> sets,
+                                              const pso_options& options);
     result<pipeline> d3d12_create_graphics_pso(context context, std::span<const shader> shaders,
                                                std::span<const bindless_set> sets, const pso_options& options);
     void d3d12_destroy_pso(context context, pipeline& pso);

@@ -103,11 +103,7 @@ UseTab: Never
 TabWidth: 4
 InsertTrailingCommas: Wrapped
 IncludeCategories:
-  - Regex: ("|<)volk.h("|>)
-    Priority: 0
-    SortPriority: 0
-    CaseSensitive: false
-  - Regex: ("|<)windows.h("|>)
+  - Regex: ^<.*\.(hpp|hxx)>
     Priority: 0
     SortPriority: 0
     CaseSensitive: false
@@ -119,9 +115,13 @@ IncludeCategories:
     Priority: 2
     SortPriority: 2
     CaseSensitive: false
-  - Regex: ^<.*\.(h|hpp|hxx)>
-    Priority: 3
-    SortPriority: 3
+  - Regex: ("|<)volk.h("|>)
+    Priority: 98
+    SortPriority: 98
+    CaseSensitive: false
+  - Regex: ("|<)windows.h("|>)
+    Priority: 99
+    SortPriority: 99
     CaseSensitive: false
   - Regex: ^<.*
     Priority: 4

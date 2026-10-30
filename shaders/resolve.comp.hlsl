@@ -417,6 +417,11 @@ void main(uint3 global_id: SV_DispatchThreadID)
         if (world[0].debug_mode == kDebugModeNormalTexture)  { color = DTEXTURE2D(normal_idx, uv, dfdx, dfdy).rgb; }
         if (world[0].debug_mode == kDebugModeOrmTexture)     { color = DTEXTURE2D(met_roughness_idx, uv, dfdx, dfdy).rgb; }
         if (world[0].debug_mode == kDebugModeTriangleId)     { color = hash_color(i0); }
+#ifdef FOR_MESH_PIPELINE
+        if (world[0].debug_mode == kDebugModeMeshletId)      { color = hash_color(m_idx); }
+#else
+        if (world[0].debug_mode == kDebugModeMeshletId)      { color = hash_color(i0); }
+#endif
         if (world[0].debug_mode == kDebugModeInstanceId)     { color = hash_color(instance_id); }
         if (world[0].debug_mode == kDebugModeTriangleFace)   { color = hash_color(uint(is_front_face)); }
 #if 0

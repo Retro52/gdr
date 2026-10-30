@@ -1,7 +1,7 @@
 #pragma once
 
+#include <cpp/containers/local_array.hpp>
 #include <fs/fs.hpp>
-#include <render/platform/d3d12/d3d12_buffer.hpp>
 #include <render/platform/d3d12/d3d12_device.hpp>
 #include <render/rhi_pso_options.hpp>
 #include <result.hpp>
@@ -54,9 +54,14 @@ namespace platform
 
     struct d3d12_pso_param_key
     {
-        u32 slot;
-        u32 space;
+        u16 slot;
+        u16 space;
         D3D12_DESCRIPTOR_RANGE_TYPE resource_type;
+
+        u64 hash() const noexcept
+        {
+            return static_cast<u64>(slot) | (static_cast<u64>(space) << 16) | (static_cast<u64>(resource_type) << 32);
+        }
     };
 
     struct d3d12_root_signature
@@ -67,22 +72,20 @@ namespace platform
         constexpr static u32 kInvalidDedup       = ~static_cast<u32>(0);
 
         platform::com_ptr<ID3D12RootSignature> signature = nullptr;
-        u32 dedup[kMaxSetSets][kMaxSetTypes][kMaxSetZeroBindings];
-
-        d3d12_root_signature();
+        std::unordered_map<u64, u32> dedup;
 
         [[nodiscard]] u32 get_bind_index(d3d12_pso_param_key key) const;
 
         template<typename Func>
-        void for_each_type(const u32 space, const u32 slot, Func&& cb) const
+        void for_each_type(const u16 space, const u16 slot, Func&& cb) const
         {
             d3d12_pso_param_key key {.slot = slot, .space = space};
             for (u32 i = 0; i < kMaxSetTypes; ++i)
             {
-                if (this->dedup[space][i][slot] != kInvalidDedup)
+                key.resource_type = static_cast<D3D12_DESCRIPTOR_RANGE_TYPE>(i);
+                if (const auto it = dedup.find(key.hash()); it != dedup.end())
                 {
-                    key.resource_type = static_cast<D3D12_DESCRIPTOR_RANGE_TYPE>(i);
-                    cb(key.resource_type, this->get_bind_index(key));
+                    cb(key.resource_type, it->second);
                 }
             }
         }

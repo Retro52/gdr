@@ -236,6 +236,14 @@ static u32 ddspp_format_from_vk(const VkFormat vk_format)
     }
 }
 
+cpp::big_stack_string platform::d3d12_wchar_to_utf8(const wchar_t* wide)
+{
+    ZoneScoped;
+    cpp::big_stack_string buf;
+    WideCharToMultiByte(CP_UTF8, 0, wide, -1, buf.data(), cpp::stack_string::capacity(), nullptr, nullptr);
+    return buf;
+}
+
 DXGI_FORMAT platform::d3d12_format_from_vk(const VkFormat vk_format)
 {
     ZoneScoped;
@@ -299,27 +307,6 @@ uvec2 platform::d3d12_rhi_parse_aspect_flags(const rhi::image_aspect_bits aspect
     return {kColorDepthPlane, 1};
 }
 
-D3D12_BARRIER_LAYOUT platform::d3d12_rhi_parse_image_layout(const rhi::image_layout layout)
-{
-    ZoneScoped;
-    switch (layout)
-    {
-    case rhi::image_layout::discard :
-        return D3D12_BARRIER_LAYOUT_UNDEFINED;
-    case rhi::image_layout::present :
-        return D3D12_BARRIER_LAYOUT_PRESENT;
-    case rhi::image_layout::storage :
-        return D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
-    case rhi::image_layout::render_target_color :
-        return D3D12_BARRIER_LAYOUT_RENDER_TARGET;
-    case rhi::image_layout::render_target_depth_stencil :
-        return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
-    default :
-    case rhi::image_layout::common :
-        return D3D12_BARRIER_LAYOUT_COMMON;
-    }
-}
-
 D3D12_BARRIER_SUBRESOURCE_RANGE platform::d3d12_rhi_parse_image_range(const rhi::image_subresource_range& range,
                                                                       const u32 mips_count, const u32 layers_count)
 {
@@ -353,6 +340,38 @@ bool platform::d3d12_format_has_stencil(const DXGI_FORMAT format)
         return true;
     default :
         return false;
+    }
+}
+
+bool platform::d3d12_format_is_floating_point(const DXGI_FORMAT format)
+{
+    switch (static_cast<ddspp::DXGIFormat>(format))
+    {
+    case ddspp::R32G32B32A32_UINT :
+    case ddspp::R32G32B32A32_SINT :
+    case ddspp::R32G32B32_UINT :
+    case ddspp::R32G32B32_SINT :
+    case ddspp::R16G16B16A16_UINT :
+    case ddspp::R16G16B16A16_SINT :
+    case ddspp::R32G32_UINT :
+    case ddspp::R32G32_SINT :
+    case ddspp::R10G10B10A2_UINT :
+    case ddspp::R8G8B8A8_UINT :
+    case ddspp::R8G8B8A8_SINT :
+    case ddspp::R16G16_UINT :
+    case ddspp::R16G16_SINT :
+    case ddspp::R32_UINT :
+    case ddspp::R32_SINT :
+    case ddspp::R8G8_UINT :
+    case ddspp::R8G8_SINT :
+    case ddspp::R16_UINT :
+    case ddspp::R16_SINT :
+    case ddspp::R8_UINT :
+    case ddspp::R8_SINT :
+        return false;
+
+    default :
+        return true;
     }
 }
 

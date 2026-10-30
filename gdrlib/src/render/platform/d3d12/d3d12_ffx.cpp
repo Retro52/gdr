@@ -1,6 +1,7 @@
 #include <ffx_upscale.hpp>
 #include <log.hpp>
 #include <render/platform/d3d12/d3d12_ffx.hpp>
+#include <render/platform/d3d12/d3d12_utils.hpp>
 #include <tracy/Tracy.hpp>
 
 // clang-format off
@@ -10,57 +11,15 @@
 FfxApiResource platform::d3d12_ffx_get_resource_wrapper(const d3d12_image& image)
 {
     ZoneScoped;
-    return ffxApiGetResourceDX12(image.resource.Get(), platform::d3d12_ffx_get_resource_state(image.layout));
+    return ffxApiGetResourceDX12(image.resource.Get(), FFX_API_RESOURCE_STATE_COMMON);
 }
 
-FfxApiResourceState platform::d3d12_ffx_get_resource_state(const D3D12_BARRIER_LAYOUT layout)
+result<ffx::Context> platform::d3d12_ffx_create_upscale_context(platform::ffx_module& module, ID3D12Device* device,
+                                                                const rhi::ffx_upscale_desc& desc)
 {
     ZoneScoped;
-    switch (layout)
-    {
-    case D3D12_BARRIER_LAYOUT_RENDER_TARGET :
-    case D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ :
-    case D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE :
-        return FFX_API_RESOURCE_STATE_RENDER_TARGET;
-    case D3D12_BARRIER_LAYOUT_SHADER_RESOURCE :
-        return FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ;
-    case D3D12_BARRIER_LAYOUT_COPY_SOURCE :
-        return FFX_API_RESOURCE_STATE_COPY_SRC;
-    case D3D12_BARRIER_LAYOUT_COPY_DEST :
-        return FFX_API_RESOURCE_STATE_COPY_DEST;
-    default :
-    case D3D12_BARRIER_LAYOUT_COMMON :
-        return FFX_API_RESOURCE_STATE_COMMON;
-    }
-}
+    module.lazy_load("./amd_fidelityfx_loader_dx12.dll");
 
-result<vec2> platform::d3d12_ffx_get_jitter_offset(ffx::Context context, const u32 render_width,
-                                                   const u32 display_width, const i32 jitter_index)
-{
-    ZoneScoped;
-    i32 jitter_phase_size;
-    ffx::QueryDescUpscaleGetJitterPhaseCount get_jitter_phase_desc {};
-    get_jitter_phase_desc.renderWidth    = render_width;
-    get_jitter_phase_desc.displayWidth   = display_width;
-    get_jitter_phase_desc.pOutPhaseCount = &jitter_phase_size;
-
-    FFX_RETURN_ON_FAIL(ffx::Query(context, get_jitter_phase_desc));
-
-    vec2 result;
-    ffx::QueryDescUpscaleGetJitterOffset get_current_jitter_desc {};
-    get_current_jitter_desc.index      = jitter_index;
-    get_current_jitter_desc.phaseCount = jitter_phase_size;
-    get_current_jitter_desc.pOutX      = &result.x;
-    get_current_jitter_desc.pOutY      = &result.y;
-
-    FFX_RETURN_ON_FAIL(ffx::Query(context, get_current_jitter_desc));
-
-    return result;
-}
-
-result<ffx::Context> platform::d3d12_ffx_create_upscale_context(ID3D12Device* device, const rhi::ffx_upscale_desc& desc)
-{
-    ZoneScoped;
     ffx::Context ctx {};
     ffx::CreateBackendDX12Desc backend_desc {};
     backend_desc.device = device;
@@ -71,22 +30,64 @@ result<ffx::Context> platform::d3d12_ffx_create_upscale_context(ID3D12Device* de
     upscale_desc.maxRenderSize  = {.width = desc.max_render_size.x, .height = desc.max_render_size.y};
     upscale_desc.flags =
         FFX_UPSCALE_ENABLE_HIGH_DYNAMIC_RANGE | FFX_UPSCALE_ENABLE_AUTO_EXPOSURE | FFX_UPSCALE_ENABLE_DEPTH_INVERTED;
-
 #if 1
-    upscale_desc.flags |= FFX_UPSCALE_ENABLE_DEBUG_CHECKING;  // debug builds
-    upscale_desc.fpMessage = [](uint32_t type, const wchar_t* msg)
+    upscale_desc.flags |= FFX_UPSCALE_ENABLE_DEBUG_CHECKING;
+    upscale_desc.fpMessage = [](const uint32_t type, const wchar_t* msg)
     {
-        OutputDebugStringW(msg);
-        assert2(false && msg);
+        switch (type)
+        {
+        case FFX_API_MESSAGE_TYPE_ERROR :
+            LOG_ERROR("FFX Error: {}", platform::d3d12_wchar_to_utf8(msg).c_str());
+            break;
+        default :
+        case FFX_API_MESSAGE_TYPE_WARNING :
+            LOG_WARNING("FFX Warning: {}", platform::d3d12_wchar_to_utf8(msg).c_str());
+            break;
+        }
     };
 #endif
 
-    FFX_RETURN_ON_FAIL(ffx::CreateContext(ctx, nullptr, upscale_desc, backend_desc));
+    ffx::CreateContextDescUpscaleVersion version_desc {};
+    version_desc.version = FFX_UPSCALER_VERSION;
+
+    FFX_RETURN_ON_FAIL(module.CreateContext(ctx, nullptr, upscale_desc, backend_desc, version_desc));
+
+    ffxQueryGetProviderVersion version_query = {};
+    version_query.header.type                = FFX_API_QUERY_DESC_TYPE_GET_PROVIDER_VERSION;
+
+    FFX_ASSERT_ON_FAIL(module.Query(ctx, version_query));
+    LOG_INFO("FSR version: {}", version_query.versionName);
+
     return ctx;
 }
 
-void platform::d3d12_ffx_dispatch_upscale(ffx::Context context, ID3D12CommandList* cmd,
-                                          const rhi::ffx_upscale_params& params,
+result<vec2> platform::d3d12_ffx_get_jitter_offset(const platform::ffx_module& module, ffx::Context context,
+                                                   const u32 render_width, const u32 display_width,
+                                                   const i32 jitter_index)
+{
+    ZoneScoped;
+    i32 jitter_phase_size;
+    ffx::QueryDescUpscaleGetJitterPhaseCount get_jitter_phase_desc {};
+    get_jitter_phase_desc.renderWidth    = render_width;
+    get_jitter_phase_desc.displayWidth   = display_width;
+    get_jitter_phase_desc.pOutPhaseCount = &jitter_phase_size;
+
+    FFX_RETURN_ON_FAIL(module.Query(context, get_jitter_phase_desc));
+
+    vec2 result;
+    ffx::QueryDescUpscaleGetJitterOffset get_current_jitter_desc {};
+    get_current_jitter_desc.index      = jitter_index;
+    get_current_jitter_desc.phaseCount = jitter_phase_size;
+    get_current_jitter_desc.pOutX      = &result.x;
+    get_current_jitter_desc.pOutY      = &result.y;
+
+    FFX_RETURN_ON_FAIL(module.Query(context, get_current_jitter_desc));
+
+    return result;
+}
+
+void platform::d3d12_ffx_dispatch_upscale(const platform::ffx_module& module, ffx::Context context,
+                                          ID3D12CommandList* cmd, const rhi::ffx_upscale_params& params,
                                           const platform::ffx_upscale_resources& desc)
 {
     ZoneScoped;
@@ -135,5 +136,5 @@ void platform::d3d12_ffx_dispatch_upscale(ffx::Context context, ID3D12CommandLis
         dispatch_desc.cameraNear = params.camera_near_plane;
     }
 
-    FFX_ASSERT_ON_FAIL(ffx::Dispatch(context, dispatch_desc));
+    FFX_ASSERT_ON_FAIL(module.Dispatch(context, dispatch_desc));
 }

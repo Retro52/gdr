@@ -33,9 +33,13 @@ void app::pass_post_process::draw(const rhi::command_buffer cmd, const draw_para
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Post process");
 
     const rhi::image_barrier transition_barriers[] {
-        app::make_image_barrier(this->output, rhi::image_layout::discard, rhi::image_layout::storage),
+        app::make_image_barrier(
+            this->output, rhi::image_layout::discard, rhi::image_layout::common, rhi::image_aspect::color),
     };
-    m_rhi.cmd_barriers(cmd, {.images = std::span {transition_barriers}});
+    m_rhi.cmd_barriers(cmd,
+                       rhi::barrier_batch {
+                           .images = std::span {transition_barriers},
+                       });
 
     const rhi::binding tonemap_pass_bindings[] = {
         rhi::binding(params.color),
@@ -50,11 +54,17 @@ void app::pass_post_process::draw(const rhi::command_buffer cmd, const draw_para
 
     m_rhi.cmd_dispatch(cmd, tonemap_pass, uvec3(m_display_res, 1));
 
-    const rhi::image_barrier post_barriers[] {
-        app::make_image_barrier(this->output, rhi::image_layout::storage, rhi::image_layout::common),
+    constexpr rhi::global_barrier barrier {
+        .before = {.stages = rhi::barrier_stage::compute_shader,   .access = rhi::barrier_access::storage_write      },
+        .after  = {.stages = rhi::barrier_stage::color_attachment,
+                   .access = rhi::barrier_access::color_attachment_read | rhi::barrier_access::color_attachment_write},
     };
 
-    m_rhi.cmd_barriers(cmd, {.images = std::span {post_barriers}});
+    const rhi::barrier_batch barriers {
+        .globals = {&barrier, 1}
+    };
+
+    m_rhi.cmd_barriers(cmd, barriers);
 }
 
 void app::pass_post_process::destroy_resources()

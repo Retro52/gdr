@@ -28,9 +28,10 @@ struct Output
 Output main(Input vs_in)
 {
 #ifdef ENABLE_ALPHA_TESTING
-    uint albedo_idx = materials[mesh_instances[vs_in.instance_id].material_index].albedo_idx;
+    uint material_idx = mesh_instances[vs_in.instance_id].material_index;
+    uint albedo_idx = materials[material_idx].albedo_idx;
     float4 frag_color = albedo_idx > 0 ? TEXTURE2D(albedo_idx, vs_in.uv) : 1.0F.xxxx;
-    frag_color *= materials[mesh_instances[vs_in.instance_id].material_index].diffuse_factor;
+    frag_color *= materials[material_idx].diffuse_factor;
 
     if (frag_color.a < 0.5F)
         discard;

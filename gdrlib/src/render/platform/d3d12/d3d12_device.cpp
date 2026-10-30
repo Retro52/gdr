@@ -3,16 +3,8 @@
 #include <render/platform/d3d12/d3d12_device.hpp>
 #include <render/platform/d3d12/d3d12_error.hpp>
 #include <render/platform/d3d12/d3d12_queue.hpp>
+#include <render/platform/d3d12/d3d12_utils.hpp>
 #include <tracy/Tracy.hpp>
-
-// FIXME: extract into a utility
-static cpp::big_stack_string to_utf8(const wchar_t* wide)
-{
-    ZoneScoped;
-    cpp::big_stack_string buf;
-    WideCharToMultiByte(CP_UTF8, 0, wide, -1, buf.data(), cpp::stack_string::capacity(), nullptr, nullptr);
-    return cpp::big_stack_string::make_formatted("%s", buf);
-}
 
 static cpp::stack_string format_bytes_number(u64 number)
 {
@@ -24,8 +16,8 @@ static cpp::stack_string format_bytes_number(u64 number)
 
     const char* magnitudes_per_thousand[] = {"KB", "MB", "GB", "TB"};
 
-    auto magnitude     = static_cast<i32>(std::log2(number) / 10);
-    const f64 fraction = static_cast<f64>(number) / std::pow(1024, magnitude);
+    const auto magnitude = static_cast<i32>(std::log2(number) / 10);
+    const f64 fraction   = static_cast<f64>(number) / std::pow(1024, magnitude);
     return cpp::stack_string::make_formatted("%.3lf %s", fraction, magnitudes_per_thousand[magnitude - 1]);
 }
 
@@ -140,12 +132,21 @@ static void enable_debug_layer()
 {
     ZoneScoped;
 
-    platform::com_ptr<ID3D12Debug> debug_interface;
+    platform::com_ptr<ID3D12Debug1> debug_interface;
     D3D12_ASSERT_ON_FAIL(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_interface)));
     debug_interface->EnableDebugLayer();
+
+    debug_interface->SetEnableGPUBasedValidation(TRUE);
+    debug_interface->SetEnableSynchronizedCommandQueueValidation(TRUE);
+
+    platform::com_ptr<ID3D12Debug5> debug5;
+    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug5))))
+    {
+        debug5->SetEnableAutoName(TRUE);
+    }
 }
 
-static void message_callback(D3D12_MESSAGE_CATEGORY category, D3D12_MESSAGE_SEVERITY severity,
+static void message_callback(const D3D12_MESSAGE_CATEGORY category, const D3D12_MESSAGE_SEVERITY severity,
                              D3D12_MESSAGE_ID /* id */, LPCSTR message, void* /* context */)
 {
     if (!message)
@@ -303,9 +304,9 @@ static HRESULT pick_and_create_device(platform::d3d12_context& ctx,
          ++i)
     {
         DXGI_ADAPTER_DESC3 desc {};
-        adapter->GetDesc3(&desc);
+        D3D12_ASSERT_ON_FAIL(adapter->GetDesc3(&desc));
 
-        const auto name = to_utf8(desc.Description);
+        const auto name = platform::d3d12_wchar_to_utf8(desc.Description);
 
         if (desc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE)
         {
@@ -321,9 +322,11 @@ static HRESULT pick_and_create_device(platform::d3d12_context& ctx,
         platform::com_ptr<ID3D12Device10> device;
         {
             ZoneScopedN("D3D12CreateDevice");
-            if (FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_2, IID_PPV_ARGS(&device))))
+            if (FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&device))))
             {
-                LOG_DEBUG("Device #{} does not support the minimum feature level (12.0)", i);
+                LOG_DEBUG(
+                    "Device #{} does not support the minimum feature level (12.2), or there is something else wrong with it",
+                    i);
                 continue;
             }
         }
@@ -358,8 +361,8 @@ static HRESULT pick_and_create_device(platform::d3d12_context& ctx,
     if (ctx.device)
     {
         DXGI_ADAPTER_DESC3 desc {};
-        ctx.adapter->GetDesc3(&desc);
-        const auto name = to_utf8(desc.Description);
+        D3D12_ASSERT_ON_FAIL(ctx.adapter->GetDesc3(&desc));
+        const auto name = platform::d3d12_wchar_to_utf8(desc.Description);
         LOG_INFO("Selected device: {}", name.c_str());
         log_device_features_table(name.c_str(), ctx.feature_level, ctx.shader_model, ctx.enabled_device_features);
 
@@ -376,6 +379,7 @@ void platform::d3d12_destroy_context(d3d12_context& ctx)
 {
     ZoneScoped;
 
+    ctx.blit = {};
     ctx.allocator.Reset();
     for (auto& queue : ctx.queues)
     {
@@ -445,6 +449,13 @@ auto platform::d3d12_create_context(const window& window, const rhi::instance_de
     context.queues[kD3D12_CommandQueueDirect]  = *queue_direct;
     context.queues[kD3D12_CommandQueueCompute] = *queue_compute;
 
+    D3D12_ASSERT_ON_FAIL(context.queues[kD3D12_CommandQueueCopy]->SetName(L"[internal] CommandQueueCopy"));
+    D3D12_ASSERT_ON_FAIL(context.queues[kD3D12_CommandQueueDirect]->SetName(L"[internal] CommandQueueDirect"));
+    D3D12_ASSERT_ON_FAIL(context.queues[kD3D12_CommandQueueCompute]->SetName(L"[internal] CommandQueueCompute"));
+
+    auto blit = d3d12_create_blit_pipeline(context.device.Get());
+    RESULT_FORWARD_IF_FAILED(blit);
+
     auto cbv_srv_uav_desc_heap = d3d12_create_desc_heap(
         context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kD3D12_CBV_SRV_UAV_HeapMaxDescCount);
     RESULT_FORWARD_IF_FAILED(cbv_srv_uav_desc_heap);
@@ -465,11 +476,22 @@ auto platform::d3d12_create_context(const window& window, const rhi::instance_de
         d3d12_create_desc_heap(context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, kD3D12_DSV_HeapMaxDescCount);
     RESULT_FORWARD_IF_FAILED(dsv_desc_heap);
 
+    context.blit = *blit;
+
     context.rtv_descriptor_heap             = *rtv_desc_heap;
     context.dsv_descriptor_heap             = *dsv_desc_heap;
     context.sampler_descriptor_heap         = *sampler_desc_heap;
     context.cbv_srv_uav_descriptor_heap     = *cbv_srv_uav_desc_heap;
     context.cbv_srv_uav_cpu_descriptor_heap = *cbv_srv_uav_cpu_desc_heap;
+
+    D3D12_ASSERT_ON_FAIL(context.blit.pso->SetName(L"[internal] blit pipeline"));
+    D3D12_ASSERT_ON_FAIL(context.rtv_descriptor_heap.heap->SetName(L"[internal] RTV descriptor heap"));
+    D3D12_ASSERT_ON_FAIL(context.dsv_descriptor_heap.heap->SetName(L"[internal] DSV descriptor heap"));
+    D3D12_ASSERT_ON_FAIL(context.sampler_descriptor_heap.heap->SetName(L"[internal] Sampler descriptor heap"));
+    D3D12_ASSERT_ON_FAIL(context.cbv_srv_uav_descriptor_heap.heap->SetName(L"[internal] CBV/SRV/UAV descriptor heap"));
+    D3D12_ASSERT_ON_FAIL(
+        context.cbv_srv_uav_cpu_descriptor_heap.heap->SetName(L"[internal] CPU-Visible CBV/SRV/UAV descriptor heap"));
+
     return context;
 }
 
@@ -483,12 +505,11 @@ auto platform::d3d12_update_back_buffers(platform::d3d12_context& d3d12_context,
         auto& pfd = result[i];
         D3D12_RETURN_ON_FAIL(swapchain->GetBuffer(i, IID_PPV_ARGS(&pfd.image.resource)));
 
-        // back buffers get an rtv and nothing else, so they are built by hand rather than through
-        // d3d12_create_image_view - but they still have to describe themselves like any other view,
-        // or attachment clears and barriers have no metadata to work from
         pfd.image.view.source     = pfd.image.resource.Get();
         pfd.image.view.view_types = d3d12_image_view_type::rtv;
         pfd.image.view.desc       = d3d12_image_view_desc {
+                  .mips   = uvec2(0, 1),
+                  .layers = uvec2(0, 1),
                   .format = pfd.image.resource->GetDesc().Format,
                   .kind   = rhi::image_view_kind::flat_2d,
         };

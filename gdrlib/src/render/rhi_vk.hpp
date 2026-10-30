@@ -36,7 +36,8 @@ namespace rhi
     result<sampler> vk_create_sampler(context context, const create_sampler_info& sampler_info);
     void vk_destroy_sampler(context context, sampler& sampler);
 
-    result<pipeline> vk_create_compute_pso(context context, shader shader, std::span<const bindless_set> sets);
+    result<pipeline> vk_create_compute_pso(context context, shader shader, std::span<const bindless_set> sets,
+                                           const pso_options& options);
     result<pipeline> vk_create_graphics_pso(context context, std::span<const shader> shaders,
                                             std::span<const bindless_set> sets, const pso_options& options);
     void vk_destroy_pso(context context, pipeline& pso);

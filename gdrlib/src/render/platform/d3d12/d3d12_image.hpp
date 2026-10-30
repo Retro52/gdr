@@ -46,8 +46,9 @@ namespace platform
             struct
             {
                 d3d12_view_desc rtv;
-                d3d12_view_desc uav;
                 d3d12_view_desc srv;
+                d3d12_view_desc uav;
+                d3d12_view_desc uav_cpu;
             };
         } descriptors = {};
 
@@ -61,6 +62,12 @@ namespace platform
         {
             assert2(view_types & d3d12_image_view_type::uav);
             return this->descriptors.uav;
+        }
+
+        d3d12_view_desc uav_cpu() const
+        {
+            assert2(view_types & d3d12_image_view_type::uav);
+            return this->descriptors.uav_cpu;
         }
 
         d3d12_view_desc rtv() const
@@ -78,12 +85,10 @@ namespace platform
 
     struct d3d12_image
     {
+        d3d12_image_view view;
+
         com_ptr<ID3D12Resource> resource        = nullptr;
         com_ptr<D3D12MA::Allocation> allocation = nullptr;
-
-        D3D12_BARRIER_LAYOUT layout = D3D12_BARRIER_LAYOUT_UNDEFINED;
-
-        d3d12_image_view view;
     };
 
     struct d3d12_heaps_view
@@ -91,6 +96,7 @@ namespace platform
         d3d12_desc_heap& rtv_heap;
         d3d12_desc_heap& dsv_heap;
         d3d12_desc_heap& cbv_srv_uav_heap;
+        d3d12_desc_heap& cbv_srv_uav_heap_cpu;
     };
 
     result<d3d12_image_view> d3d12_create_image_view(ID3D12Device* device, ID3D12Resource* source,
@@ -102,9 +108,11 @@ namespace platform
     d3d12_image_view_type_bits d3d12_view_types_from_resource_flags(D3D12_RESOURCE_FLAGS flags);
 
     void d3d12_write_srv(ID3D12Device* device, const d3d12_image_view& view, D3D12_CPU_DESCRIPTOR_HANDLE dst);
+    void d3d12_write_uav(ID3D12Device* device, const d3d12_image_view& view, D3D12_CPU_DESCRIPTOR_HANDLE dst);
 
     result<d3d12_image> d3d12_create_image(D3D12MA::Allocator* allocator, D3D12_RESOURCE_DIMENSION type,
-                                           DXGI_FORMAT format, u32 mips, uvec3 dimensions, D3D12_RESOURCE_FLAGS flags, rhi::clear_value optimized_clear_value);
+                                           DXGI_FORMAT format, u32 mips, uvec3 dimensions, D3D12_RESOURCE_FLAGS flags,
+                                           rhi::clear_value optimized_clear_value);
 
     void d3d12_destroy_image(d3d12_image& image);
 }
