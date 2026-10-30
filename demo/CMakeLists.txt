@@ -26,6 +26,7 @@ add_ffx_dependencies(
         COMPONENTS UPSCALE
 )
 
+add_pix3_dependency(${PROJECT_NAME})
 add_shaders_dependency(${PROJECT_NAME} "${BIN_FOLDER}/shaders")
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

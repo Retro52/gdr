@@ -117,3 +117,29 @@ function(add_ffx_dependencies)
         endforeach ()
     endforeach ()
 endfunction()
+
+add_library(pix3_api INTERFACE)
+add_library(pix3::pix3_api ALIAS pix3_api)
+target_include_directories(pix3_api
+        INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/win-pix-runtime/Include
+)
+
+function(add_pix3_dependency PIX3_TARGET)
+    if (NOT WIN32)
+        return()
+    endif ()
+
+    get_target_property(PIX3_API_SOURCE_DIR pix3::pix3_api SOURCE_DIR)
+    set(PIX3_API_ROOT_BIN "${PIX3_API_SOURCE_DIR}/win-pix-runtime/bin/x64/")
+
+    target_link_libraries(${PIX3_TARGET}
+            PRIVATE
+            pix3::pix3_api
+            "${PIX3_API_ROOT_BIN}/WinPixEventRuntime.lib"
+    )
+    add_custom_command(TARGET ${PIX3_TARGET} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${PIX3_API_ROOT_BIN}/WinPixEventRuntime.dll" $<TARGET_FILE_DIR:${PIX3_TARGET}>
+    )
+endfunction()
