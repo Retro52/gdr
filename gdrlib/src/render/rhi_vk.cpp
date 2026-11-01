@@ -43,7 +43,9 @@ namespace
         VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
     };
 
+#if defined(_WIN32)
     platform::ffx_module g_ffx_module;
+#endif
 }
 
 template<typename T>
@@ -1771,6 +1773,7 @@ void rhi::vk_present(command_buffer cmd, swapchain swapchain, queue submit, queu
 auto rhi::vk_ffx_create_upscale_context(context ctx, const ffx_upscale_desc& desc) -> result<ffx_context>
 {
     ZoneScoped;
+#if defined(_WIN32)
     const auto* vk_ctx = cast_from_handle<platform::vk_context>(ctx);
 
     assert2(vk_ctx);
@@ -1784,11 +1787,15 @@ auto rhi::vk_ffx_create_upscale_context(context ctx, const ffx_upscale_desc& des
     RESULT_FORWARD_IF_FAILED(vk_ffx_ctx);
 
     return create_handle<ffx_context>(*vk_ffx_ctx);
+#else
+    return rhi::null_ffx_context;
+#endif
 }
 
 void rhi::vk_ffx_destroy_context(ffx_context& ffx_ctx)
 {
     ZoneScoped;
+#if defined(_WIN32)
     auto* vk_ffx_ctx = cast_from_handle<ffx::Context>(ffx_ctx);
 
     assert2(vk_ffx_ctx);
@@ -1797,12 +1804,14 @@ void rhi::vk_ffx_destroy_context(ffx_context& ffx_ctx)
         g_ffx_module.DestroyContext(*vk_ffx_ctx);
         clear_handle(vk_ffx_ctx, ffx_ctx);
     }
+#endif
 }
 
 auto rhi::vk_ffx_upscale_query_jitter(ffx_context ffx_ctx, const u32 render_width, const u32 display_width,
                                       const i32 jitter_index) -> result<vec2>
 {
     ZoneScoped;
+#if defined(_WIN32)
     const auto* vk_ffx_ctx = cast_from_handle<ffx::Context>(ffx_ctx);
 
     assert2(vk_ffx_ctx);
@@ -1812,12 +1821,16 @@ auto rhi::vk_ffx_upscale_query_jitter(ffx_context ffx_ctx, const u32 render_widt
     }
 
     return platform::vk_ffx_get_jitter_offset(g_ffx_module, *vk_ffx_ctx, render_width, display_width, jitter_index);
+#else
+    return vec2(0.0F);
+#endif
 }
 
 void rhi::vk_ffx_upscale_dispatch(ffx_context ffx_ctx, command_buffer cmd, const ffx_upscale_params& params,
                                   const ffx_upscale_resources& resources)
 {
     ZoneScoped;
+#if defined(_WIN32)
     const auto* vk_ffx_ctx = cast_from_handle<ffx::Context>(ffx_ctx);
     const auto* vk_cmd     = cast_from_handle<platform::vk_command_buffer>(cmd);
 
@@ -1846,6 +1859,7 @@ void rhi::vk_ffx_upscale_dispatch(ffx_context ffx_ctx, command_buffer cmd, const
         .transparency_and_composition = query(resources.transparency_and_composition),
     };
     platform::vk_ffx_dispatch_upscale(g_ffx_module, *vk_ffx_ctx, vk_cmd->cmd_buffer, params, vk_resources);
+#endif
 }
 
 auto rhi::vk_imgui_create_context(context ctx, const window& window, const rhi::image_format rtv_format,

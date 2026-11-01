@@ -648,7 +648,7 @@ int app::instance::run()
         if (aa_mode != aa_pass.get_current_backend())
         {
             m_rhi.device_wait_idle(*context);
-            aa_pass.change_backend(aa_mode);
+            aa_mode = aa_pass.change_backend(aa_mode);
             return;
         }
 

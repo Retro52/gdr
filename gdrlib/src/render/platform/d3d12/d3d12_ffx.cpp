@@ -1,3 +1,5 @@
+#if defined(_WIN32)
+
 #include <ffx_upscale.hpp>
 #include <log.hpp>
 #include <render/platform/d3d12/d3d12_ffx.hpp>
@@ -138,3 +140,5 @@ void platform::d3d12_ffx_dispatch_upscale(const platform::ffx_module& module, ff
 
     FFX_ASSERT_ON_FAIL(module.Dispatch(context, dispatch_desc));
 }
+
+#endif

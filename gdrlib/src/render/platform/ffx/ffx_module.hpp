@@ -1,5 +1,7 @@
 #pragma once
 
+#if defined(_WIN32)
+
 #include <pod_types.hpp>
 #include <render/platform/ffx/ffx_types.hpp>
 
@@ -72,3 +74,4 @@ namespace platform
         u64 m_handle = 0;
     };
 }
+#endif

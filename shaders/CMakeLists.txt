@@ -162,7 +162,7 @@ function(add_shaders_dependency TARGET SHADERS_BIN_FOLDER)
                     OUTPUT "${SHADER_BIN_OUTPUT}.dxl"
                     COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}
                     COMMAND ${DXC_EXECUTABLE} -T ${SHADER_PROFILE} -E main -WX
-                    -enable-16bit-types -Wno-ignored-attributes /Zi
+                    -enable-16bit-types -Wno-ignored-attributes
                     ${DXC_DXIL_CONFIG_FLAGS} ${SHADER_DEF} -DEMULATE_DRAW_ID
                     -Fo "${SHADER_BIN_OUTPUT}.dxl" "${SHADER_INPUT_PATH}"
                     DEPENDS ${SHADER_DEPENDENCIES}

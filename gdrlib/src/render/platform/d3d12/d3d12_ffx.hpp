@@ -1,5 +1,7 @@
 #pragma once
 
+#if defined(_WIN32)
+
 #include <core/f16.hpp>
 #include <render/platform/d3d12/d3d12_image.hpp>
 #include <render/platform/ffx/ffx_module.hpp>
@@ -7,8 +9,6 @@
 #include <render/types.hpp>
 #include <result.hpp>
 #include <types.hpp>
-
-#include <volk.h>
 
 namespace platform
 {
@@ -24,3 +24,5 @@ namespace platform
                                     const rhi::ffx_upscale_params& params, const platform::ffx_upscale_resources& desc);
 
 }
+
+#endif

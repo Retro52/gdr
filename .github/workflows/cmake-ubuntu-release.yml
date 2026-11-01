@@ -1,0 +1,62 @@
+name: Linux (Release) build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          install_runtime: true
+          vulkan_version: latest
+          cache: true
+
+      - name: Verify Vulkan headers
+        run: |
+          test -f "$VULKAN_SDK/include/vulkan/vk_platform.h" \
+            || { echo "Vulkan headers missing under $VULKAN_SDK"; ls -la "$VULKAN_SDK"; exit 1; }
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+          libasound2-dev libpulse-dev \
+          libaudio-dev libfribidi-dev libjack-dev libsndio-dev libx11-dev libxext-dev \
+          libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+          libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev \
+          libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev \
+          libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev
+
+      - name: Configure CMake
+        run: >
+          cmake -B ${{github.workspace}}/build
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+          -DGDR_BIN_FOLDER=${{ github.workspace }}/output
+
+      - name: Build
+        run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} -j 4
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gdr-${{ runner.os }}-${{ env.BUILD_TYPE }}
+          path: |
+            output/gdr
+            output/*.pdb
+            output/*.json
+            output/shaders
+          if-no-files-found: warn

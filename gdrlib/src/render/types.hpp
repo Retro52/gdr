@@ -381,19 +381,19 @@ namespace rhi
 
     union clear_value
     {
-        color_clear_value color;
-        ds_clear_value ds;
+        rhi::color_clear_value color;
+        rhi::ds_clear_value ds;
     };
 
     struct barrier_scope
     {
-        barrier_stage_bits stages  = barrier_stage::none;
-        barrier_access_bits access = barrier_access::none;
+        rhi::barrier_stage_bits stages  = barrier_stage::none;
+        rhi::barrier_access_bits access = barrier_access::none;
     };
 
     struct image_subresource_range
     {
-        image_aspect_bits aspects = image_aspect::format;
+        rhi::image_aspect_bits aspects = image_aspect::format;
 
         uvec2 mips_range   = uvec2(0, kMipsAll);
         uvec2 layers_range = uvec2(0, kLayersAll);
@@ -401,16 +401,16 @@ namespace rhi
 
     struct global_barrier
     {
-        barrier_scope before;
-        barrier_scope after;
+        rhi::barrier_scope before;
+        rhi::barrier_scope after;
     };
 
     struct buffer_barrier
     {
         rhi::buffer buffer = null_buffer;
 
-        barrier_scope before;
-        barrier_scope after;
+        rhi::barrier_scope before;
+        rhi::barrier_scope after;
 
         u64vec2 data_range = u64vec2(0, kBufferAll);
     };
@@ -419,11 +419,11 @@ namespace rhi
     {
         rhi::image image = null_image;
 
-        barrier_scope before;
-        barrier_scope after;
+        rhi::barrier_scope before;
+        rhi::barrier_scope after;
 
-        image_layout layout_before = image_layout::current;
-        image_layout layout_after  = image_layout::current;
+        rhi::image_layout layout_before = image_layout::current;
+        rhi::image_layout layout_after  = image_layout::current;
 
         image_subresource_range range;
     };
@@ -437,22 +437,22 @@ namespace rhi
 
     struct create_sampler_info
     {
-        sampler_filter filter             = sampler_filter::linear;
-        sampler_reduction reduction       = sampler_reduction::none;
-        sampler_mipmap_mode mipmap_mode   = sampler_mipmap_mode::linear;
-        sampler_address_mode address_mode = sampler_address_mode::repeat;
+        rhi::sampler_filter filter             = sampler_filter::linear;
+        rhi::sampler_reduction reduction       = sampler_reduction::none;
+        rhi::sampler_mipmap_mode mipmap_mode   = sampler_mipmap_mode::linear;
+        rhi::sampler_address_mode address_mode = sampler_address_mode::repeat;
 
-        u32 anisotropy_factor             = 0;  // 0 = disable; >0 = enabled and uses the factor specified
-        vec2 lod_range                    = vec2(0.0F, 16.0F);
-        compare_op compare_op             = compare_op::none;
-        sampler_border_color border_color = sampler_border_color::black_transparent;
+        u32 anisotropy_factor                  = 0;  // 0 = disable; >0 = enabled and uses the factor specified
+        vec2 lod_range                         = vec2(0.0F, 16.0F);
+        rhi::compare_op compare_op             = compare_op::none;
+        rhi::sampler_border_color border_color = sampler_border_color::black_transparent;
 
         const char* dbg_name = nullptr;
     };
 
     struct create_image_info
     {
-        image_format format = image_format::none;
+        rhi::image_format format = image_format::none;
 
         u32 mips_count                    = 1;
         u32 layer_count                   = 1;
@@ -467,8 +467,8 @@ namespace rhi
     {
         image_subresource_range range;
 
-        image_format format  = image_format::none;
-        image_view_kind kind = image_view_kind::flat_2d;
+        rhi::image_format format  = image_format::none;
+        rhi::image_view_kind kind = image_view_kind::flat_2d;
 
         const char* dbg_name = nullptr;
     };
@@ -478,7 +478,7 @@ namespace rhi
         void** mapped = nullptr;  // if not null => will create mapped buffer. smart, huh?)
         u64 size      = 0;
 
-        buffer_usage_bits usage_flags = buffer_usage::shader_rw | buffer_usage::copy_dst;
+        rhi::buffer_usage_bits usage_flags = buffer_usage::shader_rw | buffer_usage::copy_dst;
 
         const char* dbg_name = nullptr;
     };
@@ -495,17 +495,17 @@ namespace rhi
         uvec2 dst_layers = uvec2(0, kLayersAll);
         u32 dst_mip      = 0;
 
-        image_aspect_bits aspects = image_aspect::color;
-        sampler_filter filter     = sampler_filter::linear;
+        rhi::image_aspect_bits aspects = image_aspect::color;
+        rhi::sampler_filter filter     = sampler_filter::linear;
     };
 
     struct copy_image_info
     {
         u64 source_offset = 0;
 
-        u32 dst_mip               = 0;
-        uvec2 dst_layers          = uvec2(0, kLayersAll);
-        image_aspect_bits aspects = image_aspect::color;
+        u32 dst_mip                    = 0;
+        uvec2 dst_layers               = uvec2(0, kLayersAll);
+        rhi::image_aspect_bits aspects = image_aspect::color;
 
         ivec3 dst_offset = uvec3(0, 0, 0);
         uvec3 dst_extent = uvec3(1, 1, 1);
@@ -582,16 +582,16 @@ namespace rhi
         [[nodiscard]] attachment get_attachment() const noexcept { return m_attachment; }
 
     private:
-        attachment m_attachment              = null_image;
+        rhi::attachment m_attachment         = null_image;
         core::tagged_u64 m_buffer_or_sampler = null_buffer.id;
     };
 
     struct attachment_state_info
     {
-        attachment attachment;
-        resource_load_op load_op   = resource_load_op::load;
-        resource_store_op store_op = resource_store_op::store;
-        clear_value clear_value    = {.color = {.f4 = vec4(0.0F)}};
+        rhi::attachment attachment;
+        rhi::resource_load_op load_op   = resource_load_op::load;
+        rhi::resource_store_op store_op = resource_store_op::store;
+        rhi::clear_value clear_value    = {.color = {.f4 = vec4(0.0F)}};
 
         constexpr operator bool() const noexcept { return attachment.valid(); }
     };
@@ -600,22 +600,22 @@ namespace rhi
 
     struct bindless_set_write_info
     {
-        attachment dst;
+        rhi::attachment dst;
         u32 index = 0;
     };
 
     struct create_swapchain_info
     {
         ivec2 size;
-        u32 frames_in_flight = 2;
-        image_format format  = image_format::r8g8b8a8un;
-        bool vsync           = false;
+        u32 frames_in_flight     = 2;
+        rhi::image_format format = image_format::r8g8b8a8un;
+        bool vsync               = false;
     };
 
     struct fence_submit_info
     {
-        fence fence = null_fence;
-        u64 value   = 0;
+        rhi::fence fence = null_fence;
+        u64 value        = 0;
     };
 
     struct submit_info
@@ -684,9 +684,9 @@ namespace rhi
             return result;
         }
 
-        feature_flag_bits required_features;
-        feature_flag_bits requested_features;
-        feature_flag_bits supported_features;
+        rhi::feature_flag_bits required_features;
+        rhi::feature_flag_bits requested_features;
+        rhi::feature_flag_bits supported_features;
     };
 
     struct ffx_upscale_desc
@@ -715,14 +715,14 @@ namespace rhi
 
     struct ffx_upscale_resources
     {
-        image color          = null_image;
-        image depth          = null_image;
-        image motion_vectors = null_image;
+        rhi::image color          = null_image;
+        rhi::image depth          = null_image;
+        rhi::image motion_vectors = null_image;
 
-        image reactive                     = null_image;
-        image transparency_and_composition = null_image;
+        rhi::image reactive                     = null_image;
+        rhi::image transparency_and_composition = null_image;
 
-        image output = null_image;
+        rhi::image output = null_image;
     };
 
     constexpr u32 kDeviceIdDealersChoice = static_cast<u32>(-1);
@@ -732,6 +732,6 @@ namespace rhi
         const char* app_name = "";
         u32 device_id_hint   = kDeviceIdDealersChoice;
 
-        rendering_features_table device_features;
+        rhi::rendering_features_table device_features;
     };
 }

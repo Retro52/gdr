@@ -34,14 +34,10 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
         EnTT::EnTT
         volk::volk
         quill::quill
-        ffx::ffx_api
-        pix3::pix3_api
         Tracy::TracyClient
         gch::gch_small_vector
         SDL3_image::SDL3_image
-        Microsoft::DirectX-Headers
         SPIRV-Headers::SPIRV-Headers
-        D3D12MemoryAllocator
         GPUOpen::VulkanMemoryAllocator
 
         imgui
@@ -54,6 +50,20 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 if (APPLE)
     find_package(Vulkan REQUIRED)
     target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan)
+endif ()
+
+if (WIN32)
+    target_link_libraries(${PROJECT_NAME} PUBLIC
+            ffx::ffx_api
+    )
+endif ()
+
+if (WIN32 AND GDR_ENABLE_DX12_BACKEND)
+    target_link_libraries(${PROJECT_NAME} PUBLIC
+            pix3::pix3_api
+            D3D12MemoryAllocator
+            Microsoft::DirectX-Headers
+    )
 endif ()
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC

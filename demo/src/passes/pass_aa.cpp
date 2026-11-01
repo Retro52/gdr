@@ -11,7 +11,7 @@ app::pass_aa::pass_aa(const rhi::impl& impl, const app::pso_data& pipelines, con
 {
     ZoneScoped;
     // this may fail on non-windows systems, so that's the way to set the FSR as default
-    change_backend(aa_backend::fsr);
+    std::ignore = change_backend(aa_backend::fsr);
     create_resources(render_res, display_res);
     fxaa_color_sampler = *m_rhi.create_sampler(m_ctx, {.mipmap_mode = rhi::sampler_mipmap_mode::nearest});
     fxaa_depth_sampler = *m_rhi.create_sampler(m_ctx,
@@ -35,11 +35,17 @@ void app::pass_aa::next_jitter()
     m_jitter_offset++;
 }
 
-void app::pass_aa::change_backend(const aa_backend backend)
+auto app::pass_aa::change_backend(const aa_backend backend) -> aa_backend
 {
     destroy_backend_resources();
+#if !defined(_WIN32)
+    m_backend = backend == aa_backend::fsr ? aa_backend::fxaa : backend;
+#else
     m_backend = backend;
+#endif
     create_resources(m_render_res, m_display_res);
+
+    return m_backend;
 }
 
 [[nodiscard]] auto app::pass_aa::get_current_backend() const -> aa_backend
@@ -236,6 +242,12 @@ void app::pass_aa::destroy_backend_resources()
 void app::pass_aa::create_resources(const uvec2 render_res, const uvec2 display_res)
 {
     ZoneScoped;
+    if (render_res.x * render_res.y == 0 || display_res.x * display_res.y == 0)
+    {
+        return;
+    }
+
+#if defined(_WIN32)
     if (m_backend == aa_backend::fsr)
     {
         motion_vectors = create_color_image(m_rhi,
@@ -251,6 +263,7 @@ void app::pass_aa::create_resources(const uvec2 render_res, const uvec2 display_
                                                             .max_render_size = render_res,
                                                         });
     }
+#endif
 
     if (render_res == m_render_res && m_display_res == display_res && output != rhi::null_image)
     {
@@ -260,5 +273,5 @@ void app::pass_aa::create_resources(const uvec2 render_res, const uvec2 display_
     m_render_res  = render_res;
     m_display_res = display_res;
 
-    output = app::create_color_image(m_rhi, display_res, rhi::image_format::b10g11r11uf, m_ctx, "AA output");
+    output = app::create_color_image(m_rhi, m_display_res, rhi::image_format::b10g11r11uf, m_ctx, "AA output");
 }
