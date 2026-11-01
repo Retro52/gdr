@@ -3,6 +3,7 @@
 #include <app/gpu_upload_mgr.hpp>
 #include <fs/fs.hpp>
 #include <render/rhi.hpp>
+
 #include <shaders/constants.hlsl.h>
 
 namespace app
@@ -19,6 +20,9 @@ namespace app
 
     struct envmap
     {
+        const rhi::impl& m_rhi;
+        const rhi::context m_ctx;
+
         i32 env_resolution;
         i32 brdf_lut_resolution;
         i32 prefilter_resolution;
@@ -36,21 +40,22 @@ namespace app
 
         rhi::image_view cube_view;
         rhi::image cubemap;
+        rhi::image equirect;
 
         rhi::image brdf_lut;
 
         envmap(const rhi::impl& impl, rhi::context ctx, rhi::image_format format, const envmap_config& cfg);
 
-        void shutdown(const rhi::impl& impl, rhi::context ctx);
+        void shutdown();
 
         [[nodiscard]] rhi::binding get_lut_descriptor_info() const;
         [[nodiscard]] rhi::binding get_cube_descriptor_info() const;
         [[nodiscard]] rhi::binding get_conv_descriptor_info() const;
         [[nodiscard]] rhi::binding get_pref_descriptor_info() const;
 
-        void init(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_data& pso);
+        void init(rhi::command_buffer cmd, const app::pso_data& pso) const;
 
-        void load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_data& pso,
-                  const app::gpu_upload_mgr& upload_mgr, const fs::path& path);
+        void load(rhi::command_buffer cmd, const app::pso_data& pso, const app::gpu_upload_mgr& upload_mgr,
+                  const fs::path& path);
     };
 }

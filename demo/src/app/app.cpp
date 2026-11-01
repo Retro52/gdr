@@ -68,6 +68,14 @@ namespace
             std::invoke(func, get_frame_command_buffer());
         }
 
+        void shutdown(const rhi::impl& rhi, const rhi::context ctx)
+        {
+            for (auto& frame : frame_data)
+            {
+                rhi.destroy_command_buffer(ctx, frame.command_buffer);
+            }
+        }
+
         void init(const rhi::impl& rhi, const rhi::context ctx, const u32 frames_in_flight)
         {
             frame_data.resize(frames_in_flight);
@@ -305,6 +313,7 @@ int app::instance::run()
     auto context = m_rhi.create_context(m_window, get_instance_desc(m_args));
     RESULT_EXIT_IF_FAILED(context);
 
+    // TODO: decouple frames in flight from swapchain images count
     constexpr auto kFramesInFlight  = 2;
     constexpr auto kSwapchainVsync  = false;
     constexpr auto kSwapchainFormat = rhi::image_format::r8g8b8a8un;
@@ -591,7 +600,7 @@ int app::instance::run()
     camera_controller controller(m_events_queue, camera);
 
     frames_tracker tracker;
-    tracker.init(m_rhi, *context, *m_rhi.query_swapchain_images_count(*swapchain));
+    tracker.init(m_rhi, *context, kFramesInFlight);
 
     {
         ZoneScopedN("app.instance.run.preload");
@@ -599,11 +608,13 @@ int app::instance::run()
         auto cmd   = *m_rhi.create_command_buffer(*context, rhi::queue_kind::gfx);
 
         m_rhi.cmd_begin_recording(cmd);
-        envmap.init(m_rhi, cmd, pipelines);
+        m_rhi.cmd_debug_label_begin(cmd, *context, {.label = "preload"});
+        envmap.init(cmd, pipelines);
         if (!env_map.empty())
         {
-            envmap.load(m_rhi, cmd, pipelines, upload_mgr, env_map);
+            envmap.load(cmd, pipelines, upload_mgr, env_map);
         }
+        m_rhi.cmd_debug_label_end(cmd, *context);
         m_rhi.cmd_end_recording(cmd);
 
         const rhi::fence_submit_info signals[] = {
@@ -900,9 +911,11 @@ int app::instance::run()
     aa_pass.shutdown();
     pp_pass.shutdown();
 
-    envmap.shutdown(m_rhi, *context);
-
+    envmap.shutdown();
     watcher.shutdown();
+    upload_mgr.shutdown();
+
+    tracker.shutdown(m_rhi, *context);
     pipelines.shutdown(m_rhi, *context);
 
     m_rhi.destroy_buffer(*context, resources.vertex);

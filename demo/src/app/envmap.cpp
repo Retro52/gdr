@@ -2,6 +2,7 @@
 #include <app/pso.hpp>
 #include <app/render.hpp>
 #include <log.hpp>
+#include <passes/scoped_label.hpp>
 #include <scene/loader.hpp>
 
 static u32 get_mips_count(const i32 resolution)
@@ -67,7 +68,9 @@ static void make_brdf_lut(const rhi::impl& impl, const rhi::command_buffer cmd, 
 }
 
 app::envmap::envmap(const rhi::impl& impl, rhi::context ctx, rhi::image_format format, const envmap_config& cfg)
-    : env_resolution(cfg.env_resolution)
+    : m_rhi(impl)
+    , m_ctx(ctx)
+    , env_resolution(cfg.env_resolution)
     , brdf_lut_resolution(cfg.brdf_lut_resolution)
     , prefilter_resolution(cfg.prefilter_resolution)
     , irradiance_resolution(cfg.irradiance_resolution)
@@ -80,31 +83,33 @@ app::envmap::envmap(const rhi::impl& impl, rhi::context ctx, rhi::image_format f
                                                            | rhi::image_usage::storage};
 
     {
+        image_create_info.dbg_name   = "envmap";
         image_create_info.mips_count = get_mips_count(env_resolution);
         image_create_info.dimensions = {env_resolution, env_resolution, 1},
-        cubemap                      = *impl.create_image(ctx, image_create_info);
+        cubemap                      = *m_rhi.create_image(m_ctx, image_create_info);
     }
 
     {
         image_create_info.mips_count = 1;
+        image_create_info.dbg_name   = "irradiance";
         image_create_info.dimensions = {irradiance_resolution, irradiance_resolution, 1},
-        convolution                  = *impl.create_image(ctx, image_create_info);
+        convolution                  = *m_rhi.create_image(m_ctx, image_create_info);
     }
 
     {
         image_create_info.mips_count = shader_constants::kEnvPrefilterMips;
         image_create_info.dimensions = {prefilter_resolution, prefilter_resolution, 1},
-        prefiltered                  = *impl.create_image(ctx, image_create_info);
+        image_create_info.dbg_name   = "prefilter";
+        prefiltered                  = *m_rhi.create_image(m_ctx, image_create_info);
 
         for (u32 i = 0; i < shader_constants::kEnvPrefilterMips; ++i)
         {
-            rhi::create_image_view_info image_view_info {
-                .range  = {.mips_range = {i, 1}},
-                .format = format,
-                .kind   = rhi::image_view_kind::array_2d,
-            };
+            rhi::create_image_view_info image_view_info {.range    = {.mips_range = {i, 1}},
+                                                         .format   = format,
+                                                         .kind     = rhi::image_view_kind::array_2d,
+                                                         .dbg_name = "prefiltered env mip view"};
 
-            pref_mips[i] = *impl.create_image_view(ctx, prefiltered, image_view_info);
+            pref_mips[i] = *m_rhi.create_image_view(m_ctx, prefiltered, image_view_info);
         }
     }
 
@@ -112,39 +117,43 @@ app::envmap::envmap(const rhi::impl& impl, rhi::context ctx, rhi::image_format f
         image_create_info.mips_count  = 1;
         image_create_info.layer_count = 1;
         image_create_info.format      = rhi::image_format::r16g16sf;
-        image_create_info.usage_flags = rhi::image_usage::sampled | rhi::image_usage::storage,
+        image_create_info.usage_flags = rhi::image_usage::sampled | rhi::image_usage::storage;
+        image_create_info.dimensions  = {brdf_lut_resolution, brdf_lut_resolution, 1};
+        image_create_info.dbg_name    = "brdf lookup";
 
-        image_create_info.dimensions = {brdf_lut_resolution, brdf_lut_resolution, 1},
-        brdf_lut                     = *impl.create_image(ctx, image_create_info);
+        brdf_lut = *m_rhi.create_image(m_ctx, image_create_info);
     }
 
-    sampler = *impl.create_sampler(ctx, {.anisotropy_factor = 16});
-    brdf_sampler =
-        *impl.create_sampler(ctx, {.address_mode = rhi::sampler_address_mode::clamp_to_edge, .anisotropy_factor = 16});
+    sampler      = *m_rhi.create_sampler(m_ctx, {.anisotropy_factor = 16});
+    brdf_sampler = *m_rhi.create_sampler(
+        m_ctx, {.address_mode = rhi::sampler_address_mode::clamp_to_edge, .anisotropy_factor = 16});
 
-    cube_view = *impl.create_image_view(ctx, cubemap, {.format = format, .kind = rhi::image_view_kind::flat_cube});
-    conv_view = *impl.create_image_view(ctx, convolution, {.format = format, .kind = rhi::image_view_kind::flat_cube});
-    pref_view = *impl.create_image_view(ctx, prefiltered, {.format = format, .kind = rhi::image_view_kind::flat_cube});
+    cube_view = *m_rhi.create_image_view(m_ctx, cubemap, {.format = format, .kind = rhi::image_view_kind::flat_cube});
+    conv_view =
+        *m_rhi.create_image_view(m_ctx, convolution, {.format = format, .kind = rhi::image_view_kind::flat_cube});
+    pref_view =
+        *m_rhi.create_image_view(m_ctx, prefiltered, {.format = format, .kind = rhi::image_view_kind::flat_cube});
 }
 
-void app::envmap::shutdown(const rhi::impl& impl, rhi::context ctx)
+void app::envmap::shutdown()
 {
-    impl.destroy_sampler(ctx, sampler);
-    impl.destroy_sampler(ctx, brdf_sampler);
+    m_rhi.destroy_sampler(m_ctx, sampler);
+    m_rhi.destroy_sampler(m_ctx, brdf_sampler);
 
-    impl.destroy_image_view(ctx, cube_view);
-    impl.destroy_image_view(ctx, conv_view);
-    impl.destroy_image_view(ctx, pref_view);
+    m_rhi.destroy_image_view(m_ctx, cube_view);
+    m_rhi.destroy_image_view(m_ctx, conv_view);
+    m_rhi.destroy_image_view(m_ctx, pref_view);
 
     for (auto& view : pref_mips)
     {
-        impl.destroy_image_view(ctx, view);
+        m_rhi.destroy_image_view(m_ctx, view);
     }
 
-    impl.destroy_image(ctx, cubemap);
-    impl.destroy_image(ctx, brdf_lut);
-    impl.destroy_image(ctx, convolution);
-    impl.destroy_image(ctx, prefiltered);
+    m_rhi.destroy_image(m_ctx, cubemap);
+    m_rhi.destroy_image(m_ctx, equirect);
+    m_rhi.destroy_image(m_ctx, brdf_lut);
+    m_rhi.destroy_image(m_ctx, convolution);
+    m_rhi.destroy_image(m_ctx, prefiltered);
 }
 
 rhi::binding app::envmap::get_lut_descriptor_info() const
@@ -167,7 +176,7 @@ rhi::binding app::envmap::get_pref_descriptor_info() const
     return {pref_view, sampler};
 }
 
-void app::envmap::init(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_data& pso)
+void app::envmap::init(const rhi::command_buffer cmd, const app::pso_data& pso) const
 {
     rhi::image_barrier barriers[] {
         app::make_image_barrier(cubemap, rhi::image_layout::common),
@@ -176,31 +185,30 @@ void app::envmap::init(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_
         app::make_image_barrier(prefiltered, rhi::image_layout::common),
     };
 
-    impl.cmd_barriers(cmd, {.images = std::span {barriers}});
-    make_brdf_lut(impl, cmd, pso[pso_id::make_brdf_lookup_pipeline], brdf_lut, brdf_lut_resolution);
+    m_rhi.cmd_barriers(cmd, {.images = std::span {barriers}});
+    make_brdf_lut(m_rhi, cmd, pso[pso_id::make_brdf_lookup_pipeline], brdf_lut, brdf_lut_resolution);
 }
 
-void app::envmap::load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_data& pso,
-                       const app::gpu_upload_mgr& upload_mgr, const fs::path& path)
+void app::envmap::load(const rhi::command_buffer cmd, const app::pso_data& pso, const app::gpu_upload_mgr& upload_mgr,
+                       const fs::path& path)
 {
-    if (auto equirect = loader::load_texture(path))
+    if (auto equirect_desc = loader::load_texture(path))
     {
-        const auto equirect_img = upload_mgr.create_texture(*equirect);
+        equirect = upload_mgr.create_texture(*equirect_desc);
 
         {
-            // TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), cmd, "unpack equirect"));
-
+            SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "unpack equirect");
             const rhi::binding pass_bindings[] = {
-                rhi::binding(equirect_img, sampler),
+                rhi::binding(equirect, sampler),
                 rhi::binding(cubemap),
             };
 
             const rhi::pipeline& pass = pso[pso_id::equirect_unpack_pipeline];
 
-            impl.cmd_bind_pso(cmd, pass);
-            impl.cmd_push_constants(cmd, pass, &env_resolution, sizeof(env_resolution), 0);
-            impl.cmd_push_bindings(cmd, pass, std::span {pass_bindings});
-            impl.cmd_dispatch(cmd, pass, uvec3(env_resolution, env_resolution, 6));
+            m_rhi.cmd_bind_pso(cmd, pass);
+            m_rhi.cmd_push_constants(cmd, pass, &env_resolution, sizeof(env_resolution), 0);
+            m_rhi.cmd_push_bindings(cmd, pass, std::span {pass_bindings});
+            m_rhi.cmd_dispatch(cmd, pass, uvec3(env_resolution, env_resolution, 6));
 
             rhi::global_barrier barriers[] {
                 rhi::global_barrier {
@@ -211,12 +219,12 @@ void app::envmap::load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_
                                      },
             };
 
-            impl.cmd_barriers(cmd, {.globals = std::span {barriers}});
+            m_rhi.cmd_barriers(cmd, {.globals = std::span {barriers}});
         }
 
         {
-            // TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), cmd, "cubemap mips generation"));
-            generate_mips(impl, cmd, cubemap, env_resolution);
+            SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "cubemap mips generation");
+            generate_mips(m_rhi, cmd, cubemap, env_resolution);
 
             rhi::global_barrier barriers[] {
                 rhi::global_barrier {
@@ -226,12 +234,11 @@ void app::envmap::load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_
                                      },
             };
 
-            impl.cmd_barriers(cmd, {.globals = std::span {barriers}});
+            m_rhi.cmd_barriers(cmd, {.globals = std::span {barriers}});
         }
 
         {
-            // TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), cmd, "cubemap convolution"));
-
+            SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "cubemap convolution");
             const rhi::binding pass_bindings[] = {
                 rhi::binding(cube_view, sampler),
                 rhi::binding(convolution),
@@ -240,10 +247,10 @@ void app::envmap::load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_
             const rhi::pipeline& pass = pso[pso_id::cubemap_convolute_pipeline];
 
             int push_constants[] = {irradiance_resolution, env_resolution};
-            impl.cmd_bind_pso(cmd, pass);
-            impl.cmd_push_constants(cmd, pass, push_constants, sizeof(push_constants), 0);
-            impl.cmd_push_bindings(cmd, pass, std::span {pass_bindings});
-            impl.cmd_dispatch(cmd, pass, uvec3(irradiance_resolution, irradiance_resolution, 6));
+            m_rhi.cmd_bind_pso(cmd, pass);
+            m_rhi.cmd_push_constants(cmd, pass, push_constants, sizeof(push_constants), 0);
+            m_rhi.cmd_push_bindings(cmd, pass, std::span {pass_bindings});
+            m_rhi.cmd_dispatch(cmd, pass, uvec3(irradiance_resolution, irradiance_resolution, 6));
 
             rhi::global_barrier barriers[] {
                 rhi::global_barrier {
@@ -254,12 +261,11 @@ void app::envmap::load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_
                                      },
             };
 
-            impl.cmd_barriers(cmd, {.globals = std::span {barriers}});
+            m_rhi.cmd_barriers(cmd, {.globals = std::span {barriers}});
         }
 
         {
-            // TRACY_ONLY(TracyVkZone(renderer.get_frame_tracy_context(), cmd, "cubemap prefilter"));
-
+            SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "cubemap prefilter");
             const rhi::pipeline& pass = pso[pso_id::cubemap_prefilter_pipeline];
 
             struct push_constants
@@ -269,7 +275,7 @@ void app::envmap::load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_
                 f32 roughness;
             };
 
-            impl.cmd_bind_pso(cmd, pass);
+            m_rhi.cmd_bind_pso(cmd, pass);
             i32 mip_resolution = prefilter_resolution;
 
             for (u32 i = 0; i < shader_constants::kEnvPrefilterMips; ++i)
@@ -284,9 +290,9 @@ void app::envmap::load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_
                                          .roughness      = static_cast<f32>(i)
                                                     / static_cast<f32>(shader_constants::kEnvPrefilterMips - 1)};
 
-                impl.cmd_push_constants(cmd, pass, &pc, sizeof(pc), 0);
-                impl.cmd_push_bindings(cmd, pass, std::span {pass_bindings});
-                impl.cmd_dispatch(cmd, pass, uvec3(mip_resolution, mip_resolution, 6));
+                m_rhi.cmd_push_constants(cmd, pass, &pc, sizeof(pc), 0);
+                m_rhi.cmd_push_bindings(cmd, pass, std::span {pass_bindings});
+                m_rhi.cmd_dispatch(cmd, pass, uvec3(mip_resolution, mip_resolution, 6));
 
                 mip_resolution >>= 1;
                 rhi::global_barrier barriers[] {
@@ -298,7 +304,7 @@ void app::envmap::load(const rhi::impl& impl, rhi::command_buffer cmd, app::pso_
                                          },
                 };
 
-                impl.cmd_barriers(cmd, {.globals = std::span {barriers}});
+                m_rhi.cmd_barriers(cmd, {.globals = std::span {barriers}});
             }
         }
         return;

@@ -2,7 +2,7 @@
 #include "include/shaders/bindings/draw.hlsl"
 
 #if !defined(EMULATE_DRAW_ID) && !defined(__spirv__)
-#error "TODO(dx12): D3D12 has no gl_DrawID equivalent, enable EMULATE_DRAW_ID to use SV_StartInstanceLocation instead"
+#error "D3D12 has no gl_DrawID equivalent, enable EMULATE_DRAW_ID to use SV_StartInstanceLocation instead"
 #endif
 
 struct Input

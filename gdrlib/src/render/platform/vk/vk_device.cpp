@@ -1229,6 +1229,10 @@ void platform::vk_destroy_context(vk_context& ctx)
 
     ctx.instance_extensions.clear();
 
+#if TRACY_ENABLE
+    TracyVkDestroy(ctx.tracy_ctx);
+#endif
+
     VK_DO_IF_NOT_NULL(ctx.device, vkDeviceWaitIdle(ctx.device));
     VK_DO_IF_NOT_NULL(ctx.allocator, vmaDestroyAllocator(ctx.allocator));
 
@@ -1237,10 +1241,6 @@ void platform::vk_destroy_context(vk_context& ctx)
 
     VK_DO_IF_NOT_NULL(ctx.device, vkDestroyDevice(ctx.device, nullptr));
     VK_DO_IF_NOT_NULL(ctx.instance, vkDestroyInstance(ctx.instance, nullptr));
-
-#if TRACY_ENABLE
-    TracyVkDestroy(ctx.tracy_ctx);
-#endif
 }
 
 result<vk_context> platform::vk_create_context(const window& window, const rhi::instance_desc& instance_desc)
