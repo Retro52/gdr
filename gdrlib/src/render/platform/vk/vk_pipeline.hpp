@@ -2,9 +2,8 @@
 
 #include <bytes.hpp>
 #include <fs/path.hpp>
-#include <nlohmann/json.hpp>
 #include <render/platform/vk/vk_descriptor_set.hpp>
-#include <render/platform/vk/vk_renderer.hpp>
+#include <render/platform/vk/vk_image.hpp>
 #include <render/rhi_pso_options.hpp>
 #include <result.hpp>
 
@@ -82,7 +81,9 @@ namespace platform
         shader_meta meta;
 
     public:
-        static shader_meta parse_spirv(const bytes& spv);
+        static shader_meta parse_spirv(std::span<const u8> spv);
+
+        static result<vk_shader> load(VkDevice device, std::span<const u8> bytes);
 
         static result<vk_shader> load(VkDevice device, const fs::path& path);
     };

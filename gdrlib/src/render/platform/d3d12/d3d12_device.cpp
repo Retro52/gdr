@@ -5,21 +5,7 @@
 #include <render/platform/d3d12/d3d12_queue.hpp>
 #include <render/platform/d3d12/d3d12_utils.hpp>
 #include <tracy/Tracy.hpp>
-
-static cpp::stack_string format_bytes_number(u64 number)
-{
-    ZoneScoped;
-    if (number < 1024)
-    {
-        return cpp::stack_string::make_formatted("%llu.000 B", number);
-    }
-
-    const char* magnitudes_per_thousand[] = {"KB", "MB", "GB", "TB"};
-
-    const auto magnitude = static_cast<i32>(std::log2(number) / 10);
-    const f64 fraction   = static_cast<f64>(number) / std::pow(1024, magnitude);
-    return cpp::stack_string::make_formatted("%.3lf %s", fraction, magnitudes_per_thousand[magnitude - 1]);
-}
+#include <utils.hpp>
 
 static const char* shader_model_ver_to_str(const D3D_SHADER_MODEL sm)
 {
@@ -303,7 +289,7 @@ static HRESULT pick_and_create_device(platform::d3d12_context& ctx,
         LOG_DEBUG("Evaluating device #{}: {} (VRAM budget: {})",
                   i,
                   name.c_str(),
-                  format_bytes_number(desc.DedicatedVideoMemory).c_str());
+                  utils::format_bytes_number(desc.DedicatedVideoMemory).c_str());
 
         platform::com_ptr<ID3D12Device10> device;
         {

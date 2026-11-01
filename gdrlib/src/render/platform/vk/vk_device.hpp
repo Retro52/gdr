@@ -5,6 +5,7 @@
 #include <reflection/enum.hpp>
 #include <render/platform/vk/vk_image.hpp>
 #include <render/types.hpp>
+#include <tracy/TracyVulkan.hpp>
 #include <window.hpp>
 
 namespace platform
@@ -42,6 +43,9 @@ namespace platform
         VkPhysicalDevice physical_device         = VK_NULL_HANDLE;
         VkDebugUtilsMessengerEXT debug_messenger = VK_NULL_HANDLE;
         VmaAllocator allocator                   = VK_NULL_HANDLE;
+#if TRACY_ENABLE
+        TracyVkCtx tracy_ctx = {};
+#endif
     };
 
     void vk_destroy_swapchain(const vk_context& vk_context, vk_swapchain& swapchain);

@@ -41,6 +41,7 @@ namespace rhi
     RHI_REGISTER_HANDLE(command_buffer);
 
     RHI_REGISTER_HANDLE(ffx_context);
+    RHI_REGISTER_HANDLE(imgui_context);
 }
 
 #undef RHI_REGISTER_HANDLE

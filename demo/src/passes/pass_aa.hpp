@@ -35,8 +35,6 @@ namespace app
             } params;
         };
 
-        aa_backend backend = aa_backend::fsr;
-
         rhi::image output               = rhi::null_image;
         rhi::image motion_vectors       = rhi::null_image;
         rhi::sampler fxaa_color_sampler = rhi::null_sampler;
@@ -50,6 +48,10 @@ namespace app
         void shutdown();
 
         void next_jitter();
+
+        void change_backend(aa_backend backend);
+
+        [[nodiscard]] aa_backend get_current_backend() const;
 
         [[nodiscard]] vec2 get_frame_jitter() const;
 
@@ -70,6 +72,8 @@ namespace app
 
         void destroy_resources();
 
+        void destroy_backend_resources();
+
         void create_resources(uvec2 render_res, uvec2 display_res);
 
     private:
@@ -78,7 +82,8 @@ namespace app
         uvec2 m_render_res  = uvec2(0);
         uvec2 m_display_res = uvec2(0);
 
-        rhi::context m_ctx = rhi::null_context;
+        rhi::context m_ctx   = rhi::null_context;
+        aa_backend m_backend = aa_backend::fsr;
 
         const rhi::impl& m_rhi;
         const app::pso_data& m_pipelines;

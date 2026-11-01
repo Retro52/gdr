@@ -216,6 +216,12 @@ rhi::impl rhi::create_for_vk()
 
         .ffx_upscale_query_jitter = vk_ffx_upscale_query_jitter,
         .ffx_upscale_dispatch     = vk_ffx_upscale_dispatch,
+
+        .imgui_create_context  = vk_imgui_create_context,
+        .imgui_destroy_context = vk_imgui_destroy_context,
+
+        .imgui_begin_frame  = vk_imgui_begin_frame,
+        .imgui_render_frame = vk_imgui_render_frame,
     };
 
     return result;

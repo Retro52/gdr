@@ -3,7 +3,7 @@
 #include <tracy/Tracy.hpp>
 
 result<platform::vk_command_buffer> platform::vk_create_command_buffer(VkDevice device, u32 queue_family,
-                                                                   VkCommandPoolCreateFlags extra_flags)
+                                                                       VkCommandPoolCreateFlags extra_flags)
 {
     ZoneScoped;
     vk_command_buffer buffer;

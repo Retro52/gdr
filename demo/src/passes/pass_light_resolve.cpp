@@ -110,5 +110,10 @@ void app::pass_light_resolve::create_resources(const uvec2 render_res)
 {
     ZoneScoped;
     m_render_res = render_res;
-    output = app::create_color_image(m_rhi, render_res, rhi::image_format::b10g11r11uf, m_ctx, "light resolve output");
+    output       = app::create_color_image(m_rhi,
+                                     render_res,
+                                     rhi::image_format::b10g11r11uf,
+                                     m_ctx,
+                                     "light resolve output",
+                                     rhi::image_usage::transfer_src);
 }

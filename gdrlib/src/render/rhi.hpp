@@ -154,6 +154,14 @@ namespace rhi
     using ffx_upscale_dispatch_pfn = void (*)(ffx_context ffx_ctx, command_buffer cmd, const ffx_upscale_params& params,
                                               const ffx_upscale_resources& resources);
 
+    using imgui_create_context_pfn  = result<imgui_context> (*)(context ctx, const window& window,
+                                                               rhi::image_format rtv_format, u32 sc_image_count);
+    using imgui_destroy_context_pfn = void (*)(context ctx, imgui_context& im_ctx);
+
+    using imgui_begin_frame_pfn  = void (*)(imgui_context ctx);
+    using imgui_render_frame_pfn = void (*)(imgui_context ctx, command_buffer cmd, attachment attachment,
+                                            uvec4 viewport);
+
     struct impl
     {
         const char* name = nullptr;
@@ -258,6 +266,12 @@ namespace rhi
 
         ffx_upscale_query_jitter_pfn ffx_upscale_query_jitter;
         ffx_upscale_dispatch_pfn ffx_upscale_dispatch;
+
+        imgui_create_context_pfn imgui_create_context;
+        imgui_destroy_context_pfn imgui_destroy_context;
+
+        imgui_begin_frame_pfn imgui_begin_frame;
+        imgui_render_frame_pfn imgui_render_frame;
     };
 
     impl create_for_vk();

@@ -9,6 +9,7 @@
 #include <events.hpp>
 #include <glm/common.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <imgui/imwidgets.hpp>
 #include <log.hpp>
 #include <passes/pass_aa.hpp>
 #include <passes/pass_dbg_frustum.hpp>
@@ -24,9 +25,12 @@
 #include <scene/scene.hpp>
 #include <tracy/Tracy.hpp>
 #include <types.hpp>
+#include <utils.hpp>
 #include <window.hpp>
 
-#define NO_POPULATE_MODE 1
+#include <imgui.h>
+
+#define EDITOR 1
 
 #define RESULT_EXIT_IF_FAILED(result)                                       \
     if (!result) [[unlikely]]                                               \
@@ -314,6 +318,12 @@ int app::instance::run()
     auto swapchain = m_rhi.create_swapchain(*context, create_swapchain_info);
     RESULT_EXIT_IF_FAILED(swapchain);
 
+#if EDITOR
+    auto imgui_context = m_rhi.imgui_create_context(
+        *context, m_window, app::pass_post_process::kOutputFormat, *m_rhi.query_swapchain_images_count(*swapchain));
+    RESULT_EXIT_IF_FAILED(imgui_context);
+#endif
+
     common_resources resources(m_rhi, *context, kFramesInFlight);
 
     pso_data pipelines;
@@ -513,23 +523,20 @@ int app::instance::run()
     f32 envmap_compensation_ev = 0.0f;
     f32 envmap_intensity       = 1250.0f;
 
-    bool enable_fsr_aa            = true;
-    bool fsr_aa_rcas              = true;
     bool fsr_aa_reset             = false;
     bool freeze_cull_data         = false;
     bool enable_meshlets_pipeline = mesh_shading_supported;
 
+    aa_backend aa_mode = aa_pass.get_current_backend();
+
     struct keyboard_controls_context
     {
-        bool& fsr_aa_rcas;
         bool& fsr_aa_reset;
-        bool& enable_fsr_aa;
         bool& freeze_cull_data;
         bool& enable_meshlets_pipeline;
 
         debug_mode& draw_debug_mode;
-    } keyboard_controls_ctx(
-        fsr_aa_rcas, fsr_aa_reset, enable_fsr_aa, freeze_cull_data, enable_meshlets_pipeline, draw_debug_mode);
+    } keyboard_controls_ctx(fsr_aa_reset, freeze_cull_data, enable_meshlets_pipeline, draw_debug_mode);
 
     m_events_queue.add_watcher(
         event_type::key_pressed,
@@ -548,21 +555,6 @@ int app::instance::run()
                 bool& var = static_cast<keyboard_controls_context*>(user_data)->fsr_aa_reset;
                 var       = true;
                 LOG_INFO("FSR reset");
-            }
-            if (payload.keyboard.key == keycode::t)
-            {
-                bool& var = static_cast<keyboard_controls_context*>(user_data)->enable_fsr_aa;
-                var       = !var;
-
-                static_cast<keyboard_controls_context*>(user_data)->fsr_aa_reset = true;
-                LOG_INFO("FSR is now: {}", var ? "enabled" : "disabled");
-            }
-            if (payload.keyboard.key == keycode::y)
-            {
-                bool& var = static_cast<keyboard_controls_context*>(user_data)->fsr_aa_rcas;
-                var       = !var;
-
-                LOG_INFO("FSR RCAS is now: {}", var ? "enabled" : "disabled");
             }
 
             if (payload.keyboard.key == keycode::f)
@@ -640,6 +632,13 @@ int app::instance::run()
         auto& camera_data      = camera.get_component<camera_component>();
         controller.update(static_cast<f32>(dt));
 
+        if (aa_mode != aa_pass.get_current_backend())
+        {
+            m_rhi.device_wait_idle(*context);
+            aa_pass.change_backend(aa_mode);
+            return;
+        }
+
         const auto frame_image = m_rhi.acquire_next_swapchain_image(*context, *swapchain);
         if (!frame_image)
         {
@@ -698,7 +697,6 @@ int app::instance::run()
                 };
 
                 aa_pass.next_jitter();
-                aa_pass.backend      = enable_fsr_aa ? aa_backend::fsr : aa_backend::fxaa;
                 camera_proj_jittered = aa_pass.get_jittered_matrix(camera_proj);
 
                 auto& motion_vectors_buffer = resources.motion_vector_data_buffer();
@@ -765,7 +763,7 @@ int app::instance::run()
                         {
                                       .reset            = fsr_aa_reset,
                                       .reverse_z        = true,
-                                      .enable_sharpness = fsr_aa_rcas,
+                                      .enable_sharpness = true,
                                       .sharpness        = 1.0F,
 
                                       .dt_ms              = static_cast<f32>(dt * 1000.0F),
@@ -780,7 +778,7 @@ int app::instance::run()
                     .depth = gpass.depth,
                 };
 
-                switch (aa_pass.backend)
+                switch (aa_pass.get_current_backend())
                 {
                 case aa_backend::fsr :
                     params.params.ffx = fsr_params;
@@ -813,6 +811,40 @@ int app::instance::run()
                                               .camera_vp = camera_proj * camera_view,
                                           });
                 }
+
+#if EDITOR
+                m_rhi.imgui_begin_frame(*imgui_context);
+                ImGui::NewFrame();
+
+                ImGui::Text("Max onscreen triangles: %s",
+                            utils::format_counter_number(scene_data.counters.triangles).c_str());
+                ImGui::Text("Max onscreen meshlets: %s",
+                            utils::format_counter_number(scene_data.counters.meshlets).c_str());
+
+                ImGui::BeginDisabled(!mesh_shading_supported);
+                ImGui::Checkbox("Enable mesh pipeline", &enable_meshlets_pipeline);
+                ImGui::EndDisabled();
+
+                ImGuiWidgets::EnumDrag("AA mode", aa_mode);
+                ImGuiWidgets::EnumDrag("Debug view", draw_debug_mode);
+
+                const char* names[] = {
+                    "LODs",
+                    "Frustum cull",
+                    "Occlusion cull",
+                    "Meshlets cone cull",
+                    "Meshlets frustum cull",
+                    "Meshlets occlusion cull",
+                    "Small meshlets cull",
+                };
+                ImGuiWidgets::Bits(client_render_settings.flags, names, COUNT_OF(names));
+
+                m_rhi.cmd_debug_label_begin(
+                    buffer, *context, rhi::debug_label {.label = "ImGui", .color = vec4(0.26F, 0.59F, 0.98F, 1.00F)});
+                m_rhi.imgui_render_frame(
+                    *imgui_context, buffer, pp_pass.output, uvec4(0, 0, m_window.get_size_in_px()));
+                m_rhi.cmd_debug_label_end(buffer, *context);
+#endif
 
                 present_pass.present(buffer,
                                      *swapchain,
@@ -888,6 +920,10 @@ int app::instance::run()
     {
         m_rhi.destroy_image(*context, texture);
     }
+
+#if EDITOR
+    m_rhi.imgui_destroy_context(*context, *imgui_context);
+#endif
 
     m_rhi.destroy_swapchain(*context, *swapchain);
     m_rhi.destroy_context(*context);

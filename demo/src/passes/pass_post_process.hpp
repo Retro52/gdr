@@ -7,6 +7,8 @@ namespace app
 {
     struct pass_post_process
     {
+        constexpr static auto kOutputFormat = rhi::image_format::r8g8b8a8un;
+
         struct draw_params
         {
             rhi::image color       = rhi::null_image;
