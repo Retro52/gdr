@@ -3,6 +3,8 @@
 struct PushConstants
 {
     float4x4 renderer_vp;
+    float4 color;
+    uint mode; // 0 - edges; 1 - faces
 };
 
 [[vk::push_constant]] ConstantBuffer<PushConstants> pc: register(b0);
@@ -21,7 +23,16 @@ static const float4 corners[8] = {
     float4(1, 1, 0, 1)    // 7: far top-right
 };
 
-static const int indices[24] = {
+static const int face_indices[36] = {
+    0, 1, 3,  0, 3, 2, // near
+    4, 7, 5,  4, 6, 7, // far
+    0, 2, 6,  0, 6, 4, // left
+    1, 5, 7,  1, 7, 3, // right
+    0, 4, 5,  0, 5, 1, // bottom
+    2, 3, 7,  2, 7, 6  // top
+};
+
+static const int edge_indices[24] = {
     // near quad
     0, 1,
     1, 3,
@@ -73,6 +84,7 @@ struct Input
 
 struct Output
 {
+    float4 color: TEXCOORD0;
     float4 position: SV_Position;
 };
 
@@ -89,11 +101,14 @@ Output main(Input input)
         0.0, 0.0, -1.0, 0.0
     );
 
-    float4 ndc = corners[indices[input.vertex_id]];
+    int idx = pc.mode == 0 ? edge_indices[input.vertex_id] : face_indices[input.vertex_id];
+
+    float4 ndc = corners[idx];
     float4 world = mul(inverse(mul(proj, frame_cull[0].view)), ndc);
     world /= world.w;
 
     Output result;
+    result.color = pc.color;
     result.position = mul(pc.renderer_vp, world);
 
     return result;

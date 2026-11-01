@@ -11,10 +11,9 @@ namespace app
 {
     enum class pso_id : u32
     {
-        blit_sampler2d_pipeline       = "blit_sampler2d_pipeline"_crc32,
-        blit_sampler2d_array_pipeline = "blit_sampler2d_array_pipeline"_crc32,
+        frustum_debug      = "frustum_debug"_crc32,
+        frustum_debug_face = "frustum_debug_face"_crc32,
 
-        frustum_debug          = "frustum_debug"_crc32,
         fxaa_pipeline          = "fxaa_pipeline"_crc32,
         tonemap_pipeline       = "tonemap_pipeline"_crc32,
         mv_from_depth_pipeline = "mv_from_depth_pipeline"_crc32,
@@ -56,7 +55,7 @@ namespace app
             return const_cast<pso_data*>(this)->m_pipelines[static_cast<u32>(id)];
         }
 
-        void load(const rhi::impl& rhi, rhi::context context, rhi::swapchain swapchain, rhi::bindless_set textures_set);
+        void load(const rhi::impl& rhi, rhi::context context, rhi::bindless_set textures_set);
 
         void destroy(const rhi::impl& rhi, rhi::context context, pso_id id);
 
@@ -67,6 +66,7 @@ namespace app
     {
     private:
         std::thread m_worker;
+        std::atomic_bool m_reload;
         std::atomic_bool m_terminate;
         u64 m_last_write_time;
 
@@ -78,6 +78,8 @@ namespace app
 
     public:
         pso_watcher(pso_data& pipelines, rhi::impl& rhi, rhi::context context, rhi::bindless_set textures_set);
+
+        void poll();
 
         void shutdown();
     };

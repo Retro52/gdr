@@ -13,23 +13,6 @@
 
 #include <span>
 
-#if !defined(NDEBUG)
-#include <log.hpp>
-#define RHI_SAFE_CALL(FPN, ...)                         \
-    [&]()                                               \
-    {                                                   \
-        if (FPN)                                        \
-        {                                               \
-            return FPN(__VA_ARGS__);                    \
-        }                                               \
-        LOG_WARNING("FPN '" #FPN "' is null");          \
-        using return_type = decltype(FPN(__VA_ARGS__)); \
-        return return_type {};                          \
-    }()
-#else
-#define RHI_SAFE_CALL(FPN, ...) FPN(__VA_ARGS__)
-#endif
-
 namespace rhi
 {
     using destroy_context_pfn = void (*)(context& context);

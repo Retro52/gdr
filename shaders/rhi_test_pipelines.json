@@ -1,8 +1,0 @@
-{
-  "triangle": {
-    "shaders": [
-      "triangle.vert",
-      "triangle.frag"
-    ]
-  }
-}

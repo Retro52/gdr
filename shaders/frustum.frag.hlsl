@@ -1,14 +1,18 @@
+struct Input
+{
+    float4 color: TEXCOORD0;
+};
+
 struct Output
 {
     float4 out_color: SV_Target0;
 };
 
 [shader("pixel")]
-Output main()
+Output main(Input input)
 {
-    // TODO: use a specialization constant?
     Output result;
-    result.out_color = float4(1.0, 1.0, 0.0, 1.0);
+    result.out_color = input.color;
 
     return result;
 }

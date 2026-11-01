@@ -22,8 +22,6 @@ if (NOT WIN32 OR NOT GDR_ENABLE_DX12_BACKEND)
     list(FILTER SOURCES EXCLUDE REGEX "platform/d3d12/")
 endif ()
 
-message(STATUS "SOURCES: ${SOURCES}")
-
 add_library(${PROJECT_NAME}
         STATIC
         ${SOURCES}
