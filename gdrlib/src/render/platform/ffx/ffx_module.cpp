@@ -1,14 +1,17 @@
+#if defined(_WIN32)
+
 #include <render/platform/ffx/ffx_module.hpp>
 #include <tracy/Tracy.hpp>
 
 #include <windows.h>
-
+#define FFX_LOAD_LIBRARY(PATH)        LoadLibrary(PATH)
+#define FFX_FREE_LIBRARY(HANDLE)      FreeLibrary(HANDLE)
 #define FFX_LOAD_SYMBOL(MODULE, NAME) this->NAME = reinterpret_cast<decltype(this->NAME)>(GetProcAddress(MODULE, #NAME))
 
 platform::ffx_module::~ffx_module()
 {
     ZoneScoped;
-    FreeLibrary(reinterpret_cast<HMODULE>(m_handle));
+    FFX_FREE_LIBRARY(reinterpret_cast<HMODULE>(m_handle));
 }
 
 void platform::ffx_module::lazy_load(const char* path)
@@ -18,7 +21,7 @@ void platform::ffx_module::lazy_load(const char* path)
         return;
     }
 
-    if (const auto win_handle = LoadLibrary(path))
+    if (const auto win_handle = FFX_LOAD_LIBRARY(path))
     {
         m_handle = reinterpret_cast<u64>(win_handle);
         FFX_LOAD_SYMBOL(win_handle, ffxQuery);
@@ -28,3 +31,5 @@ void platform::ffx_module::lazy_load(const char* path)
         FFX_LOAD_SYMBOL(win_handle, ffxDestroyContext);
     }
 }
+
+#endif

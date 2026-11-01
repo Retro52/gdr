@@ -49,7 +49,7 @@ namespace app
 
         void next_jitter();
 
-        void change_backend(aa_backend backend);
+        [[nodiscard]] aa_backend change_backend(aa_backend backend);
 
         [[nodiscard]] aa_backend get_current_backend() const;
 
@@ -83,7 +83,7 @@ namespace app
         uvec2 m_display_res = uvec2(0);
 
         rhi::context m_ctx   = rhi::null_context;
-        aa_backend m_backend = aa_backend::fsr;
+        aa_backend m_backend = aa_backend::blit;
 
         const rhi::impl& m_rhi;
         const app::pso_data& m_pipelines;

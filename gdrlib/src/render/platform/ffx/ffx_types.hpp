@@ -1,5 +1,7 @@
 #pragma once
 
+#if defined(_WIN32)
+
 #include <ffx_api.hpp>
 
 #include <ffx_api_types.h>
@@ -58,3 +60,4 @@ namespace platform
     };
 }
 
+#endif

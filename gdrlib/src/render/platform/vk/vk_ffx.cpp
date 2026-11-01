@@ -1,3 +1,5 @@
+#if defined(_WIN32)
+
 #include <ffx_upscale.hpp>
 #include <log.hpp>
 #include <render/platform/vk/vk_ffx.hpp>
@@ -167,3 +169,5 @@ void platform::vk_ffx_dispatch_upscale(const platform::ffx_module& module, ffx::
 
     FFX_ASSERT_ON_FAIL(module.Dispatch(context, dispatch_desc));
 }
+
+#endif

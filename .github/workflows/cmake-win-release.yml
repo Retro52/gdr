@@ -32,7 +32,10 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Configure CMake
-        run: cmake -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -G Ninja
+        run: >
+          cmake -B ${{ github.workspace }}/build -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+          -DGDR_BIN_FOLDER=${{ github.workspace }}/output
 
       - name: Build
         run: cmake --build ${{ github.workspace }}/build --config ${{ env.BUILD_TYPE }} -j 4
@@ -42,8 +45,10 @@ jobs:
         with:
           name: gdr-${{ runner.os }}-${{ env.BUILD_TYPE }}
           path: |
-            build/gdr
-            build/gdr.exe
-            shaders/bin/
-            shaders/*.json
+            output/gdr
+            output/gdr.exe
+            output/*.dll
+            output/*.pdb
+            output/*.json
+            output/shaders
           if-no-files-found: warn

@@ -1,5 +1,7 @@
 #pragma once
 
+#if defined(_WIN32)
+
 #include <core/f16.hpp>
 #include <render/platform/ffx/ffx_module.hpp>
 #include <render/platform/ffx/ffx_types.hpp>
@@ -27,3 +29,5 @@ namespace platform
                                  const rhi::ffx_upscale_params& params, const platform::ffx_upscale_resources& desc);
 
 }
+
+#endif
