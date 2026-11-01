@@ -327,7 +327,7 @@ int app::instance::run()
     common_resources resources(m_rhi, *context, kFramesInFlight);
 
     pso_data pipelines;
-    pipelines.load(m_rhi, *context, *swapchain, resources.bindless_textures);
+    pipelines.load(m_rhi, *context, resources.bindless_textures);
 
     pso_watcher watcher(pipelines, m_rhi, *context, resources.bindless_textures);
 
@@ -338,7 +338,7 @@ int app::instance::run()
     app::pass_aa aa_pass(m_rhi, pipelines, *context, m_window.get_size_in_px(), m_window.get_size_in_px());
     app::pass_post_process pp_pass(m_rhi, *context, m_window.get_size_in_px());
 
-    app::pass_dbg_frustum dbg_frustum_pass(m_rhi, *context, pipelines[pso_id::frustum_debug]);
+    app::pass_dbg_frustum dbg_frustum_pass(m_rhi, pipelines, *context);
 
     app::envmap envmap {
         m_rhi,
@@ -632,6 +632,8 @@ int app::instance::run()
         auto& camera_data      = camera.get_component<camera_component>();
         controller.update(static_cast<f32>(dt));
 
+        watcher.poll();
+
         if (aa_mode != aa_pass.get_current_backend())
         {
             m_rhi.device_wait_idle(*context);
@@ -815,6 +817,7 @@ int app::instance::run()
 #if EDITOR
                 m_rhi.imgui_begin_frame(*imgui_context);
                 ImGui::NewFrame();
+                ImGuizmo::BeginFrame();
 
                 ImGui::Text("Max onscreen triangles: %s",
                             utils::format_counter_number(scene_data.counters.triangles).c_str());
@@ -838,6 +841,15 @@ int app::instance::run()
                     "Small meshlets cull",
                 };
                 ImGuiWidgets::Bits(client_render_settings.flags, names, COUNT_OF(names));
+
+                if (freeze_cull_data)
+                {
+                    static ImGuizmo::OPERATION op = ImGuizmo::OPERATION::TRANSLATE;
+
+                    auto tmp = glm::inverse(debug_camera_view);
+                    ImGuiWidgets::Gizmo(camera_view, camera_proj, tmp, op);
+                    debug_camera_view = glm::inverse(tmp);
+                }
 
                 m_rhi.cmd_debug_label_begin(
                     buffer, *context, rhi::debug_label {.label = "ImGui", .color = vec4(0.26F, 0.59F, 0.98F, 1.00F)});

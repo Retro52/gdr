@@ -140,6 +140,10 @@ function(add_shaders_dependency TARGET SHADERS_BIN_FOLDER)
             message(FATAL_ERROR "HLSL shader '${SHADER}' requires dxc, which was not found")
         endif ()
 
+        add_custom_command(TARGET ${TARGET} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy
+                ${SHADERS_SOURCE_DIR}/pipelines.json $<TARGET_FILE_DIR:${TARGET}>)
+
         add_custom_command(
                 OUTPUT "${SHADER_BIN_OUTPUT}.spv"
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_BIN_FOLDER}

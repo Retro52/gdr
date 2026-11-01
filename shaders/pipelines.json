@@ -5,8 +5,29 @@
       "frustum.vert"
     ],
     "options": {
+      "depth_write": false,
+      "dynstate_cull_mode": true,
       "topology": "list_lines",
-      "depth_format": "d32sf"
+      "depth_format": "d32sf",
+      "color_formats": [
+        "r8g8b8a8un"
+      ]
+    }
+  },
+  "frustum_debug_face": {
+    "shaders": [
+      "frustum.frag",
+      "frustum.vert"
+    ],
+    "options": {
+      "blend": true,
+      "depth_write": false,
+      "dynstate_cull_mode": true,
+      "topology": "list_triangles",
+      "depth_format": "d32sf",
+      "color_formats": [
+        "r8g8b8a8un"
+      ]
     }
   },
   "task_cull_pipeline": {

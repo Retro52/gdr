@@ -7,6 +7,14 @@
 #include <reflection/enum.hpp>
 #include <tracy/Tracy.hpp>
 
+#define SHELL_QUOTE(x) "\"" x "\""
+
+#ifdef _WIN32
+#define SHELL_CMD(cmd) "\"" cmd "\""
+#else
+#define SHELL_CMD(cmd) cmd
+#endif
+
 namespace
 {
     constexpr fs::path kShadersBinDir = "./shaders";
@@ -36,12 +44,6 @@ namespace
         return false;
     }
 
-    template<typename T>
-    bool opt_get(const nlohmann::json& options, const char* key, T& dst)
-    {
-        return opt_get_type<T>(options, key, dst);
-    }
-
     bool opt_get_bit(const nlohmann::json& options, const char* key, bool default_value = false)
     {
         opt_get_type<bool>(options, key, default_value);
@@ -65,8 +67,11 @@ namespace
         opt_get_enum<rhi::image_format>(json_options, "depth_format", options.depth_format);
 
         opt_get_enum(json_options, "topology", options.topology);
+        options.enable_blend       = opt_get_bit(json_options, "blend", options.enable_blend);
         options.enable_depth_bias  = opt_get_bit(json_options, "depth_bias", options.enable_depth_bias);
         options.enable_depth_clamp = opt_get_bit(json_options, "depth_clamp", options.enable_depth_clamp);
+        options.enable_depth_test  = opt_get_bit(json_options, "depth_test", options.enable_depth_test);
+        options.enable_depth_write = opt_get_bit(json_options, "depth_write", options.enable_depth_write);
         options.enable_dynstate_cull_mode =
             opt_get_bit(json_options, "dynstate_cull_mode", options.enable_dynstate_cull_mode);
 
@@ -83,22 +88,13 @@ namespace
     }
 }
 
-void app::pso_data::load(const rhi::impl& rhi, const rhi::context context, const rhi::swapchain swapchain,
-                         rhi::bindless_set textures_set)
+void app::pso_data::load(const rhi::impl& rhi, const rhi::context context, rhi::bindless_set textures_set)
 {
     ZoneScoped;
-    auto data = fs::read_file("../shaders/pipelines.json");
+    auto data = fs::read_file("./pipelines.json");
     if (!data)
     {
         assert2m(false, data.message);
-        return;
-    }
-
-    const auto sc_format = RHI_SAFE_CALL(rhi.query_swapchain_color_format, swapchain);
-    assert2(sc_format);
-
-    if (!sc_format)
-    {
         return;
     }
 
@@ -140,7 +136,7 @@ void app::pso_data::load(const rhi::impl& rhi, const rhi::context context, const
             const auto it        = cache.find(shader_id);
             if (it == cache.end())
             {
-                const auto compiled_shader = RHI_SAFE_CALL(rhi.create_shader, context, kShadersBinDir / shader);
+                const auto compiled_shader = rhi.create_shader(context, kShadersBinDir / shader);
                 assert2m(compiled_shader, compiled_shader.message);
                 if (compiled_shader)
                 {
@@ -163,7 +159,7 @@ void app::pso_data::load(const rhi::impl& rhi, const rhi::context context, const
                  "some shaders failed to compile?");
         if (compiled_shaders.size() == shaders.size())
         {
-            auto options = rhi::pso_options().add_color_attachment(*sc_format).set_dbg_name(key_it.c_str());
+            auto options = rhi::pso_options().set_dbg_name(key_it.c_str());
             if (pipeline_info.contains("options"))
             {
                 parse_pipeline_options(options, pipeline_info["options"]);
@@ -171,13 +167,10 @@ void app::pso_data::load(const rhi::impl& rhi, const rhi::context context, const
 
             auto pso =
                 (shaders.size() == 1
-                 && (*RHI_SAFE_CALL(rhi.query_shader_stage, compiled_shaders.front()) == rhi::shader_stage::compute))
-                    ? RHI_SAFE_CALL(rhi.create_compute_pso, context, compiled_shaders[0], {&textures_set, 1}, options)
-                    : RHI_SAFE_CALL(rhi.create_graphics_pso,
-                                    context,
-                                    {compiled_shaders.data(), compiled_shaders.size()},
-                                    {&textures_set, 1},
-                                    options);
+                 && (*rhi.query_shader_stage(compiled_shaders.front()) == rhi::shader_stage::compute))
+                    ? rhi.create_compute_pso(context, compiled_shaders[0], {&textures_set, 1}, options)
+                    : rhi.create_graphics_pso(
+                          context, {compiled_shaders.data(), compiled_shaders.size()}, {&textures_set, 1}, options);
 
             assert2m(pso && key, pso.message);
             if (pso)
@@ -207,15 +200,15 @@ void app::pso_data::load(const rhi::impl& rhi, const rhi::context context, const
 void app::pso_data::destroy(const rhi::impl& rhi, const rhi::context context, const pso_id id)
 {
     ZoneScoped;
-    RHI_SAFE_CALL(rhi.destroy_pso, context, this->operator[](id));
+    rhi.destroy_pso(context, this->operator[](id));
 }
 
 void app::pso_data::shutdown(const rhi::impl& rhi, const rhi::context context)
 {
     ZoneScoped;
-    for (auto& [_, pso] : m_pipelines)
+    for (auto& pso : m_pipelines | std::views::values)
     {
-        RHI_SAFE_CALL(rhi.destroy_pso, context, pso);
+        rhi.destroy_pso(context, pso);
     }
 }
 
@@ -234,21 +227,33 @@ app::pso_watcher::pso_watcher(pso_data& pipelines, rhi::impl& rhi, const rhi::co
             while (!m_terminate)
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(250));
-                if (m_terminate || this->m_last_write_time == get_last_write_time())
+#if defined(GDR_CMAKE_COMMAND) && defined(GDR_CMAKE_BINARY_DIR) && defined(GDR_SHADERS_TARGET_NAME)
+                std::system(SHELL_CMD(SHELL_QUOTE(GDR_CMAKE_COMMAND) " --build " SHELL_QUOTE(
+                    GDR_CMAKE_BINARY_DIR) " --target " GDR_SHADERS_TARGET_NAME));
+#endif
+
+                if (m_reload || m_terminate || this->m_last_write_time == get_last_write_time())
                 {
                     continue;
                 }
 
-                // this->m_renderer.schedule_delete(
-                //     [&](VkDevice /* device */, VmaAllocator /* allocator */)
-                //     {
-                //         this->m_pdata.shutdown(this->m_renderer);
-                //         this->m_pdata.load(this->m_renderer, this->m_textures_set);
-                //
-                //         this->m_last_write_time = get_last_write_time();
-                //     });
+                m_reload = true;
             }
         });
+}
+
+void app::pso_watcher::poll()
+{
+    if (m_reload)
+    {
+        m_rhi.device_wait_idle(m_context);
+
+        m_pdata.shutdown(m_rhi, m_context);
+        m_pdata.load(m_rhi, m_context, m_textures_set);
+
+        m_last_write_time = get_last_write_time();
+        m_reload          = false;
+    }
 }
 
 void app::pso_watcher::shutdown()

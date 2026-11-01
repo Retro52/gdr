@@ -40,12 +40,12 @@ namespace rhi
         DECLARE_SIMPLE_PSO_OPTION(rhi::topology, topology, topology::list_triangles)
 
         DECLARE_SIMPLE_PSO_OPTION(rhi::blend_op, color_blend_op, rhi::blend_op::add)
-        DECLARE_SIMPLE_PSO_OPTION(rhi::blend_factor, src_color_blend_factor, rhi::blend_factor::one)
-        DECLARE_SIMPLE_PSO_OPTION(rhi::blend_factor, dst_color_blend_factor, rhi::blend_factor::zero)
+        DECLARE_SIMPLE_PSO_OPTION(rhi::blend_factor, src_color_blend_factor, rhi::blend_factor::src_alpha)
+        DECLARE_SIMPLE_PSO_OPTION(rhi::blend_factor, dst_color_blend_factor, rhi::blend_factor::one_minus_src_alpha)
 
         DECLARE_SIMPLE_PSO_OPTION(rhi::blend_op, alpha_blend_op, rhi::blend_op::add)
         DECLARE_SIMPLE_PSO_OPTION(rhi::blend_factor, src_alpha_blend_factor, rhi::blend_factor::one)
-        DECLARE_SIMPLE_PSO_OPTION(rhi::blend_factor, dst_alpha_blend_factor, rhi::blend_factor::zero)
+        DECLARE_SIMPLE_PSO_OPTION(rhi::blend_factor, dst_alpha_blend_factor, rhi::blend_factor::one_minus_src_alpha)
 
         pso_options& add_color_attachment(const rhi::image_format color_format)
         {

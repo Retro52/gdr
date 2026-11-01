@@ -48,3 +48,4 @@ CMakeCache.txt
 bin*
 data
 CLAUDE.md
+CMakeUserOptions.cmake

@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.17)
 
 project(gdr LANGUAGES C CXX VERSION 1.0)
 
+if (NOT EXISTS CMakeUserOptions.cmake)
+    file(TOUCH CMakeUserOptions.cmake)
+endif ()
+
+include(CMakeUserOptions.cmake)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
