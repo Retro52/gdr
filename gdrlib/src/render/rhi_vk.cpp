@@ -77,6 +77,11 @@ static void vk_rhi_set_object_name_if_needed(const platform::vk_context& ctx, T 
     {
         type = VK_OBJECT_TYPE_IMAGE_VIEW;
     }
+    else if constexpr (std::is_same_v<T, VmaAllocation>)
+    {
+        vmaSetAllocationName(ctx.allocator, object, name);
+        return;
+    }
     else
     {
         static_assert(sizeof(T) == 0, "unsupported object type");
@@ -547,6 +552,7 @@ auto rhi::vk_create_buffer(context context, const create_buffer_info& buffer_inf
     }
 
     vk_rhi_set_object_name_if_needed(*vk_ctx, vk_buffer->buffer, buffer_info.dbg_name);
+    vk_rhi_set_object_name_if_needed(*vk_ctx, vk_buffer->allocation, buffer_info.dbg_name);
     return create_handle<buffer>(*vk_buffer);
 }
 
@@ -601,8 +607,9 @@ auto rhi::vk_create_image(context context, const create_image_info& image_info) 
                                   vk_ctx->allocator);
     RESULT_FORWARD_IF_FAILED(vk_image);
 
-    vk_rhi_set_object_name_if_needed(*vk_ctx, vk_image->image, image_info.dbg_name);
     vk_rhi_set_object_name_if_needed(*vk_ctx, vk_image->view, image_info.dbg_name);
+    vk_rhi_set_object_name_if_needed(*vk_ctx, vk_image->image, image_info.dbg_name);
+    vk_rhi_set_object_name_if_needed(*vk_ctx, vk_image->allocation, image_info.dbg_name);
     return create_handle<image>(*vk_image);
 }
 

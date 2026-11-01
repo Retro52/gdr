@@ -382,6 +382,8 @@ void platform::vk_imgui_destroy_context(const platform::vk_context& ctx, vk_imgu
     ImGui_ImplVulkan_RemoveTexture(context.atlas_data.imgui_descriptor);
 
     VK_DESTROY(context.atlas_data.sampler, vkDestroySampler, ctx.device);
+    platform::vk_destroy_pipeline(ctx.device, context.blit2d);
+    platform::vk_destroy_pipeline(ctx.device, context.blit2d_array);
     platform::vk_destroy_image(ctx.device, ctx.allocator, context.atlas_data.atlas_image);
 
     ImGui_ImplVulkan_Shutdown();

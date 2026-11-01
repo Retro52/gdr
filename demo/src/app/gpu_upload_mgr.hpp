@@ -43,6 +43,8 @@ namespace app
     public:
         gpu_upload_mgr(rhi::impl& rhi, rhi::context ctx, u64 staging_buffer_size);
 
+        void shutdown();
+
         template<typename T>
         void submit(const rhi::buffer dst, std::span<const T> data)
         {

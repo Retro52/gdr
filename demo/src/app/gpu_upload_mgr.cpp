@@ -20,6 +20,7 @@ static app::mapped_buffer gpu_upload_mgr_create_mapped_buffer(rhi::impl& impl, c
                                       {
                                           .size        = staging_buffer_size,
                                           .usage_flags = rhi::buffer_usage::copy_src,
+                                          .dbg_name    = "gpu_upload_mgr staging buffer",
                                       });
 }
 
@@ -32,6 +33,12 @@ app::gpu_upload_mgr::gpu_upload_mgr(rhi::impl& impl, const rhi::context ctx, con
     m_staging_cmd  = *m_rhi.create_command_buffer(m_ctx, rhi::queue_kind::transfer);
 }
 
+void app::gpu_upload_mgr::shutdown()
+{
+    m_rhi.destroy_command_buffer(m_ctx, m_staging_cmd);
+    m_rhi.destroy_buffer(m_ctx, m_staging_buffer.buffer);
+}
+
 rhi::image app::gpu_upload_mgr::create_texture(const loader::texture_desc& texture) const
 {
     const rhi::create_image_info image_info {
@@ -40,6 +47,7 @@ rhi::image app::gpu_upload_mgr::create_texture(const loader::texture_desc& textu
         .layer_count = texture.arrays_count,
         .dimensions  = texture.dimensions,
         .usage_flags = rhi::image_usage::transfer_dst | rhi::image_usage::sampled,
+        .dbg_name    = "generic texture",
     };
 
     const auto image = *m_rhi.create_image(m_ctx, image_info);
