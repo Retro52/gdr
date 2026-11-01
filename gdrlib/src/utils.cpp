@@ -1,0 +1,34 @@
+#include <tracy/Tracy.hpp>
+#include <utils.hpp>
+
+#include <cmath>
+
+cpp::stack_string utils::format_bytes_number(u64 number)
+{
+    ZoneScoped;
+    if (number < 1024)
+    {
+        return cpp::stack_string::make_formatted("%llu.000 B", number);
+    }
+
+    constexpr const char* magnitudes[] = {"KB", "MB", "GB", "TB"};
+
+    const auto magnitude = static_cast<i32>(std::log2(number) / 10);
+    const f64 fraction   = static_cast<f64>(number) / std::pow(1024, magnitude);
+    return cpp::stack_string::make_formatted("%.3lf %s", fraction, magnitudes[magnitude - 1]);
+}
+
+cpp::stack_string utils::format_counter_number(u64 number)
+{
+    ZoneScoped;
+    if (number < 1000)
+    {
+        return cpp::stack_string::make_formatted("%llu.000", number);
+    }
+
+    constexpr const char* magnitudes[] = {"K", "M", "B", "T"};
+
+    const auto magnitude = static_cast<i32>(std::log10(number) / 3);
+    const f64 fraction   = static_cast<f64>(number) / std::pow(1000, magnitude);
+    return cpp::stack_string::make_formatted("%.3lf %s", fraction, magnitudes[magnitude - 1]);
+}

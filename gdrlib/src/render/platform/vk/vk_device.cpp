@@ -9,9 +9,9 @@
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
 #include <tracy/Tracy.hpp>
+#include <utils.hpp>
 
 #include <algorithm>
-#include <cmath>
 
 using namespace platform;
 
@@ -235,6 +235,9 @@ public:
         this->vk11.storageBuffer16BitAccess           = VK_TRUE;
         this->vk11.uniformAndStorageBuffer16BitAccess = VK_TRUE;
 
+#if TRACY_ENABLE
+        this->vk12.hostQueryReset = VK_TRUE;
+#endif
         this->vk12.storageBuffer8BitAccess                      = VK_TRUE;
         this->vk12.shaderFloat16                                = VK_TRUE;
         this->vk12.descriptorIndexing                           = VK_TRUE;
@@ -306,22 +309,6 @@ static const char* device_type_to_str(VkPhysicalDeviceType type)
     default :
         return "other";
     }
-}
-
-static cpp::stack_string format_bytes_number(u64 number)
-{
-    ZoneScoped;
-
-    if (number < 1024)
-    {
-        return cpp::stack_string::make_formatted("%d.000 B", number);
-    }
-
-    const char* magnitudes_per_thousand[] = {"KB", "MB", "GB", "TB"};
-
-    const auto magnitude = static_cast<i32>(std::log2(number) / 10);
-    const f64 fraction   = static_cast<f64>(number) / std::pow(1024, magnitude);
-    return cpp::stack_string::make_formatted("%.3lf %s", fraction, magnitudes_per_thousand[magnitude - 1]);
 }
 
 static bool inst_ext_available(const char* name)
@@ -851,50 +838,61 @@ static VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhy
 #if TRACY_ENABLE
     constexpr const char* kPlotName = "GPU memory";
 
-    PFN_vmaAllocateDeviceMemoryFunction alloc_callback = +[](VmaAllocator VMA_NOT_NULL allocator,
-                                                             uint32_t memoryType,
-                                                             VkDeviceMemory VMA_NOT_NULL_NON_DISPATCHABLE memory,
-                                                             VkDeviceSize size,
-                                                             void* VMA_NULLABLE pUserData)
+    struct vma_alloc_cb_data
+    {
+        u64 alloc_total_bytes = 0;
+    };
+
+    const PFN_vmaAllocateDeviceMemoryFunction alloc_callback =
+        +[](VmaAllocator VMA_NOT_NULL /* allocator */,
+            uint32_t /* memoryType */,
+            VkDeviceMemory VMA_NOT_NULL_NON_DISPATCHABLE /* memory */,
+            const VkDeviceSize size,
+            void* VMA_NULLABLE pUserData)
     {
         if (pUserData)
         {
-            auto& gpu_total_taken = *static_cast<u64*>(pUserData);
-            gpu_total_taken += size;
-            const auto msg = cpp::stack_string::make_formatted(
-                "VMA alloc: %s (+%s)", format_bytes_number(gpu_total_taken).c_str(), format_bytes_number(size).c_str());
+            auto& data = *static_cast<vma_alloc_cb_data*>(pUserData);
+            data.alloc_total_bytes += size;
+            const auto msg =
+                cpp::stack_string::make_formatted("VMA alloc: %s (+%s)",
+                                                  utils::format_bytes_number(data.alloc_total_bytes).c_str(),
+                                                  utils::format_bytes_number(size).c_str());
             TracyMessage(msg.c_str(), msg.length());
 
             TracyPlotConfig(kPlotName, tracy::PlotFormatType::Memory, true, true, 0);
-            TracyPlot(kPlotName, static_cast<i64>(gpu_total_taken));
+            TracyPlot(kPlotName, static_cast<i64>(data.alloc_total_bytes));
             LOG_DEBUG("{}", msg.c_str());
         }
     };
 
-    PFN_vmaAllocateDeviceMemoryFunction free_callback = +[](VmaAllocator VMA_NOT_NULL allocator,
-                                                            uint32_t memoryType,
-                                                            VkDeviceMemory VMA_NOT_NULL_NON_DISPATCHABLE memory,
-                                                            VkDeviceSize size,
-                                                            void* VMA_NULLABLE pUserData)
+    const PFN_vmaAllocateDeviceMemoryFunction free_callback =
+        +[](VmaAllocator VMA_NOT_NULL /* allocator */,
+            uint32_t /* memoryType */,
+            VkDeviceMemory VMA_NOT_NULL_NON_DISPATCHABLE /* memory */,
+            const VkDeviceSize size,
+            void* VMA_NULLABLE pUserData)
     {
         if (pUserData)
         {
-            auto& gpu_total_taken = *static_cast<u64*>(pUserData);
-            gpu_total_taken -= size;
-            const auto msg = cpp::stack_string::make_formatted(
-                "VMA alloc: %s (-%s)", format_bytes_number(gpu_total_taken).c_str(), format_bytes_number(size).c_str());
+            auto& data = *static_cast<vma_alloc_cb_data*>(pUserData);
+            data.alloc_total_bytes -= size;
+            const auto msg =
+                cpp::stack_string::make_formatted("VMA alloc: %s (-%s)",
+                                                  utils::format_bytes_number(data.alloc_total_bytes).c_str(),
+                                                  utils::format_bytes_number(size).c_str());
             TracyMessage(msg.c_str(), msg.length());
 
             TracyPlotConfig(kPlotName, tracy::PlotFormatType::Memory, true, true, 0);
-            TracyPlot(kPlotName, static_cast<i64>(gpu_total_taken));
+            TracyPlot(kPlotName, static_cast<i64>(data.alloc_total_bytes));
             LOG_DEBUG("{}", msg.c_str());
         }
     };
 
-    static u64 s_gpu_mem_taken = 0;
+    static vma_alloc_cb_data s_vma_cb_data;
 
     const VmaDeviceMemoryCallbacks callbacks {
-        .pfnAllocate = alloc_callback, .pfnFree = free_callback, .pUserData = &s_gpu_mem_taken};
+        .pfnAllocate = alloc_callback, .pfnFree = free_callback, .pUserData = &s_vma_cb_data};
 #endif
 
     const VmaAllocatorCreateInfo allocator_create_info = {
@@ -1023,6 +1021,14 @@ static result<vk_context> create_vk_context(const window& window, const rhi::ins
     {
         populate_queue_data(i);
     }
+
+#if TRACY_ENABLE
+    context.tracy_ctx = TracyVkContextHostCalibrated(context.physical_device,
+                                                     context.device,
+                                                     vkResetQueryPool,
+                                                     vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
+                                                     vkGetCalibratedTimestampsEXT);
+#endif
 
     return context;
 }
@@ -1231,6 +1237,10 @@ void platform::vk_destroy_context(vk_context& ctx)
 
     VK_DO_IF_NOT_NULL(ctx.device, vkDestroyDevice(ctx.device, nullptr));
     VK_DO_IF_NOT_NULL(ctx.instance, vkDestroyInstance(ctx.instance, nullptr));
+
+#if TRACY_ENABLE
+    TracyVkDestroy(ctx.tracy_ctx);
+#endif
 }
 
 result<vk_context> platform::vk_create_context(const window& window, const rhi::instance_desc& instance_desc)

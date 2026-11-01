@@ -1,16 +1,4 @@
 {
-  "blit_sampler2d_pipeline": {
-    "shaders": [
-      "imgui_blit_2d.frag",
-      "imgui_blit.vert"
-    ]
-  },
-  "blit_sampler2d_array_pipeline": {
-    "shaders": [
-      "imgui_blit_2d_array.frag",
-      "imgui_blit.vert"
-    ]
-  },
   "frustum_debug": {
     "shaders": [
       "frustum.frag",
@@ -193,12 +181,6 @@
   "mv_from_depth_pipeline": {
     "shaders": [
       "mv_from_depth.comp"
-    ]
-  },
-  "triangle": {
-    "shaders": [
-      "triangle.vert",
-      "triangle.frag"
     ]
   }
 }

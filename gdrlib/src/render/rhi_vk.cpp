@@ -5,6 +5,7 @@
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
 #include <render/platform/vk/vk_ffx.hpp>
+#include <render/platform/vk/vk_imgui.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_timeline_semaphore.hpp>
 #include <render/platform/vk/vk_utils.hpp>
@@ -13,32 +14,37 @@
 
 #include <volk.h>
 
-struct vk_swapchain_sync_objects
+namespace
 {
-    VkFence fence {VK_NULL_HANDLE};
-    VkSemaphore acquire_semaphore {VK_NULL_HANDLE};
-};
+    struct vk_swapchain_sync_objects
+    {
+        VkFence fence {VK_NULL_HANDLE};
+        VkSemaphore acquire_semaphore {VK_NULL_HANDLE};
+    };
 
-struct vk_rhi_swaphain_data
-{
-    u32 image_index = 0;
-    u32 frame_index = 0;
+    struct vk_rhi_swaphain_data
+    {
+        u32 image_index = 0;
+        u32 frame_index = 0;
 
-    platform::vk_swapchain root;
-    cpp::heap_array<vk_swapchain_sync_objects> sync_objects;
-};
+        platform::vk_swapchain root;
+        cpp::heap_array<vk_swapchain_sync_objects> sync_objects;
+    };
 
-struct vk_rhi_image_view
-{
-    const platform::vk_image& source;
-    VkImageView view = VK_NULL_HANDLE;
-};
+    struct vk_rhi_image_view
+    {
+        const platform::vk_image& source;
+        VkImageView view = VK_NULL_HANDLE;
+    };
 
-struct vk_rhi_attachment_objects
-{
-    VkImageView view     = VK_NULL_HANDLE;
-    VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
-};
+    struct vk_rhi_attachment_objects
+    {
+        VkImageView view     = VK_NULL_HANDLE;
+        VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    };
+
+    platform::ffx_module g_ffx_module;
+}
 
 template<typename T>
 static void vk_rhi_set_object_name_if_needed(const platform::vk_context& ctx, T object, const char* name)
@@ -364,7 +370,7 @@ void rhi::vk_destroy_swapchain(context context, swapchain& swapchain)
 auto rhi::vk_create_command_buffer(context context, queue_kind queue_kind) -> result<command_buffer>
 {
     ZoneScoped;
-    auto* vk_ctx = cast_from_handle<platform::vk_context>(context);
+    const auto* vk_ctx = cast_from_handle<platform::vk_context>(context);
     if (!vk_ctx)
     {
         return error("failed to access the device");
@@ -373,7 +379,7 @@ auto rhi::vk_create_command_buffer(context context, queue_kind queue_kind) -> re
     auto cmd = platform::vk_create_command_buffer(vk_ctx->device, vk_ctx->queues[static_cast<u32>(queue_kind)].family);
 
     RESULT_FORWARD_IF_FAILED(cmd);
-    return create_handle<command_buffer>(*cmd);
+    return create_handle<command_buffer>(std::move(*cmd));
 }
 
 void rhi::vk_destroy_command_buffer(context context, command_buffer& cmd)
@@ -919,6 +925,10 @@ auto rhi::vk_acquire_next_swapchain_image(context context, swapchain swapchain) 
     {
         return error("failed to access the context or the swapchain data");
     }
+
+#if TRACY_ENABLE
+    TracyVkCollectHost(vk_ctx->tracy_ctx);
+#endif
 
     vkWaitForFences(vk_ctx->device, 1, &vk_sc->sync_objects[vk_sc->frame_index].fence, VK_TRUE, UINT64_MAX);
     vkResetFences(vk_ctx->device, 1, &vk_sc->sync_objects[vk_sc->frame_index].fence);
@@ -1543,7 +1553,7 @@ void rhi::vk_cmd_draw_mesh_indirect_count(command_buffer cmd, rhi::buffer buffer
 
 void rhi::vk_cmd_debug_label_begin(command_buffer cmd, context context, const debug_label& label)
 {
-    const auto* vk_cmd = cast_from_handle<platform::vk_command_buffer>(cmd);
+    auto* vk_cmd       = cast_from_handle<platform::vk_command_buffer>(cmd);
     const auto* vk_ctx = cast_from_handle<platform::vk_context>(context);
     if (!vk_cmd || !vk_ctx || !vk_ctx->enabled_device_features.wanted(rhi::feature_flag::debug_labels))
     {
@@ -1557,24 +1567,42 @@ void rhi::vk_cmd_debug_label_begin(command_buffer cmd, context context, const de
     };
 
     vkCmdBeginDebugUtilsLabelEXT(vk_cmd->cmd_buffer, &vk_label);
+
+#if TRACY_ENABLE
+    vk_cmd->tracy_alive_scopes.emplace_back(std::make_unique<tracy::VkCtxScope>(vk_ctx->tracy_ctx,
+                                                                                TracyLine,
+                                                                                TracyFile,
+                                                                                std::strlen(TracyFile),
+                                                                                TracyFunction,
+                                                                                std::strlen(TracyFunction),
+                                                                                label.label,
+                                                                                std::strlen(label.label),
+                                                                                vk_cmd->cmd_buffer,
+                                                                                true));
+#endif
 }
 
 void rhi::vk_cmd_debug_label_end(command_buffer cmd, context context)
 {
-    const auto* vk_cmd = cast_from_handle<platform::vk_command_buffer>(cmd);
+    auto* vk_cmd       = cast_from_handle<platform::vk_command_buffer>(cmd);
     const auto* vk_ctx = cast_from_handle<platform::vk_context>(context);
     if (!vk_cmd || !vk_ctx)
     {
         return;
     }
 
-    if (!vk_ctx->enabled_device_features.supported(rhi::feature_flag::debug_labels)
-        || !vk_ctx->enabled_device_features.wanted(rhi::feature_flag::debug_labels))
+    if (!vk_ctx->enabled_device_features.wanted(rhi::feature_flag::debug_labels))
     {
         return;
     }
 
     vkCmdEndDebugUtilsLabelEXT(vk_cmd->cmd_buffer);
+#if TRACY_ENABLE
+    if (!vk_cmd->tracy_alive_scopes.empty())
+    {
+        vk_cmd->tracy_alive_scopes.pop_back();
+    }
+#endif
 }
 
 void rhi::vk_submit(context context, queue queue, const submit_info& info)
@@ -1733,8 +1761,6 @@ void rhi::vk_present(command_buffer cmd, swapchain swapchain, queue submit, queu
     vk_sc->frame_index = (vk_sc->frame_index + 1) % vk_sc->sync_objects.size();
 }
 
-static platform::ffx_module g_ffx_module;
-
 auto rhi::vk_ffx_create_upscale_context(context ctx, const ffx_upscale_desc& desc) -> result<ffx_context>
 {
     ZoneScoped;
@@ -1813,4 +1839,59 @@ void rhi::vk_ffx_upscale_dispatch(ffx_context ffx_ctx, command_buffer cmd, const
         .transparency_and_composition = query(resources.transparency_and_composition),
     };
     platform::vk_ffx_dispatch_upscale(g_ffx_module, *vk_ffx_ctx, vk_cmd->cmd_buffer, params, vk_resources);
+}
+
+auto rhi::vk_imgui_create_context(context ctx, const window& window, const rhi::image_format rtv_format,
+                                  const u32 sc_image_count) -> result<imgui_context>
+{
+    ZoneScoped;
+    const auto* vk_ctx = cast_from_handle<platform::vk_context>(ctx);
+
+    assert2(vk_ctx);
+    if (!vk_ctx)
+    {
+        return error("failed to access context");
+    }
+
+    auto vk_imgui = platform::vk_imgui_create_context(
+        *vk_ctx, window.get_native_handle().window, static_cast<VkFormat>(rtv_format), sc_image_count);
+    RESULT_FORWARD_IF_FAILED(vk_imgui);
+
+    return create_handle<imgui_context>(*vk_imgui);
+}
+
+void rhi::vk_imgui_destroy_context(context ctx, imgui_context& im_ctx)
+{
+    ZoneScoped;
+    const auto* vk_ctx = cast_from_handle<platform::vk_context>(ctx);
+    auto* vk_imgui_ctx = cast_from_handle<platform::vk_imgui>(im_ctx);
+
+    if (vk_ctx && vk_imgui_ctx)
+    {
+        platform::vk_imgui_destroy_context(*vk_ctx, *vk_imgui_ctx);
+        clear_handle(vk_imgui_ctx, vk_ctx);
+    }
+}
+
+void rhi::vk_imgui_begin_frame(imgui_context ctx)
+{
+    ZoneScoped;
+    if (auto* vk_imgui_ctx = cast_from_handle<platform::vk_imgui>(ctx))
+    {
+        vk_imgui_ctx->begin_frame();
+    }
+}
+
+void rhi::vk_imgui_render_frame(imgui_context ctx, command_buffer cmd, const attachment attachment,
+                                const uvec4 viewport)
+{
+    ZoneScoped;
+    auto* vk_imgui_ctx       = cast_from_handle<platform::vk_imgui>(ctx);
+    const auto* vk_cmd       = cast_from_handle<platform::vk_command_buffer>(cmd);
+    const auto vk_attachment = vk_rhi_parse_attachment_objects(attachment);
+
+    if (vk_cmd && vk_imgui_ctx && vk_attachment)
+    {
+        vk_imgui_ctx->end_frame(vk_attachment->view, vk_cmd->cmd_buffer, viewport);
+    }
 }

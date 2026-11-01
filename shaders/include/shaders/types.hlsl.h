@@ -177,24 +177,6 @@ namespace shader_types
         uint cmd_offset;
     };
 
-    struct ShadowDrawPushConstants
-    {
-#ifdef __cplusplus
-        ShadowDrawPushConstants() = default;
-
-        ShadowDrawPushConstants(const glm::mat4& ivp, const uint ico, const uint ic)
-            : vp(ivp)
-            , cascade(ic)
-            , cmd_offset(ico)
-        {
-        }
-#endif
-
-        float4x4 vp;
-        uint cascade;
-        uint cmd_offset;
-    };
-
     struct ResolvePassPushConstants
     {
 #ifdef __cplusplus
@@ -241,30 +223,6 @@ namespace shader_types
         uint draw_count;
         uint flags;
     };
-
-#if 0
-struct CascadeData
-{
-    float4x4 vp;
-    Bounds3D bounds;
-
-    float split;
-    float texel_world_size;
-};
-
-struct ShadowCascadesData
-{
-    float4x4 view;
-    CascadeData cascades[kMaxShadowCascades];
-
-    float max_range;
-    float depth_bias;
-    float blend_ratio;
-    float normal_offset;
-    float sm_resolution;
-};
-#endif
-
 #ifdef __cplusplus
 }
 #endif

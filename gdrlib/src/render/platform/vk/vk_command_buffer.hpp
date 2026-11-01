@@ -1,9 +1,14 @@
 #pragma once
 
-#include <volk.h>
-
+#include <cpp/containers/local_array.hpp>
 #include <pod_types.hpp>
 #include <result.hpp>
+
+#include <volk.h>
+
+// clang-format off
+#include <tracy/TracyVulkan.hpp>
+// clang-format on
 
 namespace platform
 {
@@ -11,6 +16,10 @@ namespace platform
     {
         VkCommandPool cmd_pool     = VK_NULL_HANDLE;
         VkCommandBuffer cmd_buffer = VK_NULL_HANDLE;
+
+#if TRACY_ENABLE
+        cpp::local_array<std::unique_ptr<tracy::VkCtxScope>> tracy_alive_scopes;
+#endif
     };
 
     result<vk_command_buffer> vk_create_command_buffer(VkDevice device, u32 queue_family,

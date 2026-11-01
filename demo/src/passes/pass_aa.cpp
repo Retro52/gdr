@@ -33,6 +33,18 @@ void app::pass_aa::next_jitter()
     m_jitter_offset++;
 }
 
+void app::pass_aa::change_backend(const aa_backend backend)
+{
+    destroy_backend_resources();
+    m_backend = backend;
+    create_resources(m_render_res, m_display_res);
+}
+
+[[nodiscard]] auto app::pass_aa::get_current_backend() const -> aa_backend
+{
+    return m_backend;
+}
+
 vec2 app::pass_aa::get_frame_jitter() const
 {
     if (rhi::is_valid(ffx_context))
@@ -45,7 +57,7 @@ vec2 app::pass_aa::get_frame_jitter() const
 
 glm::mat4 app::pass_aa::get_jittered_matrix(const glm::mat4& proj) const
 {
-    if (this->backend != aa_backend::fsr)
+    if (m_backend != aa_backend::fsr)
     {
         return proj;
     }
@@ -65,7 +77,7 @@ void app::pass_aa::draw(const rhi::command_buffer cmd, const draw_params& params
 
     m_rhi.cmd_barriers(cmd, {.images = std::span(sync)});
 
-    switch (backend)
+    switch (m_backend)
     {
     case aa_backend::blit :
         run_blit(cmd, params);
@@ -202,35 +214,49 @@ void app::pass_aa::run_mv_reconstruct(const rhi::command_buffer cmd, const draw_
 void app::pass_aa::destroy_resources()
 {
     ZoneScoped;
+    destroy_backend_resources();
     m_rhi.destroy_image(m_ctx, output);
-    m_rhi.destroy_image(m_ctx, motion_vectors);
-    m_rhi.ffx_destroy_context(ffx_context);
+}
+
+void app::pass_aa::destroy_backend_resources()
+{
+    if (m_backend == aa_backend::fsr)
+    {
+        m_rhi.ffx_destroy_context(ffx_context);
+        m_rhi.destroy_image(m_ctx, motion_vectors);
+        return;
+    }
+
+    assert2(motion_vectors == rhi::null_image);
+    assert2(ffx_context == rhi::null_ffx_context);
 }
 
 void app::pass_aa::create_resources(const uvec2 render_res, const uvec2 display_res)
 {
     ZoneScoped;
+    if (m_backend == aa_backend::fsr)
+    {
+        motion_vectors = create_color_image(m_rhi,
+                                            render_res,
+                                            rhi::image_format::r16g16sf,
+                                            m_ctx,
+                                            "motion vectors",
+                                            rhi::image_usage::attachment_color | rhi::image_usage::transfer_src);
+
+        ffx_context = *m_rhi.ffx_create_upscale_context(m_ctx,
+                                                        rhi::ffx_upscale_desc {
+                                                            .display_size    = display_res,
+                                                            .max_render_size = render_res,
+                                                        });
+    }
+
+    if (render_res == m_render_res && m_display_res == display_res && output != rhi::null_image)
+    {
+        return;
+    }
+
     m_render_res  = render_res;
     m_display_res = display_res;
 
-    motion_vectors = create_color_image(m_rhi,
-                                        render_res,
-                                        rhi::image_format::r16g16sf,
-                                        m_ctx,
-                                        "motion vectors",
-                                        rhi::image_usage::attachment_color | rhi::image_usage::transfer_src);
-
     output = app::create_color_image(m_rhi, display_res, rhi::image_format::b10g11r11uf, m_ctx, "AA output");
-    if (const auto ffx_ctx = m_rhi.ffx_create_upscale_context(m_ctx,
-                                                              rhi::ffx_upscale_desc {
-                                                                  .display_size    = display_res,
-                                                                  .max_render_size = render_res,
-                                                              }))
-    {
-        ffx_context = *ffx_ctx;
-    }
-    else
-    {
-        LOG_WARNING("Failed to create upscale context. Reason: {}", ffx_ctx.message);
-    }
 }

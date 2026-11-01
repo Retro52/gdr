@@ -31,12 +31,6 @@ SamplerState textures_sampler: register(s10);
 [[vk::combinedImageSampler]] TextureCube            prefiltered_map:         register(t15);
 [[vk::combinedImageSampler]] SamplerState           prefiltered_map_sampler: register(s15);
 
-#if 0
-StructuredBuffer<ShadowCascadesData> shadow_cascades: register(t10);
-[[vk::combinedImageSampler]] Texture2DArray         shadow_map:              register(t17);
-[[vk::combinedImageSampler]] SamplerComparisonState shadow_map_sampler:      register(s17);
-#endif
-
 Texture2D textures[]: register(t0, space1);
 
 [[vk::push_constant]] ConstantBuffer<ResolvePassPushConstants> pc: register(b0);
@@ -110,93 +104,6 @@ float get_sun_disc_coverage(float3 view_dir, float3 sun_dir, float half_angle, f
 
     float cos_theta = dot(view_dir, sun_dir);
     return smoothstep(cos(outer), cos(inner), cos_theta);
-}
-
-#if 0
-float shadow_pcf(float2 uv, float layer, float ref, float sm_res)
-{
-    float2 tc   = uv * sm_res;
-    float2 base = floor(tc - 0.5F) + 0.5F;
-    float2 f    = tc - base;
-
-    float4 wx = float4(1.0F - f.x, 1.0F, 1.0F, f.x);
-    float4 wy = float4(1.0F - f.y, 1.0F, 1.0F, f.y);
-
-    float3 g = float3(base / sm_res, layer);
-
-    float4 s00 = shadow_map.GatherCmp(shadow_map_sampler, g, ref, int2(-1, -1));
-    float4 s10 = shadow_map.GatherCmp(shadow_map_sampler, g, ref, int2(1, -1));
-    float4 s01 = shadow_map.GatherCmp(shadow_map_sampler, g, ref, int2(-1, 1));
-    float4 s11 = shadow_map.GatherCmp(shadow_map_sampler, g, ref, int2(1, 1));
-
-    float sum =
-        dot(s00, float4(wx.x * wy.y, wx.y * wy.y, wx.y * wy.x, wx.x * wy.x))
-        + dot(s10, float4(wx.z * wy.y, wx.w * wy.y, wx.w * wy.x, wx.z * wy.x))
-        + dot(s01, float4(wx.x * wy.w, wx.y * wy.w, wx.y * wy.z, wx.x * wy.z))
-        + dot(s11, float4(wx.z * wy.w, wx.w * wy.w, wx.w * wy.z, wx.z * wy.z));
-
-    return sum / 9.0F;
-}
-
-float shadow_cascade_lookup(uint layer, float3 pos, float3 nrm, float n_dot_l)
-{
-    float texel_world_size = shadow_cascades[0].cascades[layer].texel_world_size;
-
-    float3 offset_pos = pos + nrm * shadow_cascades[0].normal_offset * texel_world_size * (1.0F - n_dot_l);
-    float4 clip       = mul(shadow_cascades[0].cascades[layer].vp, float4(offset_pos, 1.0F));
-
-    if (clip.z <= 0.0F)
-    {
-        return 1.0F;
-    }
-
-    float2 uv = clip.xy * 0.5F + 0.5F;
-    return shadow_pcf(uv,
-                      float(layer),
-                      min(clip.z + shadow_cascades[0].depth_bias, 1.0F),
-                      shadow_cascades[0].sm_resolution);
-}
-
-uint get_shadow_cascade_index(float view_depth)
-{
-    for (uint i = 0; i < kMaxShadowCascades; ++i)
-    {
-        if (view_depth < shadow_cascades[0].cascades[i].split)
-        {
-            return i;
-        }
-    }
-
-    return kMaxShadowCascades - 1;
-}
-#endif
-
-float get_shadow(float3 pos, float3 nrm, float view_depth, float n_dot_l)
-{
-#if 0
-    if (view_depth >= shadow_cascades[0].max_range)
-    {
-        return 1.0F;
-    }
-
-    uint layer = get_shadow_cascade_index(view_depth);
-
-    float far_split  = shadow_cascades[0].cascades[layer].split;
-    float near_split = layer == 0 ? 0.0F : shadow_cascades[0].cascades[layer - 1].split;
-
-    float band  = max((far_split - near_split) * shadow_cascades[0].blend_ratio, 1e-4F);
-    float blend = clamp((view_depth - (far_split - band)) / band, 0.0F, 1.0F);
-
-    float shadow = shadow_cascade_lookup(layer, pos, nrm, n_dot_l);
-    if (blend <= 0.0F)
-    {
-        return shadow;
-    }
-
-    float next = layer + 1 < kMaxShadowCascades ? shadow_cascade_lookup(layer + 1, pos, nrm, n_dot_l) : 1.0F;
-    return lerp(shadow, next, blend);
-#endif
-    return 1.0F;
 }
 
 [shader("compute")]
@@ -375,12 +282,11 @@ void main(uint3 global_id: SV_DispatchThreadID)
     float3 frensel_d = fresnel_schlick(h_dot_v, f0);
 
     float view_depth = mul(pc.vp, float4(view_pos, 1.0F)).w;
-    float shadow_factor = get_shadow(view_pos, nrm, view_depth, n_dot_l);
 
     float3 spec_direct = pbr_specular(frensel_d, ndf, geom, n_dot_v, n_dot_l);
     float3 sun_radiance = world[0].sun_color.rgb * world[0].sun_color.w;
     float3 diffuse = (1.0F.xxx - frensel_d) * (1.0F - metallic);
-    float3 direct = (diffuse * albedo / kPI + spec_direct) * sun_radiance * n_dot_l * shadow_factor;
+    float3 direct = (diffuse * albedo / kPI + spec_direct) * sun_radiance * n_dot_l;
 
     // Ambient + specular ambient
     float3 fresnel_a = fresnel_schlick_roughness(n_dot_v, f0, roughness);
@@ -424,10 +330,6 @@ void main(uint3 global_id: SV_DispatchThreadID)
 #endif
         if (world[0].debug_mode == kDebugModeInstanceId)     { color = hash_color(instance_id); }
         if (world[0].debug_mode == kDebugModeTriangleFace)   { color = hash_color(uint(is_front_face)); }
-#if 0
-        if (world[0].debug_mode == kDebugModeShadow)         { color = shadow_factor.xxx; }
-        if (world[0].debug_mode == kDebugModeShadowCascades) { color = lerp(color, hash_color(view_depth >= shadow_cascades[0].max_range ? kMaxShadowCascades : get_shadow_cascade_index(view_depth)), 0.5F); }
-#endif
         result = float4(color, 1.0F);
     }
 #endif

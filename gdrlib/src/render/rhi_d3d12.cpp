@@ -412,6 +412,8 @@ namespace
 
         ~d3d12_rhi_storage_scope() { d3d12_rhi_texture_barriers(cmd.Get(), this->barriers, true); }
     };
+
+    platform::ffx_module g_ffx_module;
 }
 
 static void d3d12_rhi_clear_image(const platform::d3d12_command_list* cmd, const platform::d3d12_image* image,
@@ -2123,8 +2125,6 @@ void rhi::d3d12_present(command_buffer cmd, swapchain swapchain, const queue sub
     d3d12_sc->back_buffers[bb_index].wait_value = d3d12_sc->frame_counter;
 }
 
-static platform::ffx_module g_ffx_module;
-
 auto rhi::d3d12_ffx_create_upscale_context(context ctx, const ffx_upscale_desc& desc) -> result<ffx_context>
 {
     ZoneScoped;
@@ -2176,7 +2176,7 @@ void rhi::d3d12_ffx_upscale_dispatch(ffx_context ffx_ctx, command_buffer cmd, co
 {
     ZoneScoped;
     const auto* d3d12_ffx_ctx = cast_from_handle<ffx::Context>(ffx_ctx);
-    auto* d3d12_cmd           = cast_from_handle<platform::d3d12_command_list>(cmd);
+    const auto* d3d12_cmd     = cast_from_handle<platform::d3d12_command_list>(cmd);
 
     assert2(d3d12_ffx_ctx && d3d12_cmd);
     if (!d3d12_ffx_ctx || !d3d12_cmd)

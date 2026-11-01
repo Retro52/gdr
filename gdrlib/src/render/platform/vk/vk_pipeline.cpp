@@ -7,10 +7,10 @@
 
 #define SPV_ENABLE_UTILITY_CODE
 #include <cpp/containers/local_array.hpp>
-#include <spirv/unified1/spirv.h>
 #include <tracy/Tracy.hpp>
 
 #include <iostream>
+#include <spirv/unified1/spirv.h>
 #include <stack>
 
 using namespace platform;
@@ -205,26 +205,30 @@ namespace
     }
 }
 
+result<vk_shader> vk_shader::load(VkDevice device, const std::span<const u8> bytes)
+{
+    const VkShaderModuleCreateInfo module_create_info {
+        .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = bytes.size(),
+        .pCode    = reinterpret_cast<const u32*>(bytes.data()),
+    };
+
+    VkShaderModule shader_module;
+    VK_RETURN_ON_FAIL(vkCreateShaderModule(device, &module_create_info, nullptr, &shader_module))
+
+    return vk_shader {.module = shader_module, .meta = parse_spirv(bytes)};
+}
+
 result<vk_shader> vk_shader::load(VkDevice device, const fs::path& path)
 {
     ZoneScoped;
     const auto r_binary = fs::read_file(path.append(".spv"));
     RESULT_FORWARD_IF_FAILED(r_binary);
 
-    auto& binary = r_binary.value;
-    const VkShaderModuleCreateInfo module_create_info {
-        .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = binary.size(),
-        .pCode    = binary.get<u32>(),
-    };
-
-    VkShaderModule shader_module;
-    VK_RETURN_ON_FAIL(vkCreateShaderModule(device, &module_create_info, nullptr, &shader_module))
-
-    return vk_shader {.module = shader_module, .meta = parse_spirv(binary)};
+    return load(device, {r_binary->get<u8>(), r_binary->size()});
 }
 
-vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
+vk_shader::shader_meta vk_shader::parse_spirv(const std::span<const u8> spv)
 {
     ZoneScoped;
 
@@ -341,7 +345,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     // 4 - reserved
     // 5 - first word of an instruction stream
 
-    const u32* inst = static_cast<const u32*>(spv.data());
+    const u32* inst = reinterpret_cast<const u32*>(spv.data());
     assert2(inst[0] == SpvMagicNumber);
 
     const u32 id_count = inst[3];
@@ -350,7 +354,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const bytes& spv)
     // 5 = first actual instruction offset as per specification
     inst += 5;
 
-    const u32* end = static_cast<const u32*>(spv.end());
+    const u32* end = reinterpret_cast<const u32*>(spv.data()) + (spv.size() / sizeof(u32));
     while (inst < end)
     {
         const u32 word = inst[0];
