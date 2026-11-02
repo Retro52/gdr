@@ -122,8 +122,8 @@ static void enable_debug_layer()
     D3D12_ASSERT_ON_FAIL(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_interface)));
     debug_interface->EnableDebugLayer();
 
-    debug_interface->SetEnableGPUBasedValidation(TRUE);
-    debug_interface->SetEnableSynchronizedCommandQueueValidation(TRUE);
+    // debug_interface->SetEnableGPUBasedValidation(TRUE);
+    // debug_interface->SetEnableSynchronizedCommandQueueValidation(TRUE);
 
     platform::com_ptr<ID3D12Debug5> debug5;
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug5))))

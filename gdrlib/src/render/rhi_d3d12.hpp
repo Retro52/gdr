@@ -116,4 +116,11 @@ namespace rhi
                                                 i32 jitter_index);
     void d3d12_ffx_upscale_dispatch(ffx_context ffx_ctx, command_buffer cmd, const ffx_upscale_params& params,
                                     const ffx_upscale_resources& resources);
+
+    result<imgui_context> d3d12_imgui_create_context(context ctx, const window& window, rhi::image_format rtv_format,
+                                                     u32 sc_image_count);
+    void d3d12_imgui_destroy_context(context ctx, imgui_context& im_ctx);
+
+    void d3d12_imgui_begin_frame(imgui_context ctx);
+    void d3d12_imgui_render_frame(imgui_context ctx, command_buffer cmd, attachment attachment, uvec4 viewport);
 }

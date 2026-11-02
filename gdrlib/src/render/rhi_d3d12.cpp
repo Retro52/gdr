@@ -10,6 +10,7 @@
 #include <render/platform/d3d12/d3d12_error.hpp>
 #include <render/platform/d3d12/d3d12_ffx.hpp>
 #include <render/platform/d3d12/d3d12_image.hpp>
+#include <render/platform/d3d12/d3d12_imgui.hpp>
 #include <render/platform/d3d12/d3d12_pipeline.hpp>
 #include <render/platform/d3d12/d3d12_sampler.hpp>
 #include <render/platform/d3d12/d3d12_utils.hpp>
@@ -255,6 +256,14 @@ static void d3d12_rhi_set_root_cbv(ID3D12GraphicsCommandList* cmd, const u32 ind
     D3D12_BIND_RETURN_ON_INVALID_INDEX(index);
     return compute ? cmd->SetComputeRootConstantBufferView(index, va)
                    : cmd->SetGraphicsRootConstantBufferView(index, va);
+}
+
+static void d3d12_rhi_bind_desc_heaps(const platform::d3d12_command_list& cmd)
+{
+    if (cmd.shader_visible_heaps[0])
+    {
+        cmd.command_list->SetDescriptorHeaps(platform::kD3D12_ShaderVisibleHeapsCount, cmd.shader_visible_heaps.data());
+    }
 }
 
 static void d3d12_rhi_set_root_uav(ID3D12GraphicsCommandList* cmd, const u32 index, const u64 va, const bool compute)
@@ -1206,11 +1215,7 @@ void rhi::d3d12_cmd_begin_recording(command_buffer cmd)
     D3D12_ASSERT_ON_FAIL(d3d12_cmd->allocator->Reset());
     D3D12_ASSERT_ON_FAIL(d3d12_cmd->command_list->Reset(d3d12_cmd->allocator.Get(), nullptr));
 
-    if (d3d12_cmd->shader_visible_heaps[0])
-    {
-        d3d12_cmd->command_list->SetDescriptorHeaps(platform::kD3D12_ShaderVisibleHeapsCount,
-                                                    d3d12_cmd->shader_visible_heaps.data());
-    }
+    d3d12_rhi_bind_desc_heaps(*d3d12_cmd);
 }
 
 void rhi::d3d12_cmd_end_recording(command_buffer cmd)
@@ -2212,7 +2217,73 @@ void rhi::d3d12_ffx_upscale_dispatch(ffx_context ffx_ctx, command_buffer cmd, co
     };
     platform::d3d12_ffx_dispatch_upscale(
         g_ffx_module, *d3d12_ffx_ctx, d3d12_cmd->command_list.Get(), params, d3d12_resources);
+
+    d3d12_rhi_bind_desc_heaps(*d3d12_cmd);
     d3d12_rhi_full_barrier(d3d12_cmd->command_list.Get());
+}
+
+auto rhi::d3d12_imgui_create_context(context ctx, const window& window, rhi::image_format /* rtv_format */,
+                                     const u32 sc_image_count) -> result<imgui_context>
+{
+    ZoneScoped;
+    auto* d3d12_ctx              = cast_from_handle<platform::d3d12_context>(ctx);
+    constexpr auto kDummyContext = rhi::imgui_context {.id = 1};
+
+    assert2(d3d12_ctx);
+    if (!d3d12_ctx)
+    {
+        return error("failed to access context");
+    }
+
+    platform::d3d12_imgui_init(*d3d12_ctx, window.get_native_handle().window, sc_image_count);
+    return kDummyContext;
+}
+
+void rhi::d3d12_imgui_destroy_context(const context ctx, imgui_context& im_ctx)
+{
+    if (!is_valid(ctx) || !is_valid(im_ctx))
+    {
+        return;
+    }
+
+    platform::d3d12_imgui_shutdown();
+    clear_handle(im_ctx);
+}
+
+void rhi::d3d12_imgui_begin_frame(imgui_context ctx)
+{
+    if (!is_valid(ctx))
+    {
+        return;
+    }
+
+    platform::d3d12_imgui_new_frame();
+}
+
+void rhi::d3d12_imgui_render_frame(const imgui_context ctx, command_buffer cmd, const attachment attachment,
+                                   const uvec4 viewport)
+{
+    const auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd);
+    const auto* d3d12_rtv = d3d12_rhi_view_of(attachment);
+    if (!d3d12_rtv || !d3d12_cmd || !is_valid(ctx))
+    {
+        return;
+    }
+
+    const D3D12_RECT scissor = CD3DX12_RECT(static_cast<LONG>(viewport.x),
+                                            static_cast<LONG>(viewport.y),
+                                            static_cast<LONG>(viewport.z),
+                                            static_cast<LONG>(viewport.w));
+
+    const D3D12_VIEWPORT vp = CD3DX12_VIEWPORT(static_cast<FLOAT>(viewport.x),
+                                               static_cast<FLOAT>(viewport.y + viewport.w),
+                                               static_cast<FLOAT>(viewport.z),
+                                               -static_cast<FLOAT>(viewport.w));
+
+    d3d12_cmd->command_list->RSSetViewports(1, &vp);
+    d3d12_cmd->command_list->RSSetScissorRects(1, &scissor);
+
+    platform::d3d12_imgui_draw_frame(*d3d12_cmd, *d3d12_rtv);
 }
 
 #endif

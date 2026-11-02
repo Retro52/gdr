@@ -55,6 +55,9 @@ file(GLOB IMGUI_SOURCES "imgui/*.cpp" "imgui/*.c" "ImGuizmo/src/*")
 list(APPEND IMGUI_SOURCES "imgui/misc/cpp/imgui_stdlib.cpp")
 list(APPEND IMGUI_SOURCES "imgui/backends/imgui_impl_sdl3.cpp")
 list(APPEND IMGUI_SOURCES "imgui/backends/imgui_impl_vulkan.cpp")
+if (WIN32)
+    list(APPEND IMGUI_SOURCES "imgui/backends/imgui_impl_dx12.cpp")
+endif ()
 
 add_library(imgui STATIC ${IMGUI_SOURCES})
 
