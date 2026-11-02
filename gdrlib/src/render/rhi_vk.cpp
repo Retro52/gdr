@@ -1,4 +1,4 @@
-#include <cpp/containers/local_array.hpp>
+#include <core/containers/local_array.hpp>
 #include <render/platform/vk/vk_buffer.hpp>
 #include <render/platform/vk/vk_command_buffer.hpp>
 #include <render/platform/vk/vk_descriptor_set.hpp>
@@ -28,7 +28,7 @@ namespace
         u32 frame_index = 0;
 
         platform::vk_swapchain root;
-        cpp::heap_array<vk_swapchain_sync_objects> sync_objects;
+        core::heap_array<vk_swapchain_sync_objects> sync_objects;
     };
 
     struct vk_rhi_image_view
@@ -186,8 +186,8 @@ static VkBufferMemoryBarrier2 vk_rhi_parse_buffer_barrier(const rhi::buffer_barr
     };
 }
 
-static cpp::heap_array<vk_swapchain_sync_objects> vk_rhi_create_sc_sync(VkDevice device,
-                                                                        const platform::vk_swapchain& swapchain)
+static core::heap_array<vk_swapchain_sync_objects> vk_rhi_create_sc_sync(VkDevice device,
+                                                                         const platform::vk_swapchain& swapchain)
 {
     ZoneScoped;
     constexpr VkSemaphoreCreateInfo semaphore_create_info {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
@@ -196,7 +196,7 @@ static cpp::heap_array<vk_swapchain_sync_objects> vk_rhi_create_sc_sync(VkDevice
         .flags = VK_FENCE_CREATE_SIGNALED_BIT,
     };
 
-    cpp::heap_array<vk_swapchain_sync_objects> result(swapchain.images.size());
+    core::heap_array<vk_swapchain_sync_objects> result(swapchain.images.size());
     for (auto& sync : result)
     {
         VK_ASSERT_ON_FAIL(vkCreateFence(device, &fence_create_info, nullptr, &sync.fence));
@@ -433,8 +433,8 @@ void rhi::vk_update_bindless_set(context context, bindless_set set, const std::s
         VkWriteDescriptorSet desc_write;
     };
 
-    cpp::local_array<VkDescriptorImageInfo> vk_infos(info.size());
-    cpp::local_array<VkWriteDescriptorSet> vk_writes(info.size());
+    core::local_array<VkDescriptorImageInfo> vk_infos(info.size());
+    core::local_array<VkWriteDescriptorSet> vk_writes(info.size());
 
     for (u32 i = 0; i < vk_infos.size(); i++)
     {
@@ -722,7 +722,7 @@ auto rhi::vk_create_compute_pso(context context, shader shader, const std::span<
     platform::vk_descriptor_set vk_desc_sets[16];
 
     assert2(sets.size() <= COUNT_OF(vk_desc_sets));
-    for (u32 i = 0; i < cpp::min(sets.size(), COUNT_OF(vk_desc_sets)); i++)
+    for (u32 i = 0; i < core::min(sets.size(), COUNT_OF(vk_desc_sets)); i++)
     {
         const auto* vk_set = cast_from_handle<platform::vk_descriptor_set>(sets[i]);
         if (!vk_set)
@@ -751,7 +751,7 @@ auto rhi::vk_create_graphics_pso(context context, const std::span<const shader> 
         return error("failed to access the context");
     }
 
-    cpp::local_array<platform::vk_descriptor_set> vk_desc_sets(sets.size());
+    core::local_array<platform::vk_descriptor_set> vk_desc_sets(sets.size());
     for (u32 i = 0; i < vk_desc_sets.size(); i++)
     {
         const auto* vk_set = cast_from_handle<platform::vk_descriptor_set>(sets[i]);
@@ -763,7 +763,7 @@ auto rhi::vk_create_graphics_pso(context context, const std::span<const shader> 
         vk_desc_sets[i] = *vk_set;
     }
 
-    cpp::local_array<platform::vk_shader> vk_shaders(shaders.size());
+    core::local_array<platform::vk_shader> vk_shaders(shaders.size());
     for (u32 i = 0; i < vk_shaders.size(); i++)
     {
         const auto* vk_shader = cast_from_handle<platform::vk_shader>(shaders[i]);
@@ -1010,9 +1010,9 @@ void rhi::vk_cmd_barriers(command_buffer cmd, const barrier_batch& barriers)
         return;
     }
 
-    cpp::local_array<VkMemoryBarrier2, 8> global_barriers(barriers.globals.size());
-    cpp::local_array<VkImageMemoryBarrier2, 8> image_barriers(barriers.images.size());
-    cpp::local_array<VkBufferMemoryBarrier2, 8> buffer_barriers(barriers.buffers.size());
+    core::local_array<VkMemoryBarrier2, 8> global_barriers(barriers.globals.size());
+    core::local_array<VkImageMemoryBarrier2, 8> image_barriers(barriers.images.size());
+    core::local_array<VkBufferMemoryBarrier2, 8> buffer_barriers(barriers.buffers.size());
 
     {
         ZoneScopedN("rhi::vk_cmd_barriers::parse_barriers");
@@ -1170,7 +1170,7 @@ void rhi::vk_cmd_copy_buffer_to_image(command_buffer cmd, buffer src, image dst,
         return;
     }
 
-    cpp::local_array<VkBufferImageCopy> vk_regions(regions.size());
+    core::local_array<VkBufferImageCopy> vk_regions(regions.size());
 
     for (u32 i = 0; i < regions.size(); ++i)
     {
@@ -1252,7 +1252,7 @@ void rhi::vk_cmd_set_draw_state(command_buffer cmd, std::span<const attachment_s
 
     VkRenderingAttachmentInfo color_attachment_info[16] {};
     assert2(color_attachments.size() <= COUNT_OF(color_attachment_info));
-    for (u32 i = 0; i < cpp::min(color_attachments.size(), COUNT_OF(color_attachment_info)); i++)
+    for (u32 i = 0; i < core::min(color_attachments.size(), COUNT_OF(color_attachment_info)); i++)
     {
         auto info = vk_rhi_parse_attachment_info(color_attachments[i], false);
 
@@ -1402,7 +1402,7 @@ void rhi::vk_cmd_push_bindings(command_buffer cmd, pipeline pso, const std::span
     platform::vk_descriptor_bindings vk_bindings;
     assert2(bindings.size() < platform::vk_descriptor_bindings::kMaxSetZeroBindings);
 
-    const u32 bindings_count = cpp::min<u32>(bindings.size(), platform::vk_descriptor_bindings::kMaxSetZeroBindings);
+    const u32 bindings_count = core::min<u32>(bindings.size(), platform::vk_descriptor_bindings::kMaxSetZeroBindings);
     for (u32 i = 0; i < bindings_count; i++)
     {
         vk_bindings.bind_at(vk_rhi_parse_descriptor_info(bindings[i]), i);
@@ -1624,9 +1624,9 @@ void rhi::vk_submit(context context, queue queue, const submit_info& info)
         return;
     }
 
-    cpp::local_array<VkSemaphoreSubmitInfo> wait_semaphore_submit_info(info.waits.size());
-    cpp::local_array<VkSemaphoreSubmitInfo> signal_semaphore_submit_info(info.signals.size());
-    cpp::local_array<VkCommandBufferSubmitInfo> command_buffers_submit_info(info.command_buffers.size());
+    core::local_array<VkSemaphoreSubmitInfo> wait_semaphore_submit_info(info.waits.size());
+    core::local_array<VkSemaphoreSubmitInfo> signal_semaphore_submit_info(info.signals.size());
+    core::local_array<VkCommandBufferSubmitInfo> command_buffers_submit_info(info.command_buffers.size());
 
     for (u32 i = 0; i < info.waits.size(); ++i)
     {

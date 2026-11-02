@@ -1,7 +1,7 @@
 #pragma once
 
 #include <app/gpu_stats.hpp>
-#include <cpp/containers/heap_array.hpp>
+#include <core/containers/heap_array.hpp>
 #include <imgui/gpu_profile_data.hpp>
 
 struct camera_controller;
@@ -11,7 +11,7 @@ namespace editor
     struct info_widget_context
     {
         void draw() const;
-        void draw(const char* label, const cpp::heap_array<app::pipeline_statistics_data>& pipeline_stats) const;
+        void draw(const char* label, const core::heap_array<app::pipeline_statistics_data>& pipeline_stats) const;
 
         camera_controller& m_camera;
         gpu_profile_data& m_gpu_profile;

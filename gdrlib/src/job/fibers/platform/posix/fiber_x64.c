@@ -19,8 +19,8 @@
 
 #include <job/fibers/fiber_api.h>
 #include <stdint.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct fiber_registers
 {
@@ -52,11 +52,11 @@ fiber_registers_t* fiber_init(void* stack, uint32_t stack_size, void (*target)(v
     memset(stack, 0, stack_size);
 
     uintptr_t* stack_top = (uintptr_t*)((uint8_t*)(stack) + (uint32_t)stack_size);
-    reg->rip = (uintptr_t)&fiber_bridge;
-    reg->rdi = (uintptr_t)target;
-    reg->rsi = (uintptr_t)arg;
-    reg->rsp = (uintptr_t)&stack_top[-3];
-    stack_top[-2] = 0;  // No return target.
+    reg->rip             = (uintptr_t)&fiber_bridge;
+    reg->rdi             = (uintptr_t)target;
+    reg->rsi             = (uintptr_t)arg;
+    reg->rsp             = (uintptr_t)&stack_top[-3];
+    stack_top[-2]        = 0;  // No return target.
 
     return reg;
 }

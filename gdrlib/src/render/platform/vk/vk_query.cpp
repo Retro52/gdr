@@ -58,7 +58,7 @@ result<platform::vk_query> platform::vk_create_query_pool(VkDevice device, u32 q
 }
 
 result<platform::vk_query> platform::vk_create_pipeline_stat_query_pool(VkDevice device, u32 queries,
-                                                                    VkQueryPipelineStatisticFlags flags)
+                                                                        VkQueryPipelineStatisticFlags flags)
 {
     ZoneScoped;
     VkQueryPoolCreateInfo create_info = {

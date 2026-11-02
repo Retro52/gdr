@@ -1,9 +1,9 @@
 #pragma once
 
-#include <volk.h>
-
 #include <pod_types.hpp>
 #include <result.hpp>
+
+#include <volk.h>
 
 namespace platform
 {
@@ -24,7 +24,8 @@ namespace platform
     };
 
     result<vk_query> vk_create_query_pool(VkDevice device, u32 queries, VkQueryType type);
-    result<vk_query> vk_create_pipeline_stat_query_pool(VkDevice device, u32 queries, VkQueryPipelineStatisticFlags flags);
+    result<vk_query> vk_create_pipeline_stat_query_pool(VkDevice device, u32 queries,
+                                                        VkQueryPipelineStatisticFlags flags);
 
     void vk_destroy_query_pool(VkDevice device, vk_query& query);
 }

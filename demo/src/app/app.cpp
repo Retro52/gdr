@@ -4,7 +4,7 @@
 #include <app/pso.hpp>
 #include <app/render.hpp>
 #include <camera_controller.hpp>
-#include <cpp/containers/local_array.hpp>
+#include <core/containers/local_array.hpp>
 #include <debug.hpp>
 #include <events.hpp>
 #include <glm/common.hpp>
@@ -53,7 +53,7 @@ namespace
         };
 
         u32 frame_index = 0;
-        cpp::heap_array<frame_data> frame_data;
+        core::heap_array<frame_data> frame_data;
 
         void next_frame() { frame_index = (frame_index + 1) % frame_data.size(); }
 
@@ -125,7 +125,7 @@ namespace
         return min + static_cast<T>(static_cast<f64>(rand() * (max - min)) / static_cast<f64>(RAND_MAX));
     }
 
-    loader::scene_data populate_scene(const u32 draw_count, const cpp::heap_array<mesh::raw_mesh>& primitives,
+    loader::scene_data populate_scene(const u32 draw_count, const core::heap_array<mesh::raw_mesh>& primitives,
                                       scene& scene)
     {
         ZoneScoped;
@@ -133,7 +133,7 @@ namespace
         const u32 kVolumeItemsPerSide = std::lroundl(std::cbrt(draw_count));
 
         loader::scene_data data;
-        cpp::heap_array<loader::prim_layout> layouts(primitives.size());
+        core::heap_array<loader::prim_layout> layouts(primitives.size());
 
         u64 total_vertices = 0;
         u64 total_meshlets = 0;
@@ -435,7 +435,7 @@ int app::instance::run()
     scene client_scene;
     if (instance_count > 0 && first_instance > 0)
     {
-        cpp::heap_array<mesh::raw_mesh> meshes;
+        core::heap_array<mesh::raw_mesh> meshes;
         for (int i = first_instance; i < m_args.argc(); ++i)
         {
             auto ctx = loader::load_meshes(m_args.argv()[i]);
@@ -454,8 +454,8 @@ int app::instance::run()
         ZoneScopedN("loader::load_scene");
         scene_data = *loader::load_scene(m_args.argv()[first_instance], client_scene);
     }
-    cpp::local_array<rhi::image> textures;
-    cpp::local_array<rhi::bindless_set_write_info> updates;
+    core::local_array<rhi::image> textures;
+    core::local_array<rhi::bindless_set_write_info> updates;
     for (u32 i = 0; i < scene_data.textures.size(); ++i)
     {
         const auto handle = upload_mgr.create_texture(scene_data.textures[i]);
@@ -576,7 +576,7 @@ int app::instance::run()
             if (payload.keyboard.key == keycode::sc_up)
             {
                 debug_mode& var = static_cast<keyboard_controls_context*>(user_data)->draw_debug_mode;
-                var             = static_cast<debug_mode>(cpp::min(
+                var             = static_cast<debug_mode>(core::min(
                     static_cast<u32>(var) + 1, static_cast<u32>(reflection::get_enum_values_count<debug_mode>() - 1)));
 
                 LOG_INFO("New debug view mode: {}", reflection::get_enum_name_at<debug_mode>(static_cast<u32>(var)));
@@ -584,7 +584,7 @@ int app::instance::run()
             if (payload.keyboard.key == keycode::sc_down)
             {
                 debug_mode& var = static_cast<keyboard_controls_context*>(user_data)->draw_debug_mode;
-                var             = static_cast<debug_mode>(cpp::max(static_cast<u32>(var), 1U) - 1);
+                var             = static_cast<debug_mode>(core::max(static_cast<u32>(var), 1U) - 1);
 
                 LOG_INFO("New debug view mode: {}", reflection::get_enum_name_at<debug_mode>(static_cast<u32>(var)));
             }
@@ -880,10 +880,10 @@ int app::instance::run()
 
                 static f64 accumulated_time = 0.0;
                 accumulated_time            = accumulated_time * 0.95 + dt * 0.05;
-                const auto str              = cpp::stack_string::make_formatted("[%s] [%s] CPU: %.3lfms",
-                                                                   reflection::string_from_enum(draw_debug_mode),
-                                                                   m_rhi.name,
-                                                                   accumulated_time * 1000.0F);
+                const auto str              = core::stack_string::make_formatted("[%s] [%s] CPU: %.3lfms",
+                                                                    reflection::string_from_enum(draw_debug_mode),
+                                                                    m_rhi.name,
+                                                                    accumulated_time * 1000.0F);
                 SDL_SetWindowTitle(m_window.get_native_handle().window, str.c_str());
 
                 FrameMark;

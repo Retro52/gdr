@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cpp/containers/local_array.hpp>
+#include <core/containers/local_array.hpp>
 #include <pod_types.hpp>
 #include <render/platform/d3d12/d3d12.hpp>
 #include <render/platform/d3d12/d3d12_blit.hpp>
@@ -68,8 +68,8 @@ namespace platform
         rhi::cull_mode cull_mode = rhi::cull_mode::none;
         d3d12_pipeline* pso      = nullptr;
 
-        cpp::heap_array<D3D12_TEXTURE_BARRIER> attachment_barriers;
-        cpp::local_array<d3d12_binding_expected_layout, 8> storage_views;
+        core::heap_array<D3D12_TEXTURE_BARRIER> attachment_barriers;
+        core::local_array<d3d12_binding_expected_layout, 8> storage_views;
 
         std::unordered_map<u32, com_ptr<ID3D12CommandSignature>> command_signatures;
         std::array<ID3D12DescriptorHeap*, kD3D12_ShaderVisibleHeapsCount> shader_visible_heaps = {};

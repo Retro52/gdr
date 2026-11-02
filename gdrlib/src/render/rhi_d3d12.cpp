@@ -1,7 +1,7 @@
 #if GDR_ENABLE_DX12_BACKEND
 
-#include <cpp/alg_constexpr.hpp>
-#include <cpp/containers/local_array.hpp>
+#include <core/alg_constexpr.hpp>
+#include <core/containers/local_array.hpp>
 #include <render/platform/d3d12/d3d12.hpp>
 #include <render/platform/d3d12/d3d12_barrier.hpp>
 #include <render/platform/d3d12/d3d12_buffer.hpp>
@@ -123,7 +123,7 @@ static void d3d12_rhi_full_barrier(ID3D12GraphicsCommandList7* cmd)
     cmd->Barrier(1, &group);
 }
 
-static void d3d12_rhi_append_discard_barriers(cpp::local_array<D3D12_TEXTURE_BARRIER, 8>& out_barriers,
+static void d3d12_rhi_append_discard_barriers(core::local_array<D3D12_TEXTURE_BARRIER, 8>& out_barriers,
                                               const rhi::image_barrier& image_barrier)
 {
     const auto* d3d12_image = rhi::cast_from_handle<platform::d3d12_image>(image_barrier.image);
@@ -183,7 +183,7 @@ static void d3d12_rhi_append_discard_barriers(cpp::local_array<D3D12_TEXTURE_BAR
 }
 
 static void d3d12_rhi_texture_barriers(ID3D12GraphicsCommandList7* cmd,
-                                       cpp::heap_array<D3D12_TEXTURE_BARRIER>& barriers, const bool restore = false)
+                                       core::heap_array<D3D12_TEXTURE_BARRIER>& barriers, const bool restore = false)
 {
     if (barriers.empty())
     {
@@ -204,7 +204,7 @@ static void d3d12_rhi_texture_barriers(ID3D12GraphicsCommandList7* cmd,
     cmd->Barrier(1, &group);
 }
 
-static void d3d12_rhi_add_view_access(cpp::heap_array<D3D12_TEXTURE_BARRIER>& barriers,
+static void d3d12_rhi_add_view_access(core::heap_array<D3D12_TEXTURE_BARRIER>& barriers,
                                       const platform::d3d12_image_view& view, const D3D12_BARRIER_LAYOUT layout,
                                       const D3D12_BARRIER_ACCESS access)
 {
@@ -342,7 +342,7 @@ static void d3d12_rhi_blit_images(platform::d3d12_command_list* d3d12_cmd, const
     const ivec2 src_extent = ivec2(info.src_extent) - ivec2(info.src_offset);
     const ivec2 dst_extent = ivec2(info.dst_extent) - ivec2(info.dst_offset);
     const uvec2 src_size =
-        uvec2(cpp::max<u64>(src_desc.Width >> info.src_mip, 1), cpp::max<u32>(src_desc.Height >> info.src_mip, 1));
+        uvec2(core::max<u64>(src_desc.Width >> info.src_mip, 1), core::max<u32>(src_desc.Height >> info.src_mip, 1));
 
     const platform::blit_shader::d3d12_blit_params params {
         .scale         = vec2(src_extent) / vec2(dst_extent),
@@ -353,7 +353,7 @@ static void d3d12_rhi_blit_images(platform::d3d12_command_list* d3d12_cmd, const
         .linear_filter = info.filter == rhi::sampler_filter::linear,
     };
 
-    cpp::heap_array<D3D12_TEXTURE_BARRIER> barriers;
+    core::heap_array<D3D12_TEXTURE_BARRIER> barriers;
     d3d12_rhi_add_view_access(
         barriers, dst_view, D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS, D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
 
@@ -377,7 +377,7 @@ namespace
 {
     struct d3d12_rhi_storage_scope
     {
-        cpp::heap_array<D3D12_TEXTURE_BARRIER> barriers;
+        core::heap_array<D3D12_TEXTURE_BARRIER> barriers;
         platform::com_ptr<ID3D12GraphicsCommandList7> cmd;
 
         explicit d3d12_rhi_storage_scope(const platform::d3d12_command_list* command)
@@ -403,7 +403,7 @@ namespace
         }
 
         explicit d3d12_rhi_storage_scope(const platform::d3d12_command_list* command,
-                                         const cpp::heap_array<D3D12_TEXTURE_BARRIER>& barriers)
+                                         const core::heap_array<D3D12_TEXTURE_BARRIER>& barriers)
             : barriers(barriers)
             , cmd(command->command_list)
         {
@@ -428,7 +428,7 @@ static void d3d12_rhi_clear_image(const platform::d3d12_command_list* cmd, const
     }
 
     auto view = image->view;
-    cpp::heap_array<D3D12_TEXTURE_BARRIER> barriers;
+    core::heap_array<D3D12_TEXTURE_BARRIER> barriers;
     if (depth)
     {
         assert2(image->view.view_types & platform::d3d12_image_view_type::dsv);
@@ -787,7 +787,7 @@ auto rhi::d3d12_create_image(context context, const create_image_info& image_inf
             ? (image_info.dimensions.z > 1 ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D)
             : D3D12_RESOURCE_DIMENSION_TEXTURE1D;
     const auto d3d12_dimensions = uvec3(
-        image_info.dimensions.x, image_info.dimensions.y, cpp::max(image_info.dimensions.z, image_info.layer_count));
+        image_info.dimensions.x, image_info.dimensions.y, core::max(image_info.dimensions.z, image_info.layer_count));
 
     auto d3d12_image =
         platform::d3d12_create_image(d3d12_ctx->allocator.Get(),
@@ -971,7 +971,7 @@ auto rhi::d3d12_create_graphics_pso(context context, const std::span<const shade
     platform::d3d12_shader d3d12_shaders[16];
     assert2(shaders.size() <= COUNT_OF(d3d12_shaders));
 
-    for (u32 i = 0; i < cpp::min(shaders.size(), COUNT_OF(d3d12_shaders)); i++)
+    for (u32 i = 0; i < core::min(shaders.size(), COUNT_OF(d3d12_shaders)); i++)
     {
         const auto* d3d12s = cast_from_handle<platform::d3d12_shader>(shaders[i]);
         if (!d3d12s)
@@ -1240,7 +1240,7 @@ void rhi::d3d12_cmd_barriers(command_buffer cmd, const barrier_batch& barriers)
         return;
     }
 
-    cpp::local_array<D3D12_TEXTURE_BARRIER, 8> image_barriers;
+    core::local_array<D3D12_TEXTURE_BARRIER, 8> image_barriers;
     for (u32 i = 0; i < barriers.images.size(); ++i)
     {
         d3d12_rhi_append_discard_barriers(image_barriers, barriers.images[i]);
@@ -1310,7 +1310,7 @@ void rhi::d3d12_cmd_image_blit(command_buffer cmd, image src, image dst, const b
             .FirstPlane           = planes.x,
             .NumPlanes            = planes.y,
         };
-        cpp::heap_array<D3D12_TEXTURE_BARRIER> barriers;
+        core::heap_array<D3D12_TEXTURE_BARRIER> barriers;
         platform::d3d12_append_texture_copy_barriers(
             barriers, d3d12_src_image->resource.Get(), d3d12_src_image->resource->GetDesc(), src_range);
         platform::d3d12_append_texture_copy_barriers(
@@ -1468,7 +1468,7 @@ void rhi::d3d12_cmd_copy_buffer_to_image(command_buffer cmd, buffer src, image d
             .NumPlanes            = planes.y,
         };
 
-        cpp::heap_array<D3D12_TEXTURE_BARRIER> barriers;
+        core::heap_array<D3D12_TEXTURE_BARRIER> barriers;
         platform::d3d12_append_texture_copy_barriers(barriers, d3d12_image->resource.Get(), resource_desc, range);
         d3d12_rhi_texture_barriers(d3d12_cmd->command_list.Get(), barriers);
 
@@ -1551,7 +1551,7 @@ void rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const attachmen
         return;
     }
 
-    cpp::heap_array<D3D12_TEXTURE_BARRIER> barriers;
+    core::heap_array<D3D12_TEXTURE_BARRIER> barriers;
     for (const auto& attachment : color_attachments)
     {
         const auto* view = d3d12_rhi_view_of(attachment.attachment);
@@ -1578,7 +1578,7 @@ void rhi::d3d12_cmd_set_draw_state(command_buffer cmd, std::span<const attachmen
     d3d12_rhi_texture_barriers(d3d12_cmd->command_list.Get(), barriers);
     d3d12_cmd->attachment_barriers = std::move(barriers);
 
-    for (u32 i = 0; i < cpp::min(color_attachments.size(), COUNT_OF(color_handles)); i++)
+    for (u32 i = 0; i < core::min(color_attachments.size(), COUNT_OF(color_handles)); i++)
     {
         const auto* d3d12_view = d3d12_rhi_view_of(color_attachments[i].attachment);
         assert2(d3d12_view);
@@ -1750,7 +1750,7 @@ void rhi::d3d12_cmd_push_bindings(command_buffer cmd, pipeline pso, std::span<co
     d3d12_cmd->storage_views.clear();
 
     const bool is_compute    = d3d12_pso->is_compute();
-    const u32 bindings_count = cpp::min<u32>(bindings.size(), platform::d3d12_root_signature::kMaxSetZeroBindings);
+    const u32 bindings_count = core::min<u32>(bindings.size(), platform::d3d12_root_signature::kMaxSetZeroBindings);
     for (u32 i = 0; i < bindings_count; i++)
     {
         auto& binding = bindings[i];
@@ -1823,7 +1823,7 @@ void rhi::d3d12_cmd_push_constants(command_buffer cmd, pipeline /* pso */, const
 
     assert2(offset + size <= COUNT_OF(d3d12_cmd->pc_data));
     std::memcpy(d3d12_cmd->pc_data + offset, data, size);
-    d3d12_cmd->pc_size = cpp::max(d3d12_cmd->pc_size, offset + size);
+    d3d12_cmd->pc_size = core::max(d3d12_cmd->pc_size, offset + size);
 }
 
 void rhi::d3d12_cmd_push_bindless_set(command_buffer cmd, pipeline pso, bindless_set set, const u32 binding)
@@ -1979,7 +1979,7 @@ void rhi::d3d12_cmd_draw_mesh_indirect(command_buffer cmd, buffer buffer, const 
 
     d3d12_rhi_upload_push_constants(d3d12_cmd);
     d3d12_cmd->command_list->ExecuteIndirect(
-        d3d12_cmd->get_signature({.stride = cpp::max<u8>(static_cast<u8>(stride), sizeof(u32[3])),
+        d3d12_cmd->get_signature({.stride = core::max<u8>(static_cast<u8>(stride), sizeof(u32[3])),
                                   .type   = platform::d3d12_command_signature_type::draw_mesh_task_indirect}),
         count,
         d3d12_buffer->allocation->GetResource(),
@@ -2073,7 +2073,7 @@ void rhi::d3d12_submit(context context, const queue queue, const submit_info& in
         platform::d3d12_queue_wait_on_fence(*d3d12_fence, d3d12_queue, wait.value);
     }
 
-    cpp::local_array<ID3D12CommandList*> command_lists;
+    core::local_array<ID3D12CommandList*> command_lists;
     for (const auto& cmd : info.command_buffers)
     {
         const auto d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd);

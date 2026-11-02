@@ -1,8 +1,7 @@
 #pragma once
 
+#include <core/containers/stack_string.hpp>
 #include <types.hpp>
-
-#include <cpp/containers/stack_string.hpp>
 
 #include <atomic>
 
@@ -33,10 +32,10 @@ struct id_component
 {
     /// @readonly
     const u64 id {id_counter++};
-    DEBUG_ONLY(cpp::stack_string name);
+    DEBUG_ONLY(core::stack_string name);
 
     id_component() = default;
-    DEBUG_ONLY(id_component(const cpp::stack_string& name) : name(name) {});
+    DEBUG_ONLY(id_component(const core::stack_string& name) : name(name) {});
 
 private:
     /// @hide

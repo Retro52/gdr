@@ -381,7 +381,7 @@ auto platform::d3d12_create_image(D3D12MA::Allocator* allocator, const D3D12_RES
     else if (flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET)
     {
         p_cv = &op_clear_value;
-        cpp::cx_copy_n(&op_clear_value.Color[0], &optimized_clear_value.color.f4.x, 4);
+        core::cx_copy_n(&op_clear_value.Color[0], &optimized_clear_value.color.f4.x, 4);
     }
 
     D3D12_RETURN_ON_FAIL(allocator->CreateResource3(&ma_desc,

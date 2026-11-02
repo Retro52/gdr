@@ -1,10 +1,10 @@
+#include <events.hpp>
+#include <tracy/Tracy.hpp>
+
 #include <SDL3/SDL.h>
 
 #include <backends/imgui_impl_sdl3.h>
-#include <events.hpp>
 #include <imgui_internal.h>
-#include <tracy/Tracy.hpp>
-
 #include <iostream>
 #include <ostream>
 

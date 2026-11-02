@@ -1,7 +1,7 @@
 #pragma once
 
 #include <assert2.hpp>
-#include <cpp/alg_constexpr.hpp>
+#include <core/alg_constexpr.hpp>
 #include <pod_types.hpp>
 #include <tracy/Tracy.hpp>
 
@@ -10,7 +10,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace cpp
+namespace core
 {
     template<typename T>
     class heap_array
@@ -193,7 +193,7 @@ namespace cpp
             ZoneScoped;
             if (m_end + count > m_capacity_end)
             {
-                grow(cpp::max(size() + count, get_next_capacity()));
+                grow(core::max(size() + count, get_next_capacity()));
             }
 
             heap_array::fast_copy_n(m_end, data, count);
@@ -325,11 +325,11 @@ namespace cpp
         {
             if constexpr (std::is_trivially_copyable_v<U>)
             {
-                cpp::cx_copy_n(dest, src, count);
+                core::cx_copy_n(dest, src, count);
             }
             else
             {
-                cpp::cx_uninitialized_copy_n(dest, src, count);
+                core::cx_uninitialized_copy_n(dest, src, count);
             }
         }
 
@@ -338,11 +338,11 @@ namespace cpp
         {
             if constexpr (std::is_trivially_copyable_v<U>)
             {
-                cpp::cx_copy_n(dest, src, count);
+                core::cx_copy_n(dest, src, count);
             }
             else
             {
-                cpp::cx_uninitialized_move_n(dest, src, count);
+                core::cx_uninitialized_move_n(dest, src, count);
             }
         }
     };

@@ -28,7 +28,7 @@ namespace job
             }
 
             ++m_total_waiting;
-            if (cpp::ref<fiber> current = m_scheduler.current_fiber())
+            if (core::ref<fiber> current = m_scheduler.current_fiber())
             {
                 // Mark ourselves as waiting on this CV.
                 {
@@ -57,7 +57,7 @@ namespace job
     private:
         std::mutex m_mutex;
         std::condition_variable m_cv;
-        std::list<cpp::ref<fiber>> m_waiting;
+        std::list<core::ref<fiber>> m_waiting;
 
         scheduler& m_scheduler;
 

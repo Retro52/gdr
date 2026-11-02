@@ -1,15 +1,14 @@
 #pragma once
 
-#include <volk.h>
-
-#include <types.hpp>
-
-#include <cpp/f16.hpp>
+#include <core/f16.hpp>
 #include <render/platform/d3d12/d3d12_image.hpp>
 #include <render/platform/ffx/ffx_module.hpp>
 #include <render/platform/ffx/ffx_types.hpp>
 #include <render/types.hpp>
 #include <result.hpp>
+#include <types.hpp>
+
+#include <volk.h>
 
 namespace platform
 {

@@ -1,7 +1,7 @@
 #include <render/platform/vk/vk_barrier.hpp>
 
 void platform::vk_stage_barrier_rw(VkCommandBuffer cmd, const VkPipelineStageFlags2 src_stage_mask,
-                                 const VkPipelineStageFlags2 dst_stage_mask)
+                                   const VkPipelineStageFlags2 dst_stage_mask)
 {
     constexpr VkAccessFlags2 flags = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
     vk_stage_barrier(cmd, src_stage_mask, flags, dst_stage_mask, flags);
@@ -14,8 +14,8 @@ void platform::vk_stage_barrier_rw(VkCommandBuffer cmd, const VkPipelineStageFla
 }
 
 void platform::vk_stage_barrier(VkCommandBuffer cmd, const VkPipelineStageFlags2 src_stage_mask,
-                              const VkAccessFlags2 src_access_mask, const VkPipelineStageFlags2 dst_stage_mask,
-                              const VkAccessFlags2 dst_access_mask)
+                                const VkAccessFlags2 src_access_mask, const VkPipelineStageFlags2 dst_stage_mask,
+                                const VkAccessFlags2 dst_access_mask)
 {
     const VkMemoryBarrier2 barrier = {
         .sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
@@ -35,8 +35,8 @@ void platform::vk_stage_barrier(VkCommandBuffer cmd, const VkPipelineStageFlags2
 }
 
 void platform::vk_buffer_barrier(VkCommandBuffer cmd, VkBuffer buffer, const VkPipelineStageFlags2 src_stage,
-                               const VkAccessFlags2 src_access, const VkPipelineStageFlags2 dst_stage,
-                               const VkAccessFlags2 dst_access)
+                                 const VkAccessFlags2 src_access, const VkPipelineStageFlags2 dst_stage,
+                                 const VkAccessFlags2 dst_access)
 {
     const VkBufferMemoryBarrier2 buf_barrier = {
         .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,

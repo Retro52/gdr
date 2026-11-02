@@ -1,6 +1,7 @@
-#include <ddspp.h>
 #include <render/platform/vk/vk_utils.hpp>
 #include <tracy/Tracy.hpp>
+
+#include <ddspp.h>
 
 #define COLOR_SPACE_PAIR(linear_format, srgb_format)                     \
     case linear_format :                                                 \
@@ -565,7 +566,7 @@ VkClearValue platform::vk_rhi_parse_color_clear_value(rhi::clear_value cv)
 {
     ZoneScoped;
     VkClearValue value;
-    cpp::cx_memcpy(value.color.float32, &cv.color.f4.x, COUNT_OF(value.color.float32) * sizeof(cv.color.f4[0]));
+    core::cx_memcpy(value.color.float32, &cv.color.f4.x, COUNT_OF(value.color.float32) * sizeof(cv.color.f4[0]));
     return value;
 }
 

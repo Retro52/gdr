@@ -1,8 +1,4 @@
-#include <SDL3/SDL_surface.h>
-
 #include <assert2.hpp>
-#include <cgltf.h>
-#include <ddspp.h>
 #include <janitor.hpp>
 #include <job/schedule_async.hpp>
 #include <job/wait_group.hpp>
@@ -15,9 +11,13 @@
 #include <scene/loader.hpp>
 #include <scene/mesh_load.hpp>
 #include <scene/scene.hpp>
-#include <SDL3_image/SDL_image.h>
 
+#include <SDL3/SDL_surface.h>
+
+#include <cgltf.h>
+#include <ddspp.h>
 #include <glm/gtc/type_ptr.inl>
+#include <SDL3_image/SDL_image.h>
 #include <type_traits>
 #include <variant>
 
@@ -144,7 +144,7 @@ namespace
     }
 }
 
-static vec4 compute_bounding_sphere(const cpp::heap_array<mesh::raw_vertex>& mesh)
+static vec4 compute_bounding_sphere(const core::heap_array<mesh::raw_vertex>& mesh)
 {
     ZoneScoped;
     vec3 center(0.0F);
@@ -238,14 +238,14 @@ static u32 get_max_draw_commands(const u32 meshlets_count)
     return (meshlets_count + shader_constants::kTaskWorkGroups - 1) / shader_constants::kTaskWorkGroups;
 }
 
-static cpp::heap_array<loader::prim_info> collect_primitives(const cgltf_data* data,
-                                                             cpp::heap_array<loader::mesh_info>& descriptors,
-                                                             cpp::heap_array<cpp::stack_string>* debug_names)
+static core::heap_array<loader::prim_info> collect_primitives(const cgltf_data* data,
+                                                              core::heap_array<loader::mesh_info>& descriptors,
+                                                              core::heap_array<core::stack_string>* debug_names)
 {
     ZoneScoped;
     assert2(data);
 
-    cpp::heap_array<loader::prim_info> result;
+    core::heap_array<loader::prim_info> result;
     result.reserve(data->meshes_count * 3);
 
     for (u32 i = 0; i < data->meshes_count; ++i)
@@ -263,7 +263,7 @@ static cpp::heap_array<loader::prim_info> collect_primitives(const cgltf_data* d
 
             if (debug_names)
             {
-                debug_names->emplace_back(cpp::stack_string::make_formatted(
+                debug_names->emplace_back(core::stack_string::make_formatted(
                     "build_mesh %s#%d", mesh.name ? mesh.name : "[nameless]", static_cast<int>(prim)));
             }
 
@@ -345,7 +345,7 @@ u32 loader::get_max_lod_tris(const mesh::raw_mesh& mesh)
     u32 res = 0;
     for (u32 i = 0; i < mesh.lod_count; ++i)
     {
-        res = cpp::max(static_cast<u32>(mesh.lod_array[i].raw_indices.size() / 3), res);
+        res = core::max(static_cast<u32>(mesh.lod_array[i].raw_indices.size() / 3), res);
     }
 
     return res;
@@ -356,7 +356,7 @@ u32 loader::get_max_lod_meshlets(const loader::primitive& prim)
     u32 res = 0;
     for (u32 i = 0; i < prim.lod_count; ++i)
     {
-        res = cpp::max(prim.lod_array[i].meshlets_count, res);
+        res = core::max(prim.lod_array[i].meshlets_count, res);
     }
 
     return res;
@@ -426,10 +426,10 @@ auto loader::load_scene(const fs::path& path, scene& scene) -> result<scene_data
     scene_data scene_data;
 
 #if TRACY_ENABLE
-    cpp::heap_array<cpp::stack_string> debug_names;
+    core::heap_array<core::stack_string> debug_names;
 #endif
 
-    cpp::heap_array<mesh_info> meshes(data->meshes_count);
+    core::heap_array<mesh_info> meshes(data->meshes_count);
 
     const auto to_load = collect_primitives(data,
                                             meshes,
@@ -441,7 +441,7 @@ auto loader::load_scene(const fs::path& path, scene& scene) -> result<scene_data
     );
 
     const u64 prim_count = to_load.size();
-    cpp::heap_array<mesh::raw_mesh> raw_meshes(prim_count);
+    core::heap_array<mesh::raw_mesh> raw_meshes(prim_count);
 
     job::wait_group primitives_wg(prim_count);
     job::wait_group textures_wg(0);
@@ -485,7 +485,7 @@ auto loader::load_scene(const fs::path& path, scene& scene) -> result<scene_data
                     const auto uri  = path.parent() / fs::path(tex->image->uri);
 #if TRACY_ENABLE
                     const auto debug_name =
-                        cpp::big_stack_string::make_formatted("read texture: %s", uri.filename().c_str());
+                        core::big_stack_string::make_formatted("read texture: %s", uri.filename().c_str());
                     TracyMessage(debug_name.c_str(), debug_name.length());
 #endif
 
@@ -507,7 +507,7 @@ auto loader::load_scene(const fs::path& path, scene& scene) -> result<scene_data
     }
 
     primitives_wg.wait_till_done();
-    cpp::heap_array<prim_layout> layouts(prim_count);
+    core::heap_array<prim_layout> layouts(prim_count);
 
     u64 total_vertices = 0;
     u64 total_indices  = 0;
@@ -663,7 +663,7 @@ auto loader::load_meshes(const fs::path& path) -> result<meshes_data>
     ctx.meshes.resize(data->meshes_count);
 
 #if TRACY_ENABLE
-    cpp::heap_array<cpp::stack_string> debug_names;
+    core::heap_array<core::stack_string> debug_names;
 #endif
 
     const auto prims_to_load = collect_primitives(data,

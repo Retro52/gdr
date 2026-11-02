@@ -80,7 +80,7 @@ const char* fiber::get_tracy_name() const noexcept
     return m_tracy_name.c_str();
 }
 
-void fiber::set_tracy_name(const cpp::stack_string& name) noexcept
+void fiber::set_tracy_name(const core::stack_string& name) noexcept
 {
     m_tracy_name = name;
 }

@@ -10,6 +10,8 @@ app::pass_aa::pass_aa(const rhi::impl& impl, const app::pso_data& pipelines, con
     , m_pipelines(pipelines)
 {
     ZoneScoped;
+    // this may fail on non-windows systems, so that's the way to set the FSR as default
+    change_backend(aa_backend::fsr);
     create_resources(render_res, display_res);
     fxaa_color_sampler = *m_rhi.create_sampler(m_ctx, {.mipmap_mode = rhi::sampler_mipmap_mode::nearest});
     fxaa_depth_sampler = *m_rhi.create_sampler(m_ctx,

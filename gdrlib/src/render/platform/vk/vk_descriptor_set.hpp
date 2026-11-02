@@ -1,9 +1,9 @@
 #pragma once
 
-#include <volk.h>
-
-#include <result.hpp>
 #include <pod_types.hpp>
+#include <result.hpp>
+
+#include <volk.h>
 
 namespace platform
 {

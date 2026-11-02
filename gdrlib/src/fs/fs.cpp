@@ -1,8 +1,8 @@
-#include <SDL3/SDL_iostream.h>
-
 #include <fs/fs.hpp>
 #include <janitor.hpp>
 #include <tracy/Tracy.hpp>
+
+#include <SDL3/SDL_iostream.h>
 
 #include <filesystem>
 

@@ -1,9 +1,8 @@
 #pragma once
 
-#include <types.hpp>
-
 #include <render/platform/d3d12/d3d12.hpp>
 #include <render/platform/d3d12/d3d12_desc_heap.hpp>
+#include <types.hpp>
 
 namespace platform
 {

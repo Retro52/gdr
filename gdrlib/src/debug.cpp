@@ -1,12 +1,13 @@
-#include <SDL3/SDL_platform_defines.h>
-
 #include <assert2.hpp>
 #include <debug.hpp>
 
-#if defined(SDL_PLATFORM_WINDOWS)
-#include <Windows.h>
+#include <SDL3/SDL_platform_defines.h>
 
+#if defined(SDL_PLATFORM_WINDOWS)
+// clang-format off
+#include <Windows.h>
 #include <debugapi.h>
+// clang-format on
 #elif defined(SDL_PLATFORM_MACOS)
 #include <assert.h>
 #include <stdbool.h>

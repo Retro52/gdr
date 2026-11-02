@@ -3,7 +3,7 @@
 #include <assert2.hpp>
 #include <pod_types.hpp>
 
-namespace cpp
+namespace core
 {
     template<class T>
     struct remove_reference
@@ -147,7 +147,7 @@ namespace cpp
     {
         for (u64 i = 0; i < count; ++i)
         {
-            dest[i] = cpp::move(src[i]);
+            dest[i] = core::move(src[i]);
         }
         return dest;
     }
@@ -167,7 +167,7 @@ namespace cpp
     {
         for (u64 i = 0; i < count; ++i)
         {
-            new (dest + i) T(cpp::move(src[i]));
+            new (dest + i) T(core::move(src[i]));
         }
 
         return dest;

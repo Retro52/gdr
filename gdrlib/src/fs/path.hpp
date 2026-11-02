@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cpp/containers/stack_string.hpp>
-#include <cpp/hash/crc_hash.hpp>
+#include <core/containers/stack_string.hpp>
+#include <core/hash/crc_hash.hpp>
 #include <fs/path_utils.hpp>
 
 #include <filesystem>
@@ -14,12 +14,12 @@ namespace fs
         constexpr path() = default;
 
         constexpr path(const char* p)
-            : m_path(::fs::normalize_path(p, cpp::cx_strlen(p)))
+            : m_path(::fs::normalize_path(p, core::cx_strlen(p)))
         {
         }
 
         template<u64 N>
-        constexpr path(const cpp::stack_string_base<N>& p)
+        constexpr path(const core::stack_string_base<N>& p)
             : m_path(::fs::normalize_path(p.c_str(), p.length()))
         {
         }
@@ -92,6 +92,6 @@ namespace std
     template<>
     struct hash<fs::path>
     {
-        u64 operator()(const fs::path& path) const noexcept { return cpp::crc::crc64(path.c_str(), path.length()); }
+        u64 operator()(const fs::path& path) const noexcept { return core::hash::crc64(path.c_str(), path.length()); }
     };
 }

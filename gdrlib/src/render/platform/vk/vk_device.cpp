@@ -1,10 +1,10 @@
 #define VK_ENABLE_BETA_EXTENSIONS
 
 #include <assert2.hpp>
-#include <cpp/alg_constexpr.hpp>
-#include <cpp/containers/hash_set.hpp>
-#include <cpp/containers/heap_array.hpp>
-#include <cpp/containers/stack_string.hpp>
+#include <core/alg_constexpr.hpp>
+#include <core/containers/hash_set.hpp>
+#include <core/containers/heap_array.hpp>
+#include <core/containers/stack_string.hpp>
 #include <log.hpp>
 #include <render/platform/vk/vk_device.hpp>
 #include <render/platform/vk/vk_error.hpp>
@@ -43,7 +43,7 @@ struct vk_feature_chain
 {
 private:
     void** m_pNext = nullptr;
-    cpp::heap_array<const char*> m_dvc_extensions;
+    core::heap_array<const char*> m_dvc_extensions;
 
 public:
     VkPhysicalDeviceFeatures2 core {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
@@ -69,7 +69,7 @@ public:
     {
     }
 
-    vk_feature_chain(VkPhysicalDevice device, const cpp::heap_array<VkExtensionProperties>& extensions)
+    vk_feature_chain(VkPhysicalDevice device, const core::heap_array<VkExtensionProperties>& extensions)
         : vk_feature_chain()
     {
         setup_ext_query(extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
@@ -126,12 +126,12 @@ public:
         return true;
     }
 
-    static cpp::heap_array<VkExtensionProperties> get_device_extensions(VkPhysicalDevice device)
+    static core::heap_array<VkExtensionProperties> get_device_extensions(VkPhysicalDevice device)
     {
         u32 ext_count = 0;
         vkEnumerateDeviceExtensionProperties(device, nullptr, &ext_count, nullptr);
 
-        cpp::heap_array<VkExtensionProperties> extensions(ext_count);
+        core::heap_array<VkExtensionProperties> extensions(ext_count);
         vkEnumerateDeviceExtensionProperties(device, nullptr, &ext_count, extensions.data());
 
         return extensions;
@@ -147,7 +147,7 @@ public:
                                    });
     }
 
-    static bool has_extension(const cpp::heap_array<VkExtensionProperties>& extensions, std::string_view name)
+    static bool has_extension(const core::heap_array<VkExtensionProperties>& extensions, std::string_view name)
     {
         return std::ranges::any_of(extensions.begin(),
                                    extensions.end(),
@@ -165,7 +165,7 @@ public:
         desc.pNext     = nullptr;
     }
 
-    void setup_ext_query(const cpp::heap_array<VkExtensionProperties>& extensions, const char* extension)
+    void setup_ext_query(const core::heap_array<VkExtensionProperties>& extensions, const char* extension)
     {
         if (has_extension(extensions, extension))
         {
@@ -174,7 +174,7 @@ public:
     }
 
     template<typename T>
-    void setup_ext_query(T&& desc, const cpp::heap_array<VkExtensionProperties>& extensions, const char* extension)
+    void setup_ext_query(T&& desc, const core::heap_array<VkExtensionProperties>& extensions, const char* extension)
     {
         if (has_extension(extensions, extension))
         {
@@ -315,14 +315,14 @@ static bool inst_ext_available(const char* name)
 {
     u32 n = 0;
     vkEnumerateInstanceExtensionProperties(nullptr, &n, nullptr);
-    cpp::heap_array<VkExtensionProperties> props(n);
+    core::heap_array<VkExtensionProperties> props(n);
     if (n)
     {
         vkEnumerateInstanceExtensionProperties(nullptr, &n, props.data());
     }
     for (auto& p : props)
     {
-        if (cpp::cx_streq(p.extensionName, name))
+        if (core::cx_streq(p.extensionName, name))
         {
             return true;
         }
@@ -334,7 +334,7 @@ static bool layer_available(const char* name)
 {
     u32 n = 0;
     vkEnumerateInstanceLayerProperties(&n, nullptr);
-    cpp::heap_array<VkLayerProperties> props(n);
+    core::heap_array<VkLayerProperties> props(n);
 
     if (n)
     {
@@ -343,7 +343,7 @@ static bool layer_available(const char* name)
 
     for (auto& p : props)
     {
-        if (cpp::cx_streq(p.layerName, name))
+        if (core::cx_streq(p.layerName, name))
         {
             return true;
         }
@@ -352,7 +352,7 @@ static bool layer_available(const char* name)
     return false;
 }
 
-static void insert_video_driver_extensions(const window& window, cpp::heap_array<const char*>& extensions_array)
+static void insert_video_driver_extensions(const window& window, core::heap_array<const char*>& extensions_array)
 {
     extensions_array.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
     switch (window.get_native_handle().type)
@@ -505,8 +505,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(const VkDebugUtilsMessageSeverity
 }
 
 static void load_instance_layers_and_extensions(const window& window, rhi::rendering_features_table& desc,
-                                                cpp::heap_array<const char*>& layers,
-                                                cpp::heap_array<const char*>& extensions)
+                                                core::heap_array<const char*>& layers,
+                                                core::heap_array<const char*>& extensions)
 {
     if (desc.requested(rhi::feature_flag::validation) && layer_available("VK_LAYER_KHRONOS_validation")
         && inst_ext_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
@@ -536,7 +536,7 @@ static bool choose_queue_families(VkPhysicalDevice phys, VkSurfaceKHR surface, u
     u32 count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(phys, &count, nullptr);
 
-    cpp::heap_array<VkQueueFamilyProperties> qfp(count);
+    core::heap_array<VkQueueFamilyProperties> qfp(count);
     vkGetPhysicalDeviceQueueFamilyProperties(phys, &count, qfp.data());
 
     auto pick_any_pred = [&](auto pred) -> u32
@@ -598,7 +598,7 @@ static bool choose_queue_families(VkPhysicalDevice phys, VkSurfaceKHR surface, u
         && transfer != VK_QUEUE_FAMILY_IGNORED;
 }
 
-static cpp::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysicalDevice device, VkSurfaceKHR surface)
+static core::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysicalDevice device, VkSurfaceKHR surface)
 {
     ZoneScoped;
     // 1st - gfx, 2nd - compute, 3rd - transfer.
@@ -624,7 +624,7 @@ static cpp::heap_array<VkDeviceQueueCreateInfo> get_queue_create_info(VkPhysical
     }
 
     constexpr static float kPriority = 1.0f;
-    cpp::heap_array<VkDeviceQueueCreateInfo> create_infos(unique_count);
+    core::heap_array<VkDeviceQueueCreateInfo> create_infos(unique_count);
 
     for (u32 i = 0; i < unique_count; i++)
     {
@@ -673,7 +673,7 @@ static bool check_device_basic_features_support(VkPhysicalDevice device, VkSurfa
     u32 device_extensions_count;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &device_extensions_count, nullptr);
 
-    cpp::heap_array<VkExtensionProperties> device_extensions(device_extensions_count);
+    core::heap_array<VkExtensionProperties> device_extensions(device_extensions_count);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &device_extensions_count, device_extensions.data());
 
     const vk_feature_chain supported(device, device_extensions);
@@ -737,7 +737,7 @@ static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR s
     u32 device_count = 0;
     vkEnumeratePhysicalDevices(instance, &device_count, nullptr);
 
-    cpp::heap_array<VkPhysicalDevice> devices(device_count);
+    core::heap_array<VkPhysicalDevice> devices(device_count);
     vkEnumeratePhysicalDevices(instance, &device_count, devices.data());
 
     u32 best_rating                                       = 0;
@@ -855,9 +855,9 @@ static VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhy
             auto& data = *static_cast<vma_alloc_cb_data*>(pUserData);
             data.alloc_total_bytes += size;
             const auto msg =
-                cpp::stack_string::make_formatted("VMA alloc: %s (+%s)",
-                                                  utils::format_bytes_number(data.alloc_total_bytes).c_str(),
-                                                  utils::format_bytes_number(size).c_str());
+                core::stack_string::make_formatted("VMA alloc: %s (+%s)",
+                                                   utils::format_bytes_number(data.alloc_total_bytes).c_str(),
+                                                   utils::format_bytes_number(size).c_str());
             TracyMessage(msg.c_str(), msg.length());
 
             TracyPlotConfig(kPlotName, tracy::PlotFormatType::Memory, true, true, 0);
@@ -878,9 +878,9 @@ static VkResult create_vma_allocator(VkInstance instance, VkDevice device, VkPhy
             auto& data = *static_cast<vma_alloc_cb_data*>(pUserData);
             data.alloc_total_bytes -= size;
             const auto msg =
-                cpp::stack_string::make_formatted("VMA alloc: %s (-%s)",
-                                                  utils::format_bytes_number(data.alloc_total_bytes).c_str(),
-                                                  utils::format_bytes_number(size).c_str());
+                core::stack_string::make_formatted("VMA alloc: %s (-%s)",
+                                                   utils::format_bytes_number(data.alloc_total_bytes).c_str(),
+                                                   utils::format_bytes_number(size).c_str());
             TracyMessage(msg.c_str(), msg.length());
 
             TracyPlotConfig(kPlotName, tracy::PlotFormatType::Memory, true, true, 0);
@@ -944,7 +944,7 @@ static result<vk_context> create_vk_context(const window& window, const rhi::ins
     // copy requested & required features
     context.enabled_device_features = desc.device_features;
 
-    cpp::heap_array<const char*> layers;
+    core::heap_array<const char*> layers;
     load_instance_layers_and_extensions(window, context.enabled_device_features, layers, context.instance_extensions);
 
 #if ENABLE_SYNC_VALIDATION
@@ -1050,7 +1050,7 @@ static VkPresentModeKHR choose_present_mode(VkPhysicalDevice device, VkSurfaceKH
     u32 present_modes = 0;
     vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_modes, nullptr);
 
-    cpp::heap_array<VkPresentModeKHR> available_present_modes(present_modes);
+    core::heap_array<VkPresentModeKHR> available_present_modes(present_modes);
     vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_modes, available_present_modes.data());
 
     for (const auto& present_mode : available_present_modes)
@@ -1070,7 +1070,7 @@ static VkSurfaceFormatKHR choose_swapchain_format(VkPhysicalDevice device, VkSur
     u32 surface_formats = 0;
     vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_formats, nullptr);
 
-    cpp::heap_array<VkSurfaceFormatKHR> available_formats(surface_formats);
+    core::heap_array<VkSurfaceFormatKHR> available_formats(surface_formats);
     vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_formats, available_formats.data());
 
     auto choose_format_pred = [&](auto pred) -> VkSurfaceFormatKHR
@@ -1184,7 +1184,7 @@ result<vk_swapchain> platform::vk_create_swapchain(const vk_context& vk_context,
     u32 img_count = 0;
     vkGetSwapchainImagesKHR(vk_context.device, sc_data.sc, &img_count, nullptr);
 
-    cpp::heap_array<VkImage> imgs(img_count);
+    core::heap_array<VkImage> imgs(img_count);
     vkGetSwapchainImagesKHR(vk_context.device, sc_data.sc, &img_count, imgs.data());
 
     for (u32 i = 0; i < img_count; i++)

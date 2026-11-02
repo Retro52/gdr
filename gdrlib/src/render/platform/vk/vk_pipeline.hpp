@@ -74,7 +74,7 @@ namespace platform
             u32 push_constant_struct_size = 0;
             VkShaderStageFlagBits stage   = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
 
-            shader_meta() { cpp::cx_fill(bindings + 0, bindings + COUNT_OF(bindings), VK_DESCRIPTOR_TYPE_MAX_ENUM); }
+            shader_meta() { core::cx_fill(bindings + 0, bindings + COUNT_OF(bindings), VK_DESCRIPTOR_TYPE_MAX_ENUM); }
         };
 
         VkShaderModule module = VK_NULL_HANDLE;

@@ -1,8 +1,10 @@
 #pragma once
 
 #include <assert2.hpp>
-#include <cpp/containers/stack_string.hpp>
+#include <core/containers/stack_string.hpp>
 #include <pod_types.hpp>
+
+#include <type_traits>
 
 #define REGISTER_ENUM_T(Name, Type, ...)                                                \
     enum class Name : Type                                                              \
@@ -20,7 +22,7 @@
         static const reflection::enum_value* values = []()                              \
         {                                                                               \
             constexpr static u64 count = reflection::get_enum_values_count<Name>();     \
-            static cpp::stack_string names[count];                                      \
+            static core::stack_string names[count];                                     \
             static reflection::enum_value result[count];                                \
             static reflection::enum_counter<Name> __VA_ARGS__;                          \
             static Type integer_values[] = {__VA_ARGS__};                               \
@@ -71,7 +73,7 @@
         static const reflection::enum_value* values = []()                                          \
         {                                                                                           \
             constexpr static u64 count = reflection::get_enum_values_count<Name>();                 \
-            static cpp::stack_string names[count];                                                  \
+            static core::stack_string names[count];                                                 \
             static reflection::enum_value result[count];                                            \
             static reflection::enum_counter<Name> __VA_ARGS__;                                      \
             static Type integer_values[] = {__VA_ARGS__};                                           \
@@ -214,7 +216,7 @@ namespace reflection
 
         for (int i = 0; i < count; ++i)
         {
-            if (cpp::cx_streq(enum_values[i].name, str))
+            if (core::cx_streq(enum_values[i].name, str))
             {
                 return static_cast<T>(enum_values[i].value);
             }
@@ -255,7 +257,7 @@ namespace reflection
     }
 
     template<typename T>
-    constexpr void parse_enum_values(const char* values, T enum_counters[], cpp::stack_string enum_names[],
+    constexpr void parse_enum_values(const char* values, T enum_counters[], core::stack_string enum_names[],
                                      enum_value enum_values[])
     {
         bool skip              = false;
@@ -283,7 +285,7 @@ namespace reflection
                 break;
             case ',' :
             case ';' :
-                enum_names[index]  = cpp::stack_string(name_start, name_end - name_start);
+                enum_names[index]  = core::stack_string(name_start, name_end - name_start);
                 enum_values[index] = {.name  = enum_names[index].c_str(),
                                       .value = static_cast<u64>(enum_counters[index])};
                 name_end = name_start = str_ptr;
@@ -299,7 +301,7 @@ namespace reflection
 
         if (name_start < name_end)
         {
-            enum_names[index]  = cpp::stack_string(name_start, name_end - name_start);
+            enum_names[index]  = core::stack_string(name_start, name_end - name_start);
             enum_values[index] = {.name = enum_names[index].c_str(), .value = static_cast<u64>(enum_counters[index])};
         }
     }

@@ -1,8 +1,9 @@
 #include <editor/hierarchy.hpp>
-#include <imgui.h>
 #include <scene/components.hpp>
 #include <scene/scene.hpp>
 #include <scene/scene_hierarchy.hpp>
+
+#include <imgui.h>
 
 namespace
 {

@@ -1,14 +1,13 @@
 #pragma once
 
-#include <volk.h>
-
-#include <types.hpp>
-
-#include <cpp/tagged_int.hpp>
+#include <core/tagged_int.hpp>
 #include <reflection/enum.hpp>
 #include <render/rhi_handles.hpp>
+#include <types.hpp>
 
 #include <span>
+
+#include <volk.h>
 
 namespace rhi
 {
@@ -536,7 +535,7 @@ namespace rhi
 
         [[nodiscard]] constexpr bool valid() const noexcept { return m_raw_handle_id.value() != null_image.id; }
 
-        cpp::tagged_u64 m_raw_handle_id;
+        core::tagged_u64 m_raw_handle_id;
     };
 
     struct binding
@@ -583,8 +582,8 @@ namespace rhi
         [[nodiscard]] attachment get_attachment() const noexcept { return m_attachment; }
 
     private:
-        attachment m_attachment             = null_image;
-        cpp::tagged_u64 m_buffer_or_sampler = null_buffer.id;
+        attachment m_attachment              = null_image;
+        core::tagged_u64 m_buffer_or_sampler = null_buffer.id;
     };
 
     struct attachment_state_info
@@ -676,7 +675,7 @@ namespace rhi
         [[nodiscard]] constexpr bool all_required_supported() const noexcept
         {
             bool result = true;
-            for (u32 i = 0; i < cpp::cx_get_enum_bit_count(feature_flag::COUNT); ++i)
+            for (u32 i = 0; i < core::cx_get_enum_bit_count(feature_flag::COUNT); ++i)
             {
                 const auto feature = static_cast<feature_flag>(1 << i);
                 result &= this->required(feature) ? this->supported(feature) : result;

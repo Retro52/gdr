@@ -23,7 +23,7 @@ void condition_variable::notify_one()
 
         if (!m_waiting.empty())
         {
-            const cpp::ref<fiber> f = m_waiting.front();
+            const core::ref<fiber> f = m_waiting.front();
             m_waiting.pop_front();
             m_scheduler.enqueue(f);
         }
@@ -48,7 +48,7 @@ void condition_variable::notify_all()
         std::unique_lock lock(m_mutex);
         while (!m_waiting.empty())
         {
-            cpp::ref<fiber> f = m_waiting.front();
+            core::ref<fiber> f = m_waiting.front();
             m_waiting.pop_front();
             m_scheduler.enqueue(f);
         }

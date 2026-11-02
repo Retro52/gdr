@@ -169,7 +169,7 @@ namespace fs
         path_string buffer;
         bool skip_next_separator = false;
 
-        for (u64 i = 0; i < cpp::min(len, path_string::capacity() - 1); i++)
+        for (u64 i = 0; i < core::min(len, path_string::capacity() - 1); i++)
         {
             switch (const auto c = path[i])
             {

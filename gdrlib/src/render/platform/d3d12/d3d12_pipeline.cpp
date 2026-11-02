@@ -176,7 +176,7 @@ namespace
     struct PSV0PartData
     {
         [[maybe_unused]] PSV0RuntimeInfo rt_info {.version = PSVStructVersion::notset};
-        [[maybe_unused]] cpp::heap_array<PSVResourceBindInfo> resource_bindings;
+        [[maybe_unused]] core::heap_array<PSVResourceBindInfo> resource_bindings;
     };
 
     PSVStructVersion psv0_get_binding_struct_version(const u32 size)
@@ -303,7 +303,7 @@ namespace
         }
     }
 
-    cpp::heap_array<D3D12_ROOT_PARAMETER1> collect_root_signature_parameters(
+    core::heap_array<D3D12_ROOT_PARAMETER1> collect_root_signature_parameters(
         const platform::d3d12_shader* shaders, const u32 shaders_count,
         decltype(platform::d3d12_root_signature::dedup)& dedup)
     {
@@ -311,7 +311,7 @@ namespace
 
         u32 descriptor_range_id = 0;
 
-        cpp::heap_array<D3D12_ROOT_PARAMETER1> result;
+        core::heap_array<D3D12_ROOT_PARAMETER1> result;
         static D3D12_DESCRIPTOR_RANGE1 s_descriptor_ranges[32];
 
         u32 size_in_dwords = 0;
@@ -478,7 +478,7 @@ auto platform::d3d12_parse_dxil(const bytes& data) -> result<d3d12_shader_meta>
 
     auto fcc = [](const char name[4])
     {
-        return cpp::stack_string(name, 4);
+        return core::stack_string(name, 4);
     };
 
     auto read = [&]<typename T>(T* dst, const u64 offset, const u32 size = sizeof(T))
@@ -493,7 +493,7 @@ auto platform::d3d12_parse_dxil(const bytes& data) -> result<d3d12_shader_meta>
     assert2(fcc(header.Magic) == "DXBC");
     assert2(header.PartCount > 0);
 
-    cpp::heap_array<u32> offsets(header.PartCount);
+    core::heap_array<u32> offsets(header.PartCount);
     for (u32 i = 0; i < header.PartCount; i++)
     {
         read(&offsets[i], cursor);
@@ -519,7 +519,7 @@ auto platform::d3d12_parse_dxil(const bytes& data) -> result<d3d12_shader_meta>
     psv0_data.rt_info.version = psv0_get_info_struct_version(psv0_header.RuntimeInfoSize);
     read(&psv0_data.rt_info.data,
          psv0_offset + sizeof(PSV0PartHeader),
-         cpp::min<u32>(sizeof(psv0_data.rt_info.data.latest), psv0_header.RuntimeInfoSize));
+         core::min<u32>(sizeof(psv0_data.rt_info.data.latest), psv0_header.RuntimeInfoSize));
 
     u32 shader_bindings_count = 0;
     read(&shader_bindings_count,
@@ -538,8 +538,9 @@ auto platform::d3d12_parse_dxil(const bytes& data) -> result<d3d12_shader_meta>
             binding_info.version = binding_version;
 
             const auto base = cursor;
-            read(
-                &binding_info.data.latest, base, cpp::min<u32>(sizeof(binding_info.data.latest), bindings_struct_size));
+            read(&binding_info.data.latest,
+                 base,
+                 core::min<u32>(sizeof(binding_info.data.latest), bindings_struct_size));
 
             cursor = base + bindings_struct_size;
         }
@@ -553,7 +554,7 @@ auto platform::d3d12_parse_dxil(const bytes& data) -> result<d3d12_shader_meta>
     };
 
     assert2(psv0_data.resource_bindings.size() < COUNT_OF(dxil_meta.resources));
-    dxil_meta.resources_count = cpp::min(psv0_data.resource_bindings.size(), COUNT_OF(dxil_meta.resources));
+    dxil_meta.resources_count = core::min(psv0_data.resource_bindings.size(), COUNT_OF(dxil_meta.resources));
     for (u32 i = 0; i < dxil_meta.resources_count; i++)
     {
         auto& dst = dxil_meta.resources[i];
@@ -636,7 +637,7 @@ auto platform::d3d12_create_pipeline_compute(ID3D12Device2* device, const d3d12_
     platform::com_ptr<ID3D12PipelineState> pipeline;
     D3D12_RETURN_ON_FAIL(device->CreatePipelineState(&stream_desc, IID_PPV_ARGS(&pipeline)));
 
-    cpp::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
+    core::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
     variants.emplace_back(pipeline);
 
     return d3d12_pipeline {
@@ -750,7 +751,7 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
         desc.RasterizerState = raster;
     };
 
-    cpp::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
+    core::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
     if (!options.enable_dynstate_cull_mode)
     {
         variants.resize(1);

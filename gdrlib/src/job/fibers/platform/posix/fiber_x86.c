@@ -19,8 +19,8 @@
 
 #include <job/fibers/fiber_api.h>
 #include <stdint.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct fiber_registers
 {
@@ -45,17 +45,17 @@ fiber_registers_t* fiber_init(void* stack, uint32_t stack_size, void (*target)(v
     fiber_registers_t* reg = malloc(sizeof(fiber_registers_t));
     memset(stack, 0, stack_size);
 
-    // NOTE (Anton): Original comment belongs to MARL authors. Function signature was changed from marl_fiber_set_target to fiber_init for
-    // clarity. The stack pointer needs to be 16-byte aligned when making a 'call'. The 'call' instruction automatically pushes the return
-    // instruction to the stack (4-bytes), before making the jump. The fiber_init() assembly function does not use 'call', instead it uses
-    // 'jmp', so we need to offset the ESP pointer by 4 bytes so that the stack is still 16-byte aligned when the return target is
-    // stack-popped by the callee.
+    // NOTE (Anton): Original comment belongs to MARL authors. Function signature was changed from marl_fiber_set_target
+    // to fiber_init for clarity. The stack pointer needs to be 16-byte aligned when making a 'call'. The 'call'
+    // instruction automatically pushes the return instruction to the stack (4-bytes), before making the jump. The
+    // fiber_init() assembly function does not use 'call', instead it uses 'jmp', so we need to offset the ESP pointer
+    // by 4 bytes so that the stack is still 16-byte aligned when the return target is stack-popped by the callee.
     uintptr_t* stack_top = (uintptr_t*)((uint8_t*)(stack) + stack_size);
-    reg->eip = (uintptr_t)&fiber_bridge;
-    reg->esp = (uintptr_t)&stack_top[-5];
-    stack_top[-3] = (uintptr_t)arg;
-    stack_top[-4] = (uintptr_t)target;
-    stack_top[-5] = 0;  // No return target.
+    reg->eip             = (uintptr_t)&fiber_bridge;
+    reg->esp             = (uintptr_t)&stack_top[-5];
+    stack_top[-3]        = (uintptr_t)arg;
+    stack_top[-4]        = (uintptr_t)target;
+    stack_top[-5]        = 0;  // No return target.
     return reg;
 }
 

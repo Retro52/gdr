@@ -16,7 +16,7 @@ void platform::vk_destroy_buffer(VmaAllocator allocator, vk_buffer& buffer)
 }
 
 result<platform::vk_buffer> platform::vk_create_buffer(u64 size, VkBufferUsageFlags usage, VmaAllocator allocator,
-                                                   VmaAllocationCreateFlags allocation_flags)
+                                                       VmaAllocationCreateFlags allocation_flags)
 {
     ZoneScoped;
 
@@ -29,8 +29,9 @@ result<platform::vk_buffer> platform::vk_create_buffer(u64 size, VkBufferUsageFl
     return platform::vk_create_buffer(buffer_info, allocator, allocation_flags);
 }
 
-result<platform::vk_buffer> platform::vk_create_buffer(const VkBufferCreateInfo& buffer_create_info, VmaAllocator allocator,
-                                                   VmaAllocationCreateFlags allocation_flags)
+result<platform::vk_buffer> platform::vk_create_buffer(const VkBufferCreateInfo& buffer_create_info,
+                                                       VmaAllocator allocator,
+                                                       VmaAllocationCreateFlags allocation_flags)
 {
     ZoneScoped;
 
@@ -49,7 +50,7 @@ result<platform::vk_buffer> platform::vk_create_buffer(const VkBufferCreateInfo&
 }
 
 result<VkBufferView> platform::vk_create_buffer_view(VkDevice device, VkBuffer buffer, VkFormat format, u64 offset,
-                                                   u64 range)
+                                                     u64 range)
 {
     ZoneScoped;
 

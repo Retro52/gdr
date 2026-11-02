@@ -1,9 +1,10 @@
 #pragma once
 
-#include <meshoptimizer.h>
 #include <pod_types.hpp>
 
-namespace cpp
+#include <meshoptimizer.h>
+
+namespace core
 {
     struct f16
     {

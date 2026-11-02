@@ -1,10 +1,9 @@
-#include <types.hpp>
-
-#include <cpp/containers/stack_string.hpp>
+#include <core/containers/stack_string.hpp>
 #include <janitor.hpp>
 #include <job/scheduler.hpp>
 #include <job/wait_group.hpp>
 #include <tracy/Tracy.hpp>
+#include <types.hpp>
 
 #include <cassert>
 #include <chrono>
@@ -52,7 +51,7 @@ void scheduler::yield(const fiber* fiber)
     if (fiber != m_thread_states[fiber_tid].manager)
     {
         auto& queue = m_queues[fiber_tid];
-        cpp::ref<job::fiber> worker;
+        core::ref<job::fiber> worker;
 
         {
             std::unique_lock lock(queue.mutex);
@@ -196,7 +195,7 @@ void scheduler::resize_thread_pool(u64 thread_count)
 
 void scheduler::worker_loop(const u32 thread_id)
 {
-    const auto str = cpp::stack_string::make_formatted("Worker %u", thread_id);
+    const auto str = core::stack_string::make_formatted("Worker %u", thread_id);
     tracy::SetThreadName(str.c_str());
 
     ZoneScoped;
@@ -208,8 +207,8 @@ void scheduler::worker_loop(const u32 thread_id)
     }
 
     // manager fiber is just a stub for default worker_loop registers state (aka context)
-    const cpp::ref<fiber> worker  = create_worker(thread_id);
-    const cpp::ref<fiber> manager = cpp::make_ref<fiber>();
+    const core::ref<fiber> worker  = create_worker(thread_id);
+    const core::ref<fiber> manager = core::make_ref<fiber>();
 
     m_thread_states[thread_id] = {worker, manager};
     manager->swap(worker);
@@ -244,11 +243,11 @@ void scheduler::swap_to_manager(fiber* from)
     current_copy->swap(manager);
 }
 
-cpp::ref<fiber> scheduler::create_worker(u32 thread_id)
+core::ref<fiber> scheduler::create_worker(u32 thread_id)
 {
     ZoneScoped;
     // 1MB for a stack is more than enough
-    const cpp::ref<fiber> worker = cpp::make_ref<fiber>(
+    const core::ref<fiber> worker = core::make_ref<fiber>(
         1_MB,
         thread_id,
         [this, thread_id](auto* self)
@@ -268,7 +267,7 @@ cpp::ref<fiber> scheduler::create_worker(u32 thread_id)
         });
 
 #if TRACY_ENABLE
-    worker->set_tracy_name(cpp::stack_string::make_formatted("Fiber for %u", thread_id));
+    worker->set_tracy_name(core::stack_string::make_formatted("Fiber for %u", thread_id));
 #endif
 
     return worker;
@@ -282,8 +281,8 @@ bool scheduler::spin_work(const u32 thread_id, const scheduler::rng_func& rng)
         return false;
     }
 
-    std::function<void()> task  = nullptr;
-    cpp::ref<fiber> queue_fiber = nullptr;
+    std::function<void()> task   = nullptr;
+    core::ref<fiber> queue_fiber = nullptr;
 
     auto& queue = m_queues[thread_id];
 

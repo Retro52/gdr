@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cpp/containers/local_array.hpp>
+#include <core/containers/local_array.hpp>
 #include <fs/fs.hpp>
 #include <render/platform/d3d12/d3d12_device.hpp>
 #include <render/rhi_pso_options.hpp>
@@ -94,7 +94,7 @@ namespace platform
     struct d3d12_pipeline
     {
         d3d12_root_signature rs;
-        cpp::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
+        core::heap_array<platform::com_ptr<ID3D12PipelineState>> variants;
 
         uvec3 work_group_size             = uvec3(0);
         D3D12_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;

@@ -1,8 +1,8 @@
 #include <job/aligned_alloc.hpp>
 #include <job/aligned_memory.hpp>
+#include <tracy/Tracy.hpp>
 
 #include <cassert>
-#include <tracy/Tracy.hpp>
 
 using namespace job;
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cpp/alg_constexpr.hpp>
-#include <cpp/containers/heap_array.hpp>
+#include <core/alg_constexpr.hpp>
+#include <core/containers/heap_array.hpp>
 #include <reflection/enum.hpp>
 #include <render/platform/vk/vk_image.hpp>
 #include <render/types.hpp>
@@ -18,7 +18,7 @@ namespace platform
 
     struct vk_swapchain
     {
-        cpp::heap_array<vk_swapchain_image> images;
+        core::heap_array<vk_swapchain_image> images;
         VkSurfaceFormatKHR surface_format;
 
         VkSwapchainKHR sc = VK_NULL_HANDLE;
@@ -34,7 +34,7 @@ namespace platform
     {
         vk_queue_data queues[rhi::kQueueTypesCount];
 
-        cpp::heap_array<const char*> instance_extensions;
+        core::heap_array<const char*> instance_extensions;
         rhi::rendering_features_table enabled_device_features;
 
         VkInstance instance                      = VK_NULL_HANDLE;
