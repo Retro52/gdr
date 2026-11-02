@@ -349,7 +349,7 @@ auto rhi::vk_resize_swapchain(context context, swapchain swapchain, const create
 
     RESULT_FORWARD_IF_FAILED(new_sc);
     platform::vk_destroy_swapchain(*vk_ctx, vk_sc->root);
-    clear_handle(nullptr, swapchain);
+    clear_handle(swapchain);
     vk_sc->root = std::move(*new_sc);
 
     return reference_handle<rhi::swapchain>(vk_sc);
@@ -706,7 +706,7 @@ void rhi::vk_destroy_sampler(context context, sampler& sampler)
     if (vk_ctx && vk_sampler != VK_NULL_HANDLE)
     {
         VK_DESTROY(vk_sampler, vkDestroySampler, vk_ctx->device);
-        clear_handle(nullptr, sampler);
+        clear_handle(sampler);
     }
 }
 

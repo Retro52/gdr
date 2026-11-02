@@ -107,6 +107,12 @@ rhi::impl rhi::create_for_d3d12()
 
         .ffx_upscale_query_jitter = d3d12_ffx_upscale_query_jitter,
         .ffx_upscale_dispatch     = d3d12_ffx_upscale_dispatch,
+
+        .imgui_create_context  = d3d12_imgui_create_context,
+        .imgui_destroy_context = d3d12_imgui_destroy_context,
+
+        .imgui_begin_frame  = d3d12_imgui_begin_frame,
+        .imgui_render_frame = d3d12_imgui_render_frame,
     };
     return result;
 }

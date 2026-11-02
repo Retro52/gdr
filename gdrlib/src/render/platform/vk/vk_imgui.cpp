@@ -293,6 +293,12 @@ auto platform::vk_imgui_create_context(const platform::vk_context& ctx, SDL_Wind
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
+    ImGui::StyleColorsDark();
+
+    ImGuiStyle& style   = ImGui::GetStyle();
+    style.FrameRounding = 3.0f;
+    style.GrabRounding  = 3.0f;
+
     ImGui_ImplSDL3_InitForVulkan(window);
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.ApiVersion                = VK_API_VERSION_1_4;
@@ -387,5 +393,6 @@ void platform::vk_imgui_destroy_context(const platform::vk_context& ctx, vk_imgu
     platform::vk_destroy_image(ctx.device, ctx.allocator, context.atlas_data.atlas_image);
 
     ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
 }
 
