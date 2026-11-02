@@ -4,7 +4,7 @@
 
 #include <atomic>
 
-namespace cpp
+namespace core
 {
     struct ref_control_block
     {

@@ -4,7 +4,7 @@
 
 #include <cstddef>
 
-namespace cpp::crc
+namespace core::hash
 {
     static constexpr u32 kCRCTable32[] = {
         0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f, 0xe963a535, 0x9e6495a3, 0x0edb8832,
@@ -115,10 +115,10 @@ namespace cpp::crc
 // https://en.cppreference.com/cpp/language/user_literal
 constexpr auto operator""_crc32(const char* str, const std::size_t size)
 {
-    return cpp::crc::crc32(str, size);
+    return core::hash::crc32(str, size);
 }
 
 constexpr auto operator""_crc64(const char* str, const std::size_t size)
 {
-    return cpp::crc::crc64(str, size);
+    return core::hash::crc64(str, size);
 }

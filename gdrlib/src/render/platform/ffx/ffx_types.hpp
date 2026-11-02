@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ffx_api.hpp>
+
 #include <ffx_api_types.h>
 
 #define FFX_FAIL_HANDLE(EXPR, FAIL_OP)                            \

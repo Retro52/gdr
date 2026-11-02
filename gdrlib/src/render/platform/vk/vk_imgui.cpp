@@ -169,7 +169,7 @@ void platform::vk_imgui::flush_pending(const VkCommandBuffer cmd)
         return;
     }
 
-    cpp::heap_array<VkImageMemoryBarrier2> barriers(pending_uploads.size());
+    core::heap_array<VkImageMemoryBarrier2> barriers(pending_uploads.size());
 
     for (u32 i = 0; i < pending_uploads.size(); ++i)
     {

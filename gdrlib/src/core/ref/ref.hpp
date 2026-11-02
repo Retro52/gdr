@@ -5,7 +5,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace cpp
+namespace core
 {
     template<typename Type>
     struct ref
@@ -167,23 +167,23 @@ namespace cpp
     }
 
     template<typename T, typename... Args>
-    [[nodiscard]] cpp::ref<T> make_ref(Args&&... args)
+    [[nodiscard]] core::ref<T> make_ref(Args&&... args)
     {
         return new T(std::forward<Args>(args)...);
     }
 
     template<typename T>
-    [[nodiscard]] inline cpp::ref<T> make_count_from_this(T* self) noexcept
+    [[nodiscard]] inline core::ref<T> make_count_from_this(T* self) noexcept
     {
-        return cpp::ref<T>(self);
+        return core::ref<T>(self);
     }
 }
 
 #if ENABLE_STL
 template<typename T>
-struct std::hash<::cpp::ref<T>>
+struct std::hash<::core::ref<T>>
 {
-    constexpr std::size_t operator()(const cpp::ref<T>& t) const noexcept
+    constexpr std::size_t operator()(const core::ref<T>& t) const noexcept
     {
         return std::hash<const void*> {}(static_cast<const void*>(t.get()));
     }

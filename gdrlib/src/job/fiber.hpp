@@ -1,11 +1,11 @@
 #pragma once
 
-#include <cpp/containers/stack_string.hpp>
-#include <cpp/ref/ref_counted.hpp>
+#include <core/containers/stack_string.hpp>
+#include <core/ref/ref_counted.hpp>
 #include <job/aligned_memory.hpp>
-#include <job/fibers/fiber_api.h>
 
 #include <functional>
+#include <job/fibers/fiber_api.h>
 
 #if defined(_WIN32)
 #define JOB_NO_STACK_PTR
@@ -13,7 +13,7 @@
 
 namespace job
 {
-    class fiber : public cpp::ref_counted
+    class fiber : public core::ref_counted
     {
     public:
         using run_func = std::function<void(fiber* self)>;
@@ -36,7 +36,7 @@ namespace job
 #if TRACY_ENABLE
         [[nodiscard]] const char* get_tracy_name() const noexcept;
 
-        void set_tracy_name(const cpp::stack_string& name) noexcept;
+        void set_tracy_name(const core::stack_string& name) noexcept;
 #endif
 
     private:
@@ -46,7 +46,7 @@ namespace job
 
     private:
 #if TRACY_ENABLE
-        cpp::stack_string m_tracy_name;
+        core::stack_string m_tracy_name;
 #endif
         std::function<void(fiber* self)> m_run;
         fiber_registers_t* m_registers {};

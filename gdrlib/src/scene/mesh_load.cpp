@@ -1,14 +1,15 @@
-#include <cgltf.h>
-#include <cpp/containers/stack_string.hpp>
-#include <meshoptimizer.h>
+#include <core/containers/stack_string.hpp>
 #include <scene/mesh_load.hpp>
+
+#include <cgltf.h>
+#include <meshoptimizer.h>
 
 mesh::raw_mesh mesh::build_mesh(const cgltf_primitive& prim)
 {
     ZoneScoped;
 
     mesh::raw_mesh result;
-    cpp::heap_array<u32> indices_work_copy;
+    core::heap_array<u32> indices_work_copy;
 
     {
         auto loaded_raw_prim_data = load_raw_primitive_data(prim);
@@ -85,8 +86,8 @@ mesh::raw_primitive_data mesh::load_raw_primitive_data(const cgltf_primitive& pr
     constexpr int kAttrIdx = 0;
     const u64 vtx_count    = prim.attributes[kAttrIdx].data->count;
 
-    cpp::heap_array<raw_vertex> raw_vertices(vtx_count);
-    cpp::heap_array<cgltf_float> scratch(vtx_count * 4);
+    core::heap_array<raw_vertex> raw_vertices(vtx_count);
+    core::heap_array<cgltf_float> scratch(vtx_count * 4);
 
     auto unpack = [&](const cgltf_attribute_type attr, const u32 offset, const u32 expected_elem_count)
     {
@@ -99,9 +100,9 @@ mesh::raw_primitive_data mesh::load_raw_primitive_data(const cgltf_primitive& pr
 
             for (u64 j = 0; j < vtx_count; ++j)
             {
-                cpp::cx_memcpy(reinterpret_cast<u8*>(&raw_vertices[j]) + offset,
-                               &scratch[j * expected_elem_count],
-                               sizeof(cgltf_float) * expected_elem_count);
+                core::cx_memcpy(reinterpret_cast<u8*>(&raw_vertices[j]) + offset,
+                                &scratch[j * expected_elem_count],
+                                sizeof(cgltf_float) * expected_elem_count);
             }
         }
     };
@@ -111,7 +112,7 @@ mesh::raw_primitive_data mesh::load_raw_primitive_data(const cgltf_primitive& pr
     unpack(cgltf_attribute_type_texcoord, offsetof(raw_vertex, uv), 2);
     unpack(cgltf_attribute_type_tangent, offsetof(raw_vertex, tangent), 4);
 
-    cpp::heap_array<u32> indices(prim.indices->count);
+    core::heap_array<u32> indices(prim.indices->count);
 
     {
         ZoneScopedN("unpack indices");
@@ -119,7 +120,7 @@ mesh::raw_primitive_data mesh::load_raw_primitive_data(const cgltf_primitive& pr
     }
 
     u64 vertex_count = 0;
-    cpp::heap_array<u32> remap(raw_vertices.size());
+    core::heap_array<u32> remap(raw_vertices.size());
 
     {
         ZoneScopedN("generate remap");
@@ -127,7 +128,7 @@ mesh::raw_primitive_data mesh::load_raw_primitive_data(const cgltf_primitive& pr
             remap.data(), indices.data(), indices.size(), raw_vertices.data(), raw_vertices.size(), sizeof(raw_vertex));
     }
 
-    cpp::heap_array<raw_vertex> vertices(vertex_count);
+    core::heap_array<raw_vertex> vertices(vertex_count);
 
     {
         ZoneScopedN("apply remap");
@@ -150,20 +151,20 @@ mesh::raw_primitive_data mesh::load_raw_primitive_data(const cgltf_primitive& pr
     return {.raw_indices = indices, .raw_vertices = vertices};
 }
 
-void mesh::build_meshlets(const cpp::heap_array<raw_vertex>& vertices, const cpp::heap_array<u32>& indices,
-                          cpp::heap_array<raw_meshlet>& meshlets, cpp::heap_array<u8>& meshlets_payload) noexcept
+void mesh::build_meshlets(const core::heap_array<raw_vertex>& vertices, const core::heap_array<u32>& indices,
+                          core::heap_array<raw_meshlet>& meshlets, core::heap_array<u8>& meshlets_payload) noexcept
 {
     ZoneScoped;
     const u64 meshlets_upper_bound = meshopt_buildMeshletsBound(
         indices.size(), shader_constants::kMaxVerticesPerMeshlet, shader_constants::kMaxTrianglesPerMeshlet);
 
     const u64 vertices_offset = indices.size();
-    cpp::heap_array<u8> meshlets_data(indices.size() * 5);
+    core::heap_array<u8> meshlets_data(indices.size() * 5);
 
     u8* meshlet_indices_ptr   = meshlets_data.data();
     u32* meshlet_vertices_ptr = reinterpret_cast<u32*>(meshlets_data.data() + vertices_offset);
 
-    cpp::heap_array<meshopt_Meshlet> meshopt_meshlets(meshlets_upper_bound);
+    core::heap_array<meshopt_Meshlet> meshopt_meshlets(meshlets_upper_bound);
 
     u64 meshlets_count = 0;
     {
@@ -215,14 +216,14 @@ void mesh::build_meshlets(const cpp::heap_array<raw_vertex>& vertices, const cpp
             meshlet.triangles_count = meshopt_meshlet.triangle_count;
             meshlet.vertices_count  = meshopt_meshlet.vertex_count;
 
-            cpp::cx_memcpy(meshlets_payload.data() + total_bytes_written,
-                           &meshlet_vertices_ptr[meshopt_meshlet.vertex_offset],
-                           meshlet.vertices_count * sizeof(u32));
+            core::cx_memcpy(meshlets_payload.data() + total_bytes_written,
+                            &meshlet_vertices_ptr[meshopt_meshlet.vertex_offset],
+                            meshlet.vertices_count * sizeof(u32));
             total_bytes_written += sizeof(u32) * meshlet.vertices_count;
 
-            cpp::cx_memcpy(meshlets_payload.data() + total_bytes_written,
-                           &meshlet_indices_ptr[meshopt_meshlet.triangle_offset],
-                           meshlet.triangles_count * 3);
+            core::cx_memcpy(meshlets_payload.data() + total_bytes_written,
+                            &meshlet_indices_ptr[meshopt_meshlet.triangle_offset],
+                            meshlet.triangles_count * 3);
             total_bytes_written += meshlet.triangles_count * 3;
 
             // align data to 4 bytes to avoid payload overlaps between meshlets

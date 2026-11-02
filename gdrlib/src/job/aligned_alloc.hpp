@@ -2,7 +2,6 @@
 
 #include <types.hpp>
 
-
 namespace job
 {
     void free_aligned(void* ptr);

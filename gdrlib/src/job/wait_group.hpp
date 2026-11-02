@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cpp/ref/ref_counted.hpp>
-#include <cpp/ref/ref.hpp>
+#include <core/ref/ref.hpp>
+#include <core/ref/ref_counted.hpp>
 #include <job/condition_variable.hpp>
 
 #include <atomic>
@@ -29,7 +29,7 @@ namespace job
         void wait_till_done() const;
 
     private:
-        struct Data : public cpp::ref_counted
+        struct Data : public core::ref_counted
         {
             explicit Data(u64 count, scheduler& scheduler)
                 : cv(scheduler)
@@ -42,6 +42,6 @@ namespace job
             std::atomic<u64> count;
         };
 
-        cpp::ref<Data> m_data;
+        core::ref<Data> m_data;
     };
 }

@@ -21,7 +21,8 @@ namespace app
     };
 
     frame_statistics_data query_frame_statistics_data(VkDevice device, platform::vk_query query);
-    pipeline_statistics_data query_pipeline_statistics_data(VkDevice device, platform::vk_query query, u32 query_idx = 0);
+    pipeline_statistics_data query_pipeline_statistics_data(VkDevice device, platform::vk_query query,
+                                                            u32 query_idx = 0);
 
     pipeline_statistics_data operator+(const pipeline_statistics_data& b, const pipeline_statistics_data& a);
 }

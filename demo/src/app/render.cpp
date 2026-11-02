@@ -1,8 +1,8 @@
 #include <app/render.hpp>
-#include <shaders/constants.hlsl.h>
 #include <tracy/Tracy.hpp>
 
 #include <cmath>
+#include <shaders/constants.hlsl.h>
 
 void app::begin_rendering(const rhi::impl& rhi, rhi::command_buffer cmd, rhi::attachment color, rhi::attachment depth,
                           rhi::resource_load_op load_op, rhi::resource_store_op store_op, uvec4 viewport)
@@ -205,7 +205,7 @@ app::depth_pyramid_data app::create_depth_pyramid(const rhi::impl& rhi, const iv
 
     for (u32 i = 0; i < depth_pyramid.pyramid_count; ++i)
     {
-        auto name = cpp::stack_string::make_formatted("HiZB view #%d", i);
+        auto name = core::stack_string::make_formatted("HiZB view #%d", i);
         const rhi::create_image_view_info view_info {
             .range    = {.mips_range = {i, 1}},
             .format   = format,

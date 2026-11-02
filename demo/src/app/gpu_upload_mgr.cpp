@@ -1,6 +1,6 @@
 #include <app/gpu_upload_mgr.hpp>
 #include <app/render.hpp>
-#include <cpp/containers/local_array.hpp>
+#include <core/containers/local_array.hpp>
 
 static u32 gpu_upload_mgr_get_offset(const u32 width, const u32 height, const u32 block_size, const u32 bits_per_block)
 {
@@ -74,7 +74,7 @@ rhi::image app::gpu_upload_mgr::create_texture(const loader::texture_desc& textu
     u32 mip_w      = texture.dimensions.x;
     u32 mip_h      = texture.dimensions.y;
 
-    cpp::local_array<rhi::copy_image_info> regions(texture.mips_count);
+    core::local_array<rhi::copy_image_info> regions(texture.mips_count);
     for (unsigned int i = 0; i < texture.mips_count; ++i)
     {
         regions[i] = {
@@ -113,7 +113,7 @@ rhi::image app::gpu_upload_mgr::create_texture(const loader::texture_desc& textu
 void app::gpu_upload_mgr::submit_internal(const rhi::buffer dst, const u64 dst_offset, const void* data,
                                           u64 bytes) const
 {
-    cpp::cx_memcpy(m_staging_buffer.mapped, data, bytes);
+    core::cx_memcpy(m_staging_buffer.mapped, data, bytes);
 
     const auto cmd = m_staging_cmd;
     m_rhi.cmd_reset(cmd);

@@ -2,14 +2,14 @@
 
 #ifdef __cplusplus
 #pragma once
-#include <cpp/f16.hpp>
+#include <core/f16.hpp>
 #include <glm/fwd.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/mat4x4.hpp>
 #include <pod_types.hpp>
-#include <shaders/constants.hlsl.h>
 
 #include <limits>
+#include <shaders/constants.hlsl.h>
 #else
 #include "constants.hlsl.h"
 #endif
@@ -40,7 +40,7 @@ namespace shader_types
     using float3x3 = glm::mat3;
     using float4x4 = glm::mat4;
 
-    using float16_t = cpp::f16;
+    using float16_t = core::f16;
 
     using shader_constants::kLODCount;
     using shader_constants::kMatClassCount;

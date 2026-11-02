@@ -17,8 +17,7 @@ void job::schedule_async(void (*task)(), const job::wait_group& wg)
         {
             std::invoke(task);
         },
-        wg
-    );
+        wg);
 }
 
 void job::schedule_async(const std::function<void()>& task, const job::wait_group& wg)
@@ -29,8 +28,7 @@ void job::schedule_async(const std::function<void()>& task, const job::wait_grou
         {
             std::invoke(task);
         },
-        wg
-    );
+        wg);
 }
 
 void job::schedule_async_detached(void (*task)())
@@ -40,8 +38,7 @@ void job::schedule_async_detached(void (*task)())
         [=]()
         {
             std::invoke(task);
-        }
-    );
+        });
 }
 
 void job::schedule_async_detached(const std::function<void()>& task)
@@ -51,6 +48,5 @@ void job::schedule_async_detached(const std::function<void()>& task)
         [=]()
         {
             std::invoke(task);
-        }
-    );
+        });
 }

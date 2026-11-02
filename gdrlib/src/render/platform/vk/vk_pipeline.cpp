@@ -1,12 +1,12 @@
 #include <assert2.hpp>
-#include <cpp/containers/heap_array.hpp>
+#include <core/containers/heap_array.hpp>
 #include <fs/fs.hpp>
 #include <render/platform/vk/vk_error.hpp>
 #include <render/platform/vk/vk_pipeline.hpp>
 #include <render/platform/vk/vk_utils.hpp>
 
 #define SPV_ENABLE_UTILITY_CODE
-#include <cpp/containers/local_array.hpp>
+#include <core/containers/local_array.hpp>
 #include <tracy/Tracy.hpp>
 
 #include <iostream>
@@ -176,7 +176,7 @@ namespace
         const VkPushConstantRange* push_constant_ranges = push_constant_count > 0 ? &push_constant_range : nullptr;
 
         const u32 set_layout_count = max_desc_in_use + 1;
-        cpp::heap_array<VkDescriptorSetLayout> desc_set_layouts(set_layout_count);
+        core::heap_array<VkDescriptorSetLayout> desc_set_layouts(set_layout_count);
 
         for (u32 i = 0; i < set_layout_count; ++i)
         {
@@ -245,8 +245,8 @@ vk_shader::shader_meta vk_shader::parse_spirv(const std::span<const u8> spv)
 
     struct spv_struct
     {
-        spv_id* self {nullptr};             // pointer into a spv_ids array declaring instruction (id)
-        cpp::heap_array<spv_id*> children;  // associated members
+        spv_id* self {nullptr};              // pointer into a spv_ids array declaring instruction (id)
+        core::heap_array<spv_id*> children;  // associated members
     };
 
     struct spv_push_desc
@@ -317,12 +317,12 @@ vk_shader::shader_meta vk_shader::parse_spirv(const std::span<const u8> spv)
         return id;
     };
 
-    auto try_parse_local_size = [&](const u32* inst, const cpp::heap_array<spv_id>& spv_ids, const bool force_ids)
+    auto try_parse_local_size = [&](const u32* inst, const core::heap_array<spv_id>& spv_ids, const bool force_ids)
     {
         switch (force_ids ? SpvExecutionModeLocalSizeId : static_cast<SpvExecutionMode>(inst[2]))
         {
         case SpvExecutionModeLocalSize :
-            cpp::cx_copy_n(&work_group_size.x, &inst[3], 3);
+            core::cx_copy_n(&work_group_size.x, &inst[3], 3);
             break;
         case SpvExecutionModeLocalSizeId :
             work_group_size_ids[0] = &spv_ids[inst[3]];
@@ -349,7 +349,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const std::span<const u8> spv)
     assert2(inst[0] == SpvMagicNumber);
 
     const u32 id_count = inst[3];
-    cpp::heap_array<spv_id> spv_ids(id_count);
+    core::heap_array<spv_id> spv_ids(id_count);
 
     // 5 = first actual instruction offset as per specification
     inst += 5;
@@ -461,7 +461,7 @@ vk_shader::shader_meta vk_shader::parse_spirv(const std::span<const u8> spv)
     {
         if (push_desc.set > 0)
         {
-            result.max_binding_set_used |= cpp::max(result.max_binding_set_used, push_desc.set);
+            result.max_binding_set_used |= core::max(result.max_binding_set_used, push_desc.set);
             continue;
         }
 
@@ -547,7 +547,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
                                                  const rhi::pso_options& options)
 {
     ZoneScoped;
-    cpp::heap_array<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
+    core::heap_array<VkPipelineShaderStageCreateInfo> shader_stage_create_infos(shaders_count);
     for (u32 i = 0; i < shaders_count; ++i)
     {
         assert2(shaders[i].meta.stage != VK_SHADER_STAGE_COMPUTE_BIT);
@@ -559,7 +559,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
         };
     }
 
-    cpp::local_array<VkDynamicState> dynamic_states = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    core::local_array<VkDynamicState> dynamic_states = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     if (options.enable_depth_bias)
     {
         dynamic_states.emplace_back(VK_DYNAMIC_STATE_DEPTH_BIAS);
@@ -624,7 +624,7 @@ result<vk_pipeline> vk_pipeline::create_graphics(VkDevice device, const vk_shade
             VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
     };
 
-    const cpp::local_array<VkPipelineColorBlendAttachmentState> color_blend_attachment_states(
+    const core::local_array<VkPipelineColorBlendAttachmentState> color_blend_attachment_states(
         options.color_attachments_count, color_blend_attachment_state);
 
     VkPipelineColorBlendStateCreateInfo color_blend_state_create_info {

@@ -4,9 +4,8 @@
 #include <SDL3/SDL_metal.h>
 #endif
 
+#include <core/tagged_int.hpp>
 #include <types.hpp>
-
-#include <cpp/tagged_int.hpp>
 
 struct SDL_Window;
 

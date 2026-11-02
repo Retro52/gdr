@@ -468,10 +468,10 @@ auto platform::d3d12_create_context(const window& window, const rhi::instance_de
 }
 
 auto platform::d3d12_update_back_buffers(platform::d3d12_context& d3d12_context, IDXGISwapChain4* swapchain,
-                                         const u32 count) -> result<cpp::heap_array<d3d12_sc_back_buffer>>
+                                         const u32 count) -> result<core::heap_array<d3d12_sc_back_buffer>>
 {
     ZoneScoped;
-    cpp::heap_array<platform::d3d12_sc_back_buffer> result(count);
+    core::heap_array<platform::d3d12_sc_back_buffer> result(count);
     for (u32 i = 0; i < count; ++i)
     {
         auto& pfd = result[i];

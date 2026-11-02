@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cpp/hash/crc_hash.hpp>
+#include <core/hash/crc_hash.hpp>
 #include <pod_types.hpp>
 #include <render/rhi.hpp>
 

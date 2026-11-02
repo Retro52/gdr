@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cpp/containers/local_array.hpp>
+#include <core/containers/local_array.hpp>
 #include <pod_types.hpp>
 #include <result.hpp>
 
@@ -18,7 +18,7 @@ namespace platform
         VkCommandBuffer cmd_buffer = VK_NULL_HANDLE;
 
 #if TRACY_ENABLE
-        cpp::local_array<std::unique_ptr<tracy::VkCtxScope>> tracy_alive_scopes;
+        core::local_array<std::unique_ptr<tracy::VkCtxScope>> tracy_alive_scopes;
 #endif
     };
 

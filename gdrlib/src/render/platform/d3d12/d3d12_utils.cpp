@@ -1,8 +1,9 @@
 #pragma once
 
-#include <ddspp.h>
 #include <render/platform/d3d12/d3d12_utils.hpp>
 #include <tracy/Tracy.hpp>
+
+#include <ddspp.h>
 
 static u32 ddspp_format_from_vk(const VkFormat vk_format)
 {
@@ -236,11 +237,11 @@ static u32 ddspp_format_from_vk(const VkFormat vk_format)
     }
 }
 
-cpp::big_stack_string platform::d3d12_wchar_to_utf8(const wchar_t* wide)
+core::big_stack_string platform::d3d12_wchar_to_utf8(const wchar_t* wide)
 {
     ZoneScoped;
-    cpp::big_stack_string buf;
-    WideCharToMultiByte(CP_UTF8, 0, wide, -1, buf.data(), cpp::stack_string::capacity(), nullptr, nullptr);
+    core::big_stack_string buf;
+    WideCharToMultiByte(CP_UTF8, 0, wide, -1, buf.data(), core::stack_string::capacity(), nullptr, nullptr);
     return buf;
 }
 

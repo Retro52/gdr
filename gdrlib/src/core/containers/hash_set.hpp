@@ -1,11 +1,11 @@
 #pragma once
 
 #include <assert2.hpp>
-#include <cpp/alg_constexpr.hpp>
-#include <cpp/hash/crc_hash.hpp>
+#include <core/alg_constexpr.hpp>
+#include <core/hash/crc_hash.hpp>
 #include <pod_types.hpp>
 
-namespace cpp
+namespace core
 {
     template<typename T>
     struct hash_lookup
@@ -53,9 +53,9 @@ namespace cpp
 
         bool has(const T& key, u64 hash) { return occupied(get(key, hash)); }
 
-        void set(const T& key) { set(key, cpp::crc::crc64(reinterpret_cast<const char*>(&key), sizeof(T))); }
+        void set(const T& key) { set(key, core::hash::crc64(reinterpret_cast<const char*>(&key), sizeof(T))); }
 
-        void erase(const T& key) { erase(key, cpp::crc::crc64(reinterpret_cast<const char*>(&key), sizeof(T))); }
+        void erase(const T& key) { erase(key, core::hash::crc64(reinterpret_cast<const char*>(&key), sizeof(T))); }
 
         bool empty() const
         {
@@ -109,8 +109,8 @@ namespace cpp
             m_occupancy  = new u32[occupancy_cells];
             m_tombstones = new u32[occupancy_cells];
 
-            cpp::cx_fill(m_occupancy + 0, m_occupancy + occupancy_cells, 0);
-            cpp::cx_fill(m_tombstones + 0, m_tombstones + occupancy_cells, 0);
+            core::cx_fill(m_occupancy + 0, m_occupancy + occupancy_cells, 0);
+            core::cx_fill(m_tombstones + 0, m_tombstones + occupancy_cells, 0);
         }
 
         // https://github.com/zeux/meshoptimizer/blob/c93ba0987baa84bd73b61edf1c0ba7ba2e48df4b/src/simplifier.cpp

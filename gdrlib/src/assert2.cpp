@@ -1,17 +1,17 @@
-#include <SDL3/SDL.h>
-
 #include <assert2.hpp>
-#include <cpp/hash/hashed_string.hpp>
+#include <core/hash/hashed_string.hpp>
 #include <debug.hpp>
 #include <pod_types.hpp>
+
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <string>
 
 static SDL_Window* g_window = nullptr;
 
-constexpr cpp::hashed_string kEmptySkip  = ""_hs;
-static cpp::hashed_string g_last_skipped = kEmptySkip;
+constexpr core::hashed_string kEmptySkip  = ""_hs;
+static core::hashed_string g_last_skipped = kEmptySkip;
 
 static std::string wrap_text(const char* text)
 {
@@ -74,7 +74,7 @@ void debug::assert2_set_window(SDL_Window* window)
 
 void debug::assert2_show_assert_popup(const char* message)
 {
-    if (g_last_skipped != kEmptySkip && cpp::hashed_string(message) == g_last_skipped)
+    if (g_last_skipped != kEmptySkip && core::hashed_string(message) == g_last_skipped)
     {
         return;
     }
@@ -134,7 +134,7 @@ void debug::assert2_show_assert_popup(const char* message)
         break;
     default :
     case eSkipAll :
-        g_last_skipped = cpp::hashed_string(message);
+        g_last_skipped = core::hashed_string(message);
         break;
     case eSkip :
         g_last_skipped = kEmptySkip;

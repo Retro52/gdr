@@ -1,9 +1,9 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <imgui/imwidgets.hpp>
-#include <ImGuizmo.h>
 #include <reflection/enum.hpp>
 
 #include <glm/gtx/norm.inl>
+#include <ImGuizmo.h>
 #include <string_view>
 #include <unordered_map>
 
@@ -297,16 +297,17 @@ ImGuiWidgets::CommonImageControls ImGuiWidgets::ImageControls(const char* id, f3
 
     if (mips_count > 0.0F)
     {
-        ImGui::SliderFloat(cpp::stack_string::make_formatted("Mip##%s", id).c_str(), &data.mip, 0.0F, mips_count);
+        ImGui::SliderFloat(core::stack_string::make_formatted("Mip##%s", id).c_str(), &data.mip, 0.0F, mips_count);
     }
     else
     {
-        ImGui::DragFloat(cpp::stack_string::make_formatted("Mip##%s", id).c_str(), &data.mip, 1.0F);
+        ImGui::DragFloat(core::stack_string::make_formatted("Mip##%s", id).c_str(), &data.mip, 1.0F);
     }
 
     if (layers_count > 0.0F)
     {
-        ImGui::SliderFloat(cpp::stack_string::make_formatted("Layer##%s", id).c_str(), &data.layer, 0.0F, layers_count);
+        ImGui::SliderFloat(
+            core::stack_string::make_formatted("Layer##%s", id).c_str(), &data.layer, 0.0F, layers_count);
     }
 
     return data;

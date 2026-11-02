@@ -1,9 +1,8 @@
 #pragma once
 
-#include <types.hpp>
-
 #include <glm/fwd.hpp>
 #include <glm/mat4x4.hpp>
+#include <types.hpp>
 
 namespace scene
 {

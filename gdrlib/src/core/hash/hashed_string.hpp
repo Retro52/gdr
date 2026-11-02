@@ -1,8 +1,8 @@
 #pragma once
 
-#include <cpp/alg_constexpr.hpp>
-#include <cpp/containers/stack_string.hpp>
-#include <cpp/hash/crc_hash.hpp>
+#include <core/alg_constexpr.hpp>
+#include <core/containers/stack_string.hpp>
+#include <core/hash/crc_hash.hpp>
 #include <pod_types.hpp>
 
 #if !defined(CPP_HS_STORE_SOURCE)
@@ -13,7 +13,7 @@
 #endif  // !defined(PRODUCTION_BUILD)
 #endif  // !defined(CPP_HS_STORE_SOURCE)
 
-namespace cpp
+namespace core
 {
     struct hashed_string
     {
@@ -30,7 +30,7 @@ namespace cpp
 #endif
 
         constexpr hashed_string(const char* str)
-            : m_hash(crc::crc64(str, cpp::cx_strlen(str)))
+            : m_hash(hash::crc64(str, core::cx_strlen(str)))
 #if CPP_HS_STORE_SOURCE
             , m_str(str)
 #endif
@@ -38,7 +38,7 @@ namespace cpp
         }
 
         explicit constexpr hashed_string(const char* str, u64 len)
-            : m_hash(crc::crc64(str, len))
+            : m_hash(hash::crc64(str, len))
 #if CPP_HS_STORE_SOURCE
             , m_str(str, len)
 #endif
@@ -85,26 +85,26 @@ namespace cpp
 #if CPP_HS_STORE_SOURCE
         [[nodiscard]] auto debug_string() const { return m_str; }
 #else
-        [[nodiscard]] auto debug_string() const { return cpp::stack_string::make_formatted("%ull", m_hash); }
+        [[nodiscard]] auto debug_string() const { return core::stack_string::make_formatted("%ull", m_hash); }
 #endif
 
     private:
         u64 m_hash;
 #if CPP_HS_STORE_SOURCE
-        cpp::stack_string m_str;
+        core::stack_string m_str;
 #endif
     };
 }
 
 constexpr auto operator""_hs(const char* str, const std::size_t size)
 {
-    return cpp::hashed_string(str, size);
+    return core::hashed_string(str, size);
 }
 
 #if ENABLE_STL
 template<>
-struct std::hash<::cpp::hashed_string>
+struct std::hash<::core::hashed_string>
 {
-    constexpr std::size_t operator()(const cpp::hashed_string& t) const noexcept { return t.hash(); }
+    constexpr std::size_t operator()(const core::hashed_string& t) const noexcept { return t.hash(); }
 };
 #endif

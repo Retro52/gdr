@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cpp/ref/ref.hpp>
+#include <core/ref/ref.hpp>
 #include <job/fiber.hpp>
 
 #include <atomic>
@@ -43,15 +43,15 @@ namespace job
         {
             std::mutex mutex;
             std::condition_variable cv;
-            std::queue<std::function<void()>> tasks;     ///< FIFO of plain tasks.
-            std::queue<cpp::ref<fiber>> idle_fibers;     ///< Fibers parked after yielding.
-            std::queue<cpp::ref<fiber>> waiting_fibers;  ///< Fibers ready to resume.
+            std::queue<std::function<void()>> tasks;      ///< FIFO of plain tasks.
+            std::queue<core::ref<fiber>> idle_fibers;     ///< Fibers parked after yielding.
+            std::queue<core::ref<fiber>> waiting_fibers;  ///< Fibers ready to resume.
         };
 
         struct thread_state
         {
-            cpp::ref<fiber> current {nullptr};  ///< Currently running fiber.
-            cpp::ref<fiber> manager {nullptr};  ///< Manager (parking) fiber.
+            core::ref<fiber> current {nullptr};  ///< Currently running fiber.
+            core::ref<fiber> manager {nullptr};  ///< Manager (parking) fiber.
         };
 
         void worker_loop(u32 thread_id);
@@ -60,7 +60,7 @@ namespace job
 
         void swap_to_manager(fiber* from);
 
-        cpp::ref<fiber> create_worker(u32 thread_id);
+        core::ref<fiber> create_worker(u32 thread_id);
 
         bool spin_work(u32 thread_id, const rng_func& rng);
 

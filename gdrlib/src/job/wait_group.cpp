@@ -15,12 +15,12 @@ wait_group::wait_group(u64 initial_count)
 }
 
 wait_group::wait_group(job::scheduler& scheduler)
-    : m_data(cpp::make_ref<Data>(0, scheduler))
+    : m_data(core::make_ref<Data>(0, scheduler))
 {
 }
 
 wait_group::wait_group(job::scheduler& scheduler, u64 initial_count)
-    : m_data(cpp::make_ref<Data>(initial_count, scheduler))
+    : m_data(core::make_ref<Data>(initial_count, scheduler))
 {
 }
 

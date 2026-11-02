@@ -1,10 +1,9 @@
 #pragma once
 
-#include <types.hpp>
-
 #include <pod_types.hpp>
 #include <render/platform/vk/vma.hpp>
 #include <result.hpp>
+#include <types.hpp>
 
 namespace platform
 {

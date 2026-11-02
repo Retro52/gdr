@@ -3,7 +3,7 @@
 #include <assert2.hpp>
 #include <pod_types.hpp>
 
-namespace cpp
+namespace core
 {
     template<typename T, u64 N>
     struct tagged_int

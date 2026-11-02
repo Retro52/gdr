@@ -1,8 +1,8 @@
 #pragma once
 
-#include <volk.h>
-
 #include <assert2.hpp>
+
+#include <volk.h>
 
 #define VK_FAIL_HANDLE(EXPR, FAIL_OP)                                                              \
     switch (res)                                                                                   \

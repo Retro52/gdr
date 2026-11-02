@@ -1,13 +1,13 @@
 #pragma once
 
-#include <cpp/containers/stack_string.hpp>
+#include <core/containers/stack_string.hpp>
 
 #include <filesystem>
 
 namespace fs
 {
     constexpr u64 kMaxPathLength = 260;
-    using path_string            = cpp::stack_string_base<kMaxPathLength>;
+    using path_string            = core::stack_string_base<kMaxPathLength>;
 
     constexpr char path_separator   = '/';
     constexpr char path_terminator  = '\0';

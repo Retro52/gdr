@@ -1,12 +1,12 @@
 #pragma once
 
 #include <bytes.hpp>
-#include <cpp/containers/heap_array.hpp>
+#include <core/containers/heap_array.hpp>
 #include <fs/fs.hpp>
-#include <shaders/constants.hlsl.h>
-#include <shaders/types.hlsl.h>
 
 #include <array>
+#include <shaders/constants.hlsl.h>
+#include <shaders/types.hlsl.h>
 
 class scene;
 struct cgltf_primitive;
@@ -87,23 +87,23 @@ namespace loader
 
     struct meshes_data
     {
-        cpp::heap_array<mesh_info> meshes;
-        cpp::heap_array<mesh::raw_mesh> primitives;
+        core::heap_array<mesh_info> meshes;
+        core::heap_array<mesh::raw_mesh> primitives;
     };
 
     struct scene_data
     {
         scene_counters counters;
 
-        cpp::heap_array<loader::vertex> vertices;
+        core::heap_array<loader::vertex> vertices;
 
-        cpp::heap_array<loader::meshlet> meshlets;
-        cpp::heap_array<u8> meshlets_data;
+        core::heap_array<loader::meshlet> meshlets;
+        core::heap_array<u8> meshlets_data;
 
-        cpp::heap_array<loader::instance> instances;
-        cpp::heap_array<loader::material> materials;
-        cpp::heap_array<loader::primitive> primitives;
-        cpp::heap_array<loader::texture_desc> textures;
+        core::heap_array<loader::instance> instances;
+        core::heap_array<loader::material> materials;
+        core::heap_array<loader::primitive> primitives;
+        core::heap_array<loader::texture_desc> textures;
     };
 
     u32 get_max_lod_tris(const mesh::raw_mesh& mesh);

@@ -25,8 +25,14 @@ auto platform::d3d12_create_buffer(D3D12MA::Allocator* allocator, const u64 size
     const D3D12MA::ALLOCATION_DESC ma_desc = {.HeapType = heap};
 
     com_ptr<ID3D12Resource> handle;
-    D3D12_RETURN_ON_FAIL(allocator->CreateResource3(&ma_desc, &buf_desc, D3D12_BARRIER_LAYOUT_UNDEFINED,
-        nullptr, 0, nullptr, &result.allocation, IID_PPV_ARGS(&handle)));
+    D3D12_RETURN_ON_FAIL(allocator->CreateResource3(&ma_desc,
+                                                    &buf_desc,
+                                                    D3D12_BARRIER_LAYOUT_UNDEFINED,
+                                                    nullptr,
+                                                    0,
+                                                    nullptr,
+                                                    &result.allocation,
+                                                    IID_PPV_ARGS(&handle)));
 
     result.size = size;
     result.va   = handle->GetGPUVirtualAddress();

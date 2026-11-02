@@ -38,7 +38,7 @@ fiber_registers_t* fiber_init_manager()
     fiber_registers_t* reg = malloc(sizeof(fiber_registers_t));
 
     const uint64_t asyncify_stack_size = 1024 * 1024;
-    reg->asyncify_stack_ptr = malloc(asyncify_stack_size);
+    reg->asyncify_stack_ptr            = malloc(asyncify_stack_size);
 
     emscripten_fiber_init_from_current_context(&reg->context, reg->asyncify_stack_ptr, asyncify_stack_size);
     return reg;

@@ -14,20 +14,20 @@
 //         return static_cast<f64>(bytes) / (1024.0 * 1024);
 //     }
 //
-//     cpp::stack_string format_big_number(u64 number)
+//     core::stack_string format_big_number(u64 number)
 //     {
 //         ZoneScoped;
 //
 //         if (number < 1'000)
 //         {
-//             return cpp::stack_string::make_formatted("%d", number);
+//             return core::stack_string::make_formatted("%d", number);
 //         }
 //
 //         const char* magnitudes_per_thousand[] = {"K", "M", "B", "T"};
 //
 //         auto magnitude     = static_cast<i32>(std::log10(number) / 3);
 //         const f64 fraction = static_cast<f64>(number) / glm::pow(1000, magnitude);
-//         return cpp::stack_string::make_formatted("%.3lf%s", fraction, magnitudes_per_thousand[magnitude - 1]);
+//         return core::stack_string::make_formatted("%.3lf%s", fraction, magnitudes_per_thousand[magnitude - 1]);
 //     }
 //
 //     // void draw_shared_buffer_stats(const char* label, const platform::vk_shared_buffer& buffer)
@@ -35,7 +35,7 @@
 //     //     ZoneScoped;
 //     //
 //     //     const auto fraction = static_cast<f32>(buffer.offset) / static_cast<f32>(buffer.size);
-//     //     const auto str      = cpp::stack_string::make_formatted("%s buffer: %.4lf/%.4lf MB used (%.2lf%%)",
+//     //     const auto str      = core::stack_string::make_formatted("%s buffer: %.4lf/%.4lf MB used (%.2lf%%)",
 //     //                                                        label,
 //     //                                                        bytes_to_mb(buffer.offset),
 //     //                                                        bytes_to_mb(buffer.size),
@@ -55,7 +55,8 @@
 //     //     const auto fraction = static_cast<f32>(acc_offset) / static_cast<f32>(acc_size);
 //     //
 //     //     ImGui::Separator();
-//     //     const auto str = cpp::stack_string::make_formatted("All buffers space used: %.4lf/%.4lf MB used (%.2lf%%)",
+//     //     const auto str = core::stack_string::make_formatted("All buffers space used: %.4lf/%.4lf MB used
+//     (%.2lf%%)",
 //     //                                                        bytes_to_mb(acc_offset),
 //     //                                                        bytes_to_mb(acc_size),
 //     //                                                        fraction * 100.0F);
@@ -73,7 +74,7 @@
 //     ImGui::SeparatorText("gpu timings");
 //     codegen::draw(m_gpu_profile);
 //
-//     const auto str = cpp::stack_string::make_formatted("Total triangles rendered: %.3F%%",
+//     const auto str = core::stack_string::make_formatted("Total triangles rendered: %.3F%%",
 //                                                        static_cast<f32>(m_gpu_profile.tris_from_max) * 100.0F);
 //     ImGui::ProgressBar(static_cast<f32>(m_gpu_profile.tris_from_max), ImVec2(0.0F, 0.0F), str.c_str());
 //     ImGui::Text("Tris Max: %s", format_big_number(m_gpu_profile.tris_in_scene_max).c_str());
@@ -92,7 +93,7 @@
 // }
 //
 // void editor::info_widget_context::draw(const char* label,
-//                                        const cpp::heap_array<app::pipeline_statistics_data>& pipeline_stats) const
+//                                        const core::heap_array<app::pipeline_statistics_data>& pipeline_stats) const
 // {
 // #define TABLE_FILL_ENTRY(entry)                                                \
 //     for (u32 i = 0; i < pipeline_stats.size(); ++i)                            \

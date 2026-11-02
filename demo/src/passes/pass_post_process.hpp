@@ -15,7 +15,7 @@ namespace app
             rhi::pipeline pipeline = rhi::null_pipeline;
         };
 
-        rhi::image output          = rhi::null_image;
+        rhi::image output = rhi::null_image;
 
         pass_post_process(const rhi::impl& impl, rhi::context context, uvec2 display_res);
 
@@ -32,7 +32,7 @@ namespace app
 
     private:
         uvec2 m_display_res = uvec2(0);
-        rhi::context m_ctx = rhi::null_context;
+        rhi::context m_ctx  = rhi::null_context;
 
         const rhi::impl& m_rhi;
     };

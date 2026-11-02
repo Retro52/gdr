@@ -27,8 +27,8 @@ D3D12_TEXTURE_BARRIER platform::d3d12_initialize_texture_barrier(ID3D12Resource*
 
 D3D12_TEXTURE_BARRIER platform::d3d12_restore_texture_barrier(D3D12_TEXTURE_BARRIER barrier)
 {
-    barrier.SyncBefore = D3D12_BARRIER_SYNC_ALL;
-    barrier.SyncAfter  = D3D12_BARRIER_SYNC_ALL;
+    barrier.SyncBefore   = D3D12_BARRIER_SYNC_ALL;
+    barrier.SyncAfter    = D3D12_BARRIER_SYNC_ALL;
     barrier.AccessBefore = barrier.AccessAfter;
     barrier.AccessAfter  = D3D12_BARRIER_ACCESS_COMMON;
     barrier.LayoutBefore = barrier.LayoutAfter;
@@ -36,8 +36,8 @@ D3D12_TEXTURE_BARRIER platform::d3d12_restore_texture_barrier(D3D12_TEXTURE_BARR
     return barrier;
 }
 
-void platform::d3d12_append_texture_barriers(cpp::heap_array<D3D12_TEXTURE_BARRIER>& barriers, ID3D12Resource* resource,
-                                             const D3D12_RESOURCE_DESC& desc,
+void platform::d3d12_append_texture_barriers(core::heap_array<D3D12_TEXTURE_BARRIER>& barriers,
+                                             ID3D12Resource* resource, const D3D12_RESOURCE_DESC& desc,
                                              const D3D12_BARRIER_SUBRESOURCE_RANGE& range,
                                              const D3D12_BARRIER_LAYOUT layout, const D3D12_BARRIER_ACCESS access)
 {
@@ -75,7 +75,7 @@ void platform::d3d12_append_texture_barriers(cpp::heap_array<D3D12_TEXTURE_BARRI
     }
 }
 
-void platform::d3d12_append_texture_copy_barriers(cpp::heap_array<D3D12_TEXTURE_BARRIER>& barriers,
+void platform::d3d12_append_texture_copy_barriers(core::heap_array<D3D12_TEXTURE_BARRIER>& barriers,
                                                   ID3D12Resource* resource, const D3D12_RESOURCE_DESC& desc,
                                                   const D3D12_BARRIER_SUBRESOURCE_RANGE& range)
 {

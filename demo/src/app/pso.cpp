@@ -1,6 +1,6 @@
 #include <app/pso.hpp>
-#include <cpp/containers/heap_array.hpp>
-#include <cpp/hash/hashed_string.hpp>
+#include <core/containers/heap_array.hpp>
+#include <core/hash/hashed_string.hpp>
 #include <fs/fs.hpp>
 #include <log.hpp>
 #include <nlohmann/json.hpp>
@@ -26,7 +26,7 @@ namespace
              it != std::filesystem::directory_iterator();
              ++it)
         {
-            result = cpp::max(result, static_cast<u64>(it->last_write_time().time_since_epoch().count()));
+            result = core::max(result, static_cast<u64>(it->last_write_time().time_since_epoch().count()));
         }
 
         return result;
@@ -101,11 +101,11 @@ void app::pso_data::load(const rhi::impl& rhi, const rhi::context context, rhi::
     nlohmann::json info = nlohmann::json::parse(data->get<char>(), data->get<char>() + data->size());
 
     std::unordered_map<u32, rhi::shader> cache;
-    cpp::heap_array<rhi::shader> compiled_shaders;
+    core::heap_array<rhi::shader> compiled_shaders;
 
     auto process = [&](const auto key_it, const nlohmann::json& pipeline_info)
     {
-        const auto key = cpp::crc::crc32(key_it.c_str(), key_it.length());
+        const auto key = core::hash::crc32(key_it.c_str(), key_it.length());
         LOG_DEBUG("Loading pso: {}", key_it.c_str());
 
         if (!pipeline_info.contains("shaders"))
@@ -132,7 +132,7 @@ void app::pso_data::load(const rhi::impl& rhi, const rhi::context context, rhi::
         for (const auto& shader : shaders)
         {
             const auto id        = shader.get<std::string>();
-            const auto shader_id = cpp::crc::crc32(id.c_str(), id.length());
+            const auto shader_id = core::hash::crc32(id.c_str(), id.length());
             const auto it        = cache.find(shader_id);
             if (it == cache.end())
             {

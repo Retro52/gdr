@@ -1,18 +1,18 @@
 #pragma once
 
 #include <assert2.hpp>
-#include <cpp/alg_constexpr.hpp>
+#include <core/alg_constexpr.hpp>
 
 #include <cstdio>
 
 #if ENABLE_STL
-#include <cpp/hash/crc_hash.hpp>
+#include <core/hash/crc_hash.hpp>
 
 #include <string>
 #include <string_view>
 #endif
 
-namespace cpp
+namespace core
 {
     template<u64 N>
     class stack_string_base;
@@ -32,7 +32,7 @@ namespace cpp
 
         // NOLINTNEXTLINE(*-explicit-constructor)
         /* implicit */ [[maybe_unused]] constexpr stack_string_base(const char* str)
-            : stack_string_base(str, cpp::cx_strlen(str))
+            : stack_string_base(str, core::cx_strlen(str))
         {
         }
 
@@ -65,11 +65,11 @@ namespace cpp
 
         explicit constexpr stack_string_base(const char* str, const u64 len) { set_value(str, len); }
 
-        constexpr void clear() { cpp::cx_fill(&m_str[0], m_str + N, 0); }
+        constexpr void clear() { core::cx_fill(&m_str[0], m_str + N, 0); }
 
         [[nodiscard]] constexpr bool empty() const { return m_str[0] == 0; }
 
-        [[nodiscard]] constexpr u64 length() const { return cpp::cx_strlen(m_str); }
+        [[nodiscard]] constexpr u64 length() const { return core::cx_strlen(m_str); }
 
         [[nodiscard]] constexpr static u64 capacity() { return N; }
 
@@ -92,7 +92,7 @@ namespace cpp
             }
 
             stack_string_base ret;
-            count = cpp::min(count, cpp::min(len - off, capacity() - 1));
+            count = core::min(count, core::min(len - off, capacity() - 1));
             ret.set_value(m_str + off, count);
 
             return ret;
@@ -123,7 +123,7 @@ namespace cpp
         static void format_to(stack_string_base<No>& dst, const char* fmt, Args&&... args)
         {
             stack_string_base<No> tmp;
-            snprintf(tmp.data(), No, fmt, cpp::forward<Args>(args)...);
+            snprintf(tmp.data(), No, fmt, core::forward<Args>(args)...);
             dst.set_value(tmp.data(), tmp.length());
         }
 
@@ -131,22 +131,22 @@ namespace cpp
         static auto make_formatted(const char* fmt, Args&&... args) noexcept
         {
             stack_string_base dst;
-            format_to(dst, fmt, cpp::forward<Args>(args)...);
+            format_to(dst, fmt, core::forward<Args>(args)...);
 
             return dst;
         }
 
-        constexpr bool operator==(const char* other) const { return cpp::cx_strcmp(m_str, other) == 0; }
+        constexpr bool operator==(const char* other) const { return core::cx_strcmp(m_str, other) == 0; }
 
 #if ENABLE_STL
-        constexpr bool operator==(const std::string& other) const { return cpp::cx_strcmp(m_str, other.c_str()) == 0; }
+        constexpr bool operator==(const std::string& other) const { return core::cx_strcmp(m_str, other.c_str()) == 0; }
 #endif
 
-        constexpr bool operator==(const stack_string_base& rhs) const { return cpp::cx_strcmp(m_str, rhs.m_str) == 0; }
+        constexpr bool operator==(const stack_string_base& rhs) const { return core::cx_strcmp(m_str, rhs.m_str) == 0; }
 
         constexpr auto& operator=(const char* other)
         {
-            set_value(other, cpp::cx_strlen(other));
+            set_value(other, core::cx_strlen(other));
             return *this;
         }
 
@@ -190,7 +190,7 @@ namespace cpp
 
         constexpr auto& operator+=(const char* other)
         {
-            append_value(other, cpp::cx_strlen(other), this->length());
+            append_value(other, core::cx_strlen(other), this->length());
             return *this;
         }
 
@@ -212,7 +212,7 @@ namespace cpp
         template<u64 No>
         constexpr auto operator+(const stack_string_base<No>& other) const
         {
-            stack_string_base<cpp::max(N, No)> result;
+            stack_string_base<core::max(N, No)> result;
             result += *this;
             result += other;
             return result;
@@ -233,18 +233,18 @@ namespace cpp
     private:
         constexpr void set_value(const char* data, const u64 size)
         {
-            const auto size_clamped = cpp::min(N - 1, size);
+            const auto size_clamped = core::min(N - 1, size);
 
             m_str[size_clamped] = 0;
-            cpp::cx_copy_n(m_str, data, sizeof(char) * size_clamped);
+            core::cx_copy_n(m_str, data, sizeof(char) * size_clamped);
         }
 
         constexpr void append_value(const char* data, const u64 size, u64 offset)
         {
-            const auto size_clamped = cpp::min(N - 1 - offset, size);
+            const auto size_clamped = core::min(N - 1 - offset, size);
 
             m_str[offset + size_clamped] = 0;
-            cpp::cx_copy_n(m_str + offset, data, sizeof(char) * size_clamped);
+            core::cx_copy_n(m_str + offset, data, sizeof(char) * size_clamped);
         }
 
     private:
@@ -254,16 +254,16 @@ namespace cpp
 
 constexpr auto operator""_stack(const char* str, const std::size_t size)
 {
-    return cpp::stack_string(str, size);
+    return core::stack_string(str, size);
 }
 
 #if ENABLE_STL
 template<u64 N>
-struct std::hash<::cpp::stack_string_base<N>>
+struct std::hash<::core::stack_string_base<N>>
 {
-    constexpr auto operator()(const cpp::stack_string_base<N>& t) const noexcept
+    constexpr auto operator()(const core::stack_string_base<N>& t) const noexcept
     {
-        return ::cpp::crc::crc64(t.data(), t.length());
+        return ::core::hash::crc64(t.data(), t.length());
     }
 };
 #endif

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cpp/containers/heap_array.hpp>
+#include <core/containers/heap_array.hpp>
 #include <render/platform/d3d12/d3d12.hpp>
 #include <render/platform/d3d12/d3d12_blit.hpp>
 #include <render/platform/d3d12/d3d12_desc_heap.hpp>
@@ -71,7 +71,7 @@ namespace platform
 
         d3d12_fence sc_sync_fence;
         com_ptr<IDXGISwapChain4> swapchain = nullptr;
-        cpp::heap_array<d3d12_sc_back_buffer> back_buffers;
+        core::heap_array<d3d12_sc_back_buffer> back_buffers;
     };
 
     void d3d12_destroy_context(d3d12_context& ctx);
@@ -83,7 +83,7 @@ namespace platform
     result<d3d12_swapchain> d3d12_create_swapchain(d3d12_context& d3d12_context, DXGI_FORMAT format, ivec2 size,
                                                    u32 frames_in_flight, bool vsync);
 
-    result<cpp::heap_array<d3d12_sc_back_buffer>> d3d12_update_back_buffers(platform::d3d12_context& d3d12_context,
-                                                                            IDXGISwapChain4* swapchain, u32 count);
+    result<core::heap_array<d3d12_sc_back_buffer>> d3d12_update_back_buffers(platform::d3d12_context& d3d12_context,
+                                                                             IDXGISwapChain4* swapchain, u32 count);
 
 }

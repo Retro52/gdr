@@ -1,8 +1,8 @@
-#include <volk.h>
-
 #include <render/platform/vk/vk_error.hpp>
 #include <render/platform/vk/vk_image.hpp>
 #include <tracy/Tracy.hpp>
+
+#include <volk.h>
 
 VkImageSubresourceRange platform::vk_image_subresource_range(VkImageAspectFlags aspect_flag)
 {

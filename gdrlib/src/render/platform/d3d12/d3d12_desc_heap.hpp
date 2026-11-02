@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cpp/containers/heap_array.hpp>
+#include <core/containers/heap_array.hpp>
 #include <pod_types.hpp>
 #include <render/platform/d3d12/d3d12.hpp>
 #include <result.hpp>

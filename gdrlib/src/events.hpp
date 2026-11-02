@@ -1,11 +1,10 @@
 #pragma once
 
-#include <SDL3/SDL.h>
-
-#include <types.hpp>
-
 #include <reflection/enum.hpp>
+#include <types.hpp>
 #include <window.hpp>
+
+#include <SDL3/SDL.h>
 
 #include <array>
 #include <list>

@@ -1,7 +1,7 @@
-#include <SDL3/SDL.h>
-
 #include <tracy/Tracy.hpp>
 #include <window.hpp>
+
+#include <SDL3/SDL.h>
 
 window::window(const char* title, const create_window_info& create_info)
 {

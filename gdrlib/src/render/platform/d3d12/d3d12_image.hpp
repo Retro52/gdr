@@ -1,12 +1,11 @@
 #pragma once
 
-#include <types.hpp>
-
 #include <reflection/enum.hpp>
 #include <render/platform/d3d12/d3d12.hpp>
 #include <render/platform/d3d12/d3d12_desc_heap.hpp>
 #include <render/types.hpp>
 #include <result.hpp>
+#include <types.hpp>
 
 namespace platform
 {
