@@ -5,9 +5,10 @@
 modified to match the cubemap (`--sun_direction -111.432;89.726;-56.784`). 
 ![preview](.github/assets/preview.png "Bistro scene (by Amazon Lumberyard")
 
-C++20/Vulkan GPU-driven renderer focused on modern real-time rendering architecture.
-Implements visibility buffer rendering, GPU-side visibility culling, Hi-Z occlusion culling, indirect draw generation, 
-bindless-style resource access, textures support, and meshlet (cluster) rendering experiments 
+GDR is a GPU-driven renderer focused on modern real-time rendering architecture. It is written using C++ 20 and supports
+both Vulkan and D3D12 rendering backends.
+Rendering features include visibility buffer rendering, GPU-side visibility culling, Hi-Z occlusion culling, 
+indirect draw generation, bindless-style resource access, textures support, and meshlet (cluster) rendering experiments 
 (meshlets occlusion culling, cone culling, etc.).
 
 Rendering features include:
@@ -17,7 +18,6 @@ with no automatic mipmaps generation. While masked geometry is somewhat supporte
 KHR_materials_transmission, KHR_materials_ior, KHR_materials_volume) are not properly rendered.
 * Image-based PBR lighting by a single environment map + one directional light. Environment map is hackingly clamped to 
 max brightness of 10 to avoid double-sun lighting issues.
-* Directional light casts Cascaded Shadow Maps (4096x4096x4 cascades) with tight frustum fitting.
 
 ## Building
 
@@ -38,22 +38,37 @@ cd build
 
 ## Compatible GPUs:
 
-Mesh shading is not required to run the program, although the performance is better with it.
-However, the following Vulkan capabilities are required by default:
+Mesh shading is not required to run the program, although the performance is usually a bit better with it enabled.
+However, the following capabilities are required:
 
-* 8-bit integer storage buffer access
-* 16-bit storage and uniform buffer types
+**Vulkan**
 * Indirect drawing
 * Dynamic rendering
 * Min/max sampler reduction mode
+* 16-bit storage and uniform buffer types
 * Bindless textures (partially bound descriptors, variable descriptor counts, and non-uniform indexing)
 * Scalar block layout
 * Synchronization2
 * Anisotropic filtering
 
+**DX12**:
+* DynamicDepthBiasSupported
+* EnhancedBarriersSupported
+* Native16BitShaderOpsSupported
+* UnrestrictedBufferTextureCopyPitchSupported
+* ResourceBindingTier should be at least tier 3
+* Shader model 6.8 (although I think it could be lowered)
+
 Any Turing, RDNA 2, or newer GPU should run without issues. 
-Older generations, such as RDNA 1 and Pascal, might also support the required features, 
-but they are untested due to lack of access to such hardware.
+Older generations might also support the required features, but they are untested due to lack of access to such hardware.
+
+## Supported OS
+
+Windows is still (sadly) the primary OS for this project. However, Linux builds are part of the CI and even are 
+irregularly tested. Some features are, however, are Windows-only, like FSR AA support.
+
+MacOS-based devices should also work to some degree, but they lack native vulkan support, so everything runs through 
+MoltenVK emulation layer.
 
 ## License
 
