@@ -52,3 +52,6 @@
 [submodule "vendors/fidelity-fx-sdk"]
 	path = vendors/fidelity-fx-sdk
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK
+[submodule "vendors/tinyexr"]
+	path = vendors/tinyexr
+	url = https://github.com/syoyo/tinyexr.git
