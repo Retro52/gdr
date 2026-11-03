@@ -18,6 +18,7 @@
 #include <ddspp.h>
 #include <glm/gtc/type_ptr.inl>
 #include <SDL3_image/SDL_image.h>
+#include <tinyexr.h>
 #include <type_traits>
 #include <variant>
 
@@ -38,11 +39,50 @@ namespace
         ddspp::Descriptor dds_descriptor;
     };
 
+    struct exr_data
+    {
+        uvec2 size;
+        bytes pixels;
+    };
+
     struct parsed_texture
     {
         loader::texture_usage usage {loader::texture_usage::unknown};
-        std::variant<dds_data, SDL_Surface*> desc;
+        std::variant<dds_data, exr_data, SDL_Surface*> desc;
     };
+
+    result<exr_data> read_exr_data(const bytes& data)
+    {
+        int width = 0, height = 0;
+        float* pixels   = nullptr;
+        const char* err = nullptr;
+
+        if (LoadEXRFromMemory(&pixels, &width, &height, data.get<u8>(), data.size(), &err) != TINYEXR_SUCCESS)
+        {
+            assert2m(false, err);
+            FreeEXRErrorMessage(err);
+            return error("failed to load EXR image");
+        }
+
+        SUMMON_JANITOR(free(pixels));
+
+        exr_data result {
+            .size = {width, height},
+        };
+
+        result.pixels = bytes(width * height * 4 * sizeof(core::f16));
+        auto* dst     = result.pixels.get<core::f16>();
+
+        for (u32 i = 0; i < result.pixels.length<core::f16>(); i += 4)
+        {
+            dst[i + 0] = pixels[i + 0];
+            dst[i + 1] = pixels[i + 1];
+            dst[i + 2] = pixels[i + 2];
+            dst[i + 3] = pixels[i + 3];
+        }
+
+        return result;
+    }
 
     loader::texture_usage try_get_texture_usage(const cgltf_data* data, const cgltf_texture* texture)
     {
@@ -106,18 +146,28 @@ namespace
                     result.pdata = bytes(data.data.template get<u8>() + data.dds_descriptor.headerSize,
                                          data.data.template length<u8>() - data.dds_descriptor.headerSize);
                 }
+                else if constexpr (std::is_same_v<desc_t, exr_data>)
+                {
+                    result.dimensions     = uvec3(data.size, 1);
+                    result.mips_count     = 1;
+                    result.arrays_count   = 1;
+                    result.bits_per_block = 64;
+                    result.format         = rhi::image_format::r16g16b16a16sf;
+                    result.pdata          = std::move(data.pixels);
+                }
                 else if constexpr (std::is_same_v<desc_t, SDL_Surface*>)
                 {
                     result.dimensions = uvec3(data->w, data->h, 1);
 
-                    result.mips_count   = 1;
-                    result.arrays_count = 1;
-                    result.pdata        = bytes(data->pixels, data->pitch * data->h);
-                    result.format       = rhi::image_format::r8g8b8a8un;
+                    result.mips_count     = 1;
+                    result.arrays_count   = 1;
+                    result.bits_per_block = 32;
+                    result.pdata          = bytes(data->pixels, data->pitch * data->h);
+                    result.format         = rhi::image_format::r8g8b8a8un;
                 }
                 else
                 {
-                    assert2m(false, "Unsupported data type");
+                    static_assert(sizeof(T) == 0, "Unsupported data type");
                 }
             },
             parsed_texture.desc);
@@ -316,6 +366,16 @@ static result<parsed_texture> read_texture(const fs::path& uri, loader::texture_
         }
 
         result.desc = dds_data {.data = *r_data, .dds_descriptor = desc};
+        return result;
+    }
+
+    constexpr u8 kEXRMagic[] = {0x76, 0x2f, 0x31, 0x01};
+    if (std::memcmp(r_data->data(), kEXRMagic, 4) == 0)
+    {
+        const auto exr_data = read_exr_data(*r_data);
+        RESULT_FORWARD_IF_FAILED(exr_data);
+
+        result.desc = *exr_data;
         return result;
     }
 
