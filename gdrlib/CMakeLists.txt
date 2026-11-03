@@ -34,6 +34,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
         EnTT::EnTT
         volk::volk
         quill::quill
+        tinyexr::tinyexr
         Tracy::TracyClient
         gch::gch_small_vector
         SDL3_image::SDL3_image

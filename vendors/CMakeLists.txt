@@ -72,6 +72,10 @@ target_include_directories(cgltf INTERFACE cgltf)
 add_library(ddspp INTERFACE)
 target_include_directories(ddspp INTERFACE ddspp)
 
+add_subdirectory(tinyexr)
+add_library(tinyexr::tinyexr ALIAS tinyexr)
+target_include_directories(tinyexr PUBLIC "tinyexr")
+
 add_library(ffx_api INTERFACE)
 add_library(ffx::ffx_api ALIAS ffx_api)
 target_include_directories(ffx_api
