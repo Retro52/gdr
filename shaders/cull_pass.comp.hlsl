@@ -2,6 +2,8 @@
 #include "utils/gather.hlsl"
 #include "include/shaders/types.hlsl.h"
 
+#define TRANSPARENCIES_BUCKET_ONLY 0
+
 StructuredBuffer<MeshData>     meshes_data:         register(t0);
 StructuredBuffer<MeshInstance> mesh_instances:      register(t1);
 StructuredBuffer<MeshMaterial> mesh_materials:      register(t2);
@@ -36,10 +38,16 @@ void main(uint3 global_id: SV_DispatchThreadID)
     bool inv_visibility_bit = (GET_BIT(mesh_visibility_buffer[idx >> 5], idx & 31u) == 0);
     uint material_class = uint(mesh_materials[mesh_instances[idx].material_index].material_class);
 
-#ifdef FOR_LATE_OCCLUSION_TEST
-    const bool early_out = DBG_GET_BIT1(frame_cull[0].flags, kOcclusionCullBit) == 0 && material_class != kMatClassTranslucent;
+#if TRANSPARENCIES_BUCKET_ONLY
+    const bool bucket_only = material_class == kMatClassTranslucent;
 #else
-    bool early_out = (inv_visibility_bit && DBG_GET_BIT1(frame_cull[0].flags, kOcclusionCullBit) == 1) || material_class == kMatClassTranslucent;
+    const bool bucket_only = false;
+#endif
+
+#ifdef FOR_LATE_OCCLUSION_TEST
+    const bool early_out = DBG_GET_BIT1(frame_cull[0].flags, kOcclusionCullBit) == 0 && !bucket_only;
+#else
+    bool early_out = (inv_visibility_bit && DBG_GET_BIT1(frame_cull[0].flags, kOcclusionCullBit) == 1) || bucket_only;
 #endif
 
     if (idx >= frame_cull[0].draw_count || early_out)
@@ -109,7 +117,7 @@ void main(uint3 global_id: SV_DispatchThreadID)
             draw_indirect_cmds[dcii].meshlet_offset = selected_lod.base_meshlet + offset;
             draw_indirect_cmds[dcii].visibility_offset = mesh_instances[idx].visibility_offset + offset;
 #ifdef FOR_LATE_OCCLUSION_TEST
-            uint drawn_in_early_bit = (!inv_visibility_bit && material_class != kMatClassTranslucent) ? 1 : 0;
+            uint drawn_in_early_bit = (!inv_visibility_bit && !bucket_only) ? 1 : 0;
             draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups) | drawn_in_early_bit << 31;
 #else
             draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups);

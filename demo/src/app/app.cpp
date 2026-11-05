@@ -536,6 +536,18 @@ int app::instance::run()
     bool freeze_cull_data         = false;
     bool enable_meshlets_pipeline = mesh_shading_supported;
 
+    u32 tracy_meshlets_current_section    = 0;
+    auto tracy_meshlets_on_section_change = [&]
+    {
+        if (tracy_meshlets_current_section)
+        {
+            TracySectionLeave(tracy_meshlets_current_section);
+        }
+
+        tracy_meshlets_current_section = TracySectionEnter(enable_meshlets_pipeline ? "MS PIPELINE" : "VS PIPELINE");
+    };
+    tracy_meshlets_on_section_change();
+
     aa_backend aa_mode = aa_pass.get_current_backend();
 
     struct keyboard_controls_context
@@ -836,7 +848,10 @@ int app::instance::run()
                             utils::format_counter_number(scene_data.counters.meshlets).c_str());
 
                 ImGui::BeginDisabled(!mesh_shading_supported);
-                ImGui::Checkbox("Enable mesh pipeline", &enable_meshlets_pipeline);
+                if (ImGui::Checkbox("Enable mesh pipeline", &enable_meshlets_pipeline))
+                {
+                    tracy_meshlets_on_section_change();
+                }
                 ImGui::EndDisabled();
 
                 ImGuiWidgets::EnumDrag("AA mode", aa_mode);

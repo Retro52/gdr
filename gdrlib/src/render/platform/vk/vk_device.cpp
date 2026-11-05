@@ -472,6 +472,10 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(const VkDebugUtilsMessageSeverity
         "Expected Use of Matrix type and Result Type to be identical",
         "Cannot store to OpTypeImage, OpTypeSampler, OpTypeSampledImage, or OpTypeAccelerationStructureKHR objects",
         "OpImage format of VK_FORMAT_R16G16B16A16_SFLOAT which has 4 components, but the OpImageWrite Texel operand only contains 3 components",
+
+        // FSR 3.1.6 hidden requirements or errors
+        "SPIR-V Capability ComputeDerivativeGroupLinearKHR was declared",
+        "SPIR-V Extension SPV_KHR_compute_shader_derivatives was declared",
     };
 
     std::string_view msg(pCallbackData->pMessage);

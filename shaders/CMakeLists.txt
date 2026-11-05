@@ -110,8 +110,17 @@ function(add_shaders_dependency TARGET SHADERS_BIN_FOLDER)
     string(REPLACE ";" "__SKIP__" SHADERS_CONFIG "${SHADERS_CONFIG}")
     string(REPLACE "\n" ";" SHADERS_CONFIG "${SHADERS_CONFIG}")
 
-    set(DXC_SPIRV_CONFIG_FLAGS "$<IF:$<CONFIG:Debug>,-Zi,-O3>")
-    set(DXC_DXIL_CONFIG_FLAGS "$<IF:$<CONFIG:Debug>,-Zi$<SEMICOLON>-Qembed_debug,-O3>")
+    set(DXC_SPIRV_CONFIG_FLAGS
+            "$<$<CONFIG:Debug>:-Zi>"
+            "$<$<CONFIG:RelWithDebInfo>:-O3$<SEMICOLON>-Zi>"
+            "$<$<CONFIG:Release,MinSizeRel>:-O3>"
+    )
+
+    set(DXC_DXIL_CONFIG_FLAGS
+            "$<$<CONFIG:Debug>:-Zi$<SEMICOLON>-Qembed_debug>"
+            "$<$<CONFIG:RelWithDebInfo>:-O3$<SEMICOLON>-Zi$<SEMICOLON>-Qembed_debug>"
+            "$<$<CONFIG:Release,MinSizeRel>:-O3>"
+    )
 
     foreach (SHADER_CONFIG IN LISTS SHADERS_CONFIG)
         if (NOT SHADER_CONFIG)
