@@ -448,6 +448,10 @@ auto platform::d3d12_create_context(const window& window, const rhi::instance_de
         d3d12_create_desc_heap(context.device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, kD3D12_DSV_HeapMaxDescCount);
     RESULT_FORWARD_IF_FAILED(dsv_desc_heap);
 
+#if TRACY_ENABLE
+    context.tracy_ctx = TracyD3D12Context(context.device.Get(), context.queues[kD3D12_CommandQueueDirect].Get());
+#endif
+
     context.blit = *blit;
 
     context.rtv_descriptor_heap             = *rtv_desc_heap;
@@ -509,7 +513,7 @@ void platform::d3d12_destroy_swapchain(d3d12_context& d3d12_context, d3d12_swapc
 }
 
 auto platform::d3d12_create_swapchain(d3d12_context& d3d12_context, const DXGI_FORMAT format, const ivec2 size,
-                                      const u32 frames_in_flight, const bool vsync) -> result<d3d12_swapchain>
+                                      const u32 request_images_count, const bool vsync) -> result<d3d12_swapchain>
 {
     ZoneScoped;
 
@@ -527,7 +531,7 @@ auto platform::d3d12_create_swapchain(d3d12_context& d3d12_context, const DXGI_F
         .Stereo      = FALSE,
         .SampleDesc  = {.Count = 1, .Quality = 0},
         .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_BACK_BUFFER,
-        .BufferCount = frames_in_flight,
+        .BufferCount = request_images_count,
         .Scaling     = DXGI_SCALING_NONE,
         .SwapEffect  = DXGI_SWAP_EFFECT_FLIP_DISCARD,
         .AlphaMode   = DXGI_ALPHA_MODE_UNSPECIFIED,
@@ -555,7 +559,7 @@ auto platform::d3d12_create_swapchain(d3d12_context& d3d12_context, const DXGI_F
     result.flags         = vsync ? (result.flags | swapchain_flag::vsync) : result.flags;
     result.flags         = tearing_supported ? (result.flags | swapchain_flag::tearing) : result.flags;
 
-    auto back_buffers = d3d12_update_back_buffers(d3d12_context, result.swapchain.Get(), frames_in_flight);
+    auto back_buffers = d3d12_update_back_buffers(d3d12_context, result.swapchain.Get(), request_images_count);
     RESULT_FORWARD_IF_FAILED(back_buffers);
 
     result.back_buffers = std::move(*back_buffers);

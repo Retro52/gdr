@@ -43,7 +43,7 @@ namespace rhi
     void d3d12_destroy_pso(context context, pipeline& pso);
 
     result<shader_stage> d3d12_query_shader_stage(shader shader);
-    result<u32> d3d12_query_current_frame_index(swapchain swapchain);
+    result<u32> d3d12_query_swapchain_image_index(swapchain swapchain);
     result<u32> d3d12_query_swapchain_images_count(swapchain swapchain);
     result<image_format> d3d12_query_swapchain_color_format(swapchain swapchain);
     result<bool> d3d12_query_feature_support(context context, feature_flag feature);
@@ -106,8 +106,8 @@ namespace rhi
     void d3d12_cmd_debug_label_begin(command_buffer cmd, context context, const debug_label& label);
     void d3d12_cmd_debug_label_end(command_buffer cmd, context context);
 
+    void d3d12_present(swapchain swapchain, queue queue);
     void d3d12_submit(context context, queue queue, const submit_info& info);
-    void d3d12_present(command_buffer cmd, swapchain swapchain, queue submit, queue present);
 
     result<ffx_context> d3d12_ffx_create_upscale_context(context ctx, const ffx_upscale_desc& desc);
     void d3d12_ffx_destroy_context(ffx_context& ffx_ctx);

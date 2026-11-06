@@ -118,7 +118,7 @@ void app::pass_geometry::draw(const rhi::command_buffer cmd, const common_resour
                               const loader::scene_counters& counters, const draw_params& params) const
 {
     ZoneScoped;
-    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "V-buffer pass");
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "V-buffer");
 
     const bool occlusion_cull_pass = params.flags & app::gpass_flags::hizb_cull;
     const bool use_mesh_shaders    = params.flags & app::gpass_flags::use_mesh_shaders;
@@ -193,7 +193,7 @@ void app::pass_geometry::create_resources(const uvec2 render_res)
 void app::pass_geometry::on_pre_draw(const rhi::command_buffer cmd) const
 {
     ZoneScoped;
-    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "on_pre_draw");
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Prepare V-buffer resources");
 
     constexpr rhi::ds_clear_value kDSClear    = {.depth = 0.0F, .stencil = 0};
     constexpr rhi::color_clear_value kVBClear = {.u4 = uvec4(~0U)};
@@ -236,7 +236,7 @@ void app::pass_geometry::on_pre_draw(const rhi::command_buffer cmd) const
 void app::pass_geometry::build_hzb(rhi::command_buffer cmd) const
 {
     ZoneScoped;
-    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "build_hzb");
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Build HiZB");
 
     constexpr rhi::global_barrier barrier {
         .before =
@@ -294,7 +294,7 @@ void app::pass_geometry::cull_scene(const rhi::command_buffer cmd, const common_
                                     const loader::scene_counters& counters, const bool occlusion_cull) const
 {
     ZoneScoped;
-    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "cull_scene");
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Cull scene");
 
     reset_draw_count_buffer(m_rhi, cmd, mesh_draw_count);
 
@@ -337,7 +337,7 @@ void app::pass_geometry::draw_scene(const rhi::command_buffer cmd, const common_
                                     const u32 material_class, const bool mesh_pipeline) const
 {
     ZoneScoped;
-    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "draw_scene");
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Draw scene");
 
     constexpr rhi::barrier_stage_bits kAttachmentStages = rhi::barrier_stage::color_attachment
                                                         | rhi::barrier_stage::early_depth_stencil
@@ -420,7 +420,7 @@ void app::pass_geometry::build_indexed_draw_commands(const rhi::command_buffer c
                                                      const bool enable_occlusion_cull) const
 {
     ZoneScoped;
-    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "build_indexed_draw_commands");
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Build indexed draw commands");
 
 #if defined(__APPLE__)
     app::zero_buffer(m_rhi, cmd, indexed_draw_commands);
