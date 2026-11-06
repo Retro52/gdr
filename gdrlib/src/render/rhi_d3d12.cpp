@@ -792,9 +792,7 @@ auto rhi::d3d12_create_image(context context, const create_image_info& image_inf
     }
 
     const auto d3d12_type =
-        image_info.dimensions.y > 1
-            ? (image_info.dimensions.z > 1 ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D)
-            : D3D12_RESOURCE_DIMENSION_TEXTURE1D;
+        image_info.dimensions.z > 1 ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     const auto d3d12_dimensions = uvec3(
         image_info.dimensions.x, image_info.dimensions.y, core::max(image_info.dimensions.z, image_info.layer_count));
 

@@ -573,9 +573,7 @@ auto rhi::vk_create_image(context context, const create_image_info& image_info) 
     const VkImageCreateInfo image_create_info = {
         .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .flags         = image_info.layer_count == 6 ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0U,
-        .imageType     = image_info.dimensions.z > 1 ? VK_IMAGE_TYPE_3D
-                       : image_info.dimensions.y > 1 ? VK_IMAGE_TYPE_2D
-                                                     : VK_IMAGE_TYPE_1D,
+        .imageType     = image_info.dimensions.z > 1 ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D,
         .format        = static_cast<VkFormat>(image_info.format),
         .extent        = extent,
         .mipLevels     = image_info.mips_count,
