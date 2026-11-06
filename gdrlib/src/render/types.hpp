@@ -607,7 +607,7 @@ namespace rhi
     struct create_swapchain_info
     {
         ivec2 size;
-        u32 frames_in_flight     = 2;
+        u32 request_images_count = 3;
         rhi::image_format format = image_format::r8g8b8a8un;
         bool vsync               = false;
     };
@@ -623,6 +623,8 @@ namespace rhi
         std::span<const fence_submit_info> waits;
         std::span<const fence_submit_info> signals;
         std::span<const command_buffer> command_buffers;
+
+        swapchain sc_to_sync = rhi::null_swapchain;
     };
 
     struct debug_label

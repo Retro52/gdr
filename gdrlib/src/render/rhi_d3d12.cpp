@@ -507,7 +507,7 @@ auto rhi::d3d12_create_swapchain(context context, const create_swapchain_info& d
     auto sc = platform::d3d12_create_swapchain(*d3d12_ctx,
                                                platform::d3d12_format_from_vk(static_cast<VkFormat>(desc.format)),
                                                desc.size,
-                                               desc.frames_in_flight,
+                                               desc.request_images_count,
                                                desc.vsync);
 
     RESULT_FORWARD_IF_FAILED(sc);
@@ -535,14 +535,14 @@ auto rhi::d3d12_resize_swapchain(context context, swapchain swapchain, const cre
     }
 
     D3D12_RETURN_ON_FAIL(
-        d3d12_sc->swapchain->ResizeBuffers(desc.frames_in_flight,
+        d3d12_sc->swapchain->ResizeBuffers(desc.request_images_count,
                                            desc.size.x,
                                            desc.size.y,
                                            platform::d3d12_format_from_vk(static_cast<VkFormat>(desc.format)),
                                            new_flags));
 
     auto new_buffers =
-        platform::d3d12_update_back_buffers(*d3d12_ctx, d3d12_sc->swapchain.Get(), desc.frames_in_flight);
+        platform::d3d12_update_back_buffers(*d3d12_ctx, d3d12_sc->swapchain.Get(), desc.request_images_count);
     RESULT_FORWARD_IF_FAILED(new_buffers);
 
     d3d12_sc->flags        = desc.vsync ? d3d12_sc->flags | platform::swapchain_flag::vsync
@@ -606,7 +606,7 @@ auto rhi::d3d12_create_command_buffer(context context, const queue_kind queue_ki
         };
     }
 
-    return create_handle<command_buffer>(*command_list);
+    return create_handle<command_buffer>(std::move(*command_list));
 }
 
 void rhi::d3d12_destroy_command_buffer(context context, command_buffer& cmd)
@@ -1023,7 +1023,7 @@ auto rhi::d3d12_query_shader_stage(shader shader) -> result<shader_stage>
     return error("Failed to query shader stage");
 }
 
-result<u32> rhi::d3d12_query_current_frame_index(swapchain swapchain)
+result<u32> rhi::d3d12_query_swapchain_image_index(swapchain swapchain)
 {
     ZoneScoped;
     const auto* d3d12_sc = cast_from_handle<platform::d3d12_swapchain>(swapchain);
@@ -1188,6 +1188,11 @@ auto rhi::d3d12_acquire_next_swapchain_image(context context, swapchain swapchai
     {
         return error("Failed to access context or swapchain");
     }
+
+#if TRACY_ENABLE
+    TracyD3D12NewFrame(d3d12_ctx->tracy_ctx);
+    TracyD3D12Collect(d3d12_ctx->tracy_ctx);
+#endif
 
     auto& back_buffer = d3d12_sc->back_buffers[d3d12_sc->swapchain->GetCurrentBackBufferIndex()];
 
@@ -2031,13 +2036,27 @@ void rhi::d3d12_cmd_debug_label_begin(command_buffer cmd, context context, const
         return;
     }
 
-    if (const auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd))
+    if (auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd))
     {
         const auto r = static_cast<u8>(label.color.r * 255.0F);
         const auto g = static_cast<u8>(label.color.g * 255.0F);
         const auto b = static_cast<u8>(label.color.b * 255.0F);
 
         PIXBeginEvent(d3d12_cmd->command_list.Get(), PIX_COLOR(r, g, b), label.label);
+
+#if TRACY_ENABLE
+        d3d12_cmd->tracy_alive_scopes.emplace_back(
+            std::make_unique<tracy::D3D12ZoneScope>(d3d12_ctx->tracy_ctx,
+                                                    TracyLine,
+                                                    TracyFile,
+                                                    std::strlen(TracyFile),
+                                                    TracyFunction,
+                                                    std::strlen(TracyFunction),
+                                                    label.label,
+                                                    std::strlen(label.label),
+                                                    d3d12_cmd->command_list.Get(),
+                                                    true));
+#endif
     }
 }
 
@@ -2050,10 +2069,38 @@ void rhi::d3d12_cmd_debug_label_end(command_buffer cmd, context context)
         return;
     }
 
-    if (const auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd))
+    if (auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd))
     {
         PIXEndEvent(d3d12_cmd->command_list.Get());
+
+#if TRACY_ENABLE
+        if (!d3d12_cmd->tracy_alive_scopes.empty())
+        {
+            d3d12_cmd->tracy_alive_scopes.pop_back();
+        }
+#endif
     }
+}
+
+void rhi::d3d12_present(swapchain swapchain, const queue queue)
+{
+    ZoneScoped;
+    auto* d3d12_sc    = cast_from_handle<platform::d3d12_swapchain>(swapchain);
+    auto* d3d12_queue = d3d12_rhi_object_from_handle<ID3D12CommandQueue>(queue);
+
+    if (!d3d12_sc || !d3d12_queue)
+    {
+        return;
+    }
+
+    const auto bb_index      = d3d12_sc->swapchain->GetCurrentBackBufferIndex();
+    const auto sync_interval = d3d12_sc->flags & platform::swapchain_flag::vsync ? 1 : 0;
+    const auto present_flags =
+        d3d12_sc->flags & platform::swapchain_flag::tearing && !sync_interval ? DXGI_PRESENT_ALLOW_TEARING : 0;
+
+    D3D12_ASSERT_ON_FAIL(d3d12_sc->swapchain->Present(sync_interval, present_flags));
+    d3d12_signal_fence(d3d12_sc->sc_sync_fence, d3d12_queue, ++d3d12_sc->frame_counter);
+    d3d12_sc->back_buffers[bb_index].wait_value = d3d12_sc->frame_counter;
 }
 
 void rhi::d3d12_submit(context context, const queue queue, const submit_info& info)
@@ -2102,32 +2149,6 @@ void rhi::d3d12_submit(context context, const queue queue, const submit_info& in
 
         platform::d3d12_signal_fence(*d3d12_fence, d3d12_queue, signal.value);
     }
-}
-
-void rhi::d3d12_present(command_buffer cmd, swapchain swapchain, const queue submit, const queue present)
-{
-    ZoneScoped;
-    auto* d3d12_sc        = cast_from_handle<platform::d3d12_swapchain>(swapchain);
-    auto* d3d12_queue     = d3d12_rhi_object_from_handle<ID3D12CommandQueue>(submit);
-    const auto* d3d12_cmd = cast_from_handle<platform::d3d12_command_list>(cmd);
-
-    assert2(d3d12_queue == d3d12_rhi_object_from_handle<ID3D12CommandQueue>(present));
-    if (!d3d12_cmd || !d3d12_sc)
-    {
-        return;
-    }
-
-    ID3D12CommandList* const command_lists[] = {d3d12_cmd->command_list.Get()};
-    d3d12_queue->ExecuteCommandLists(COUNT_OF(command_lists), command_lists);
-
-    const auto bb_index      = d3d12_sc->swapchain->GetCurrentBackBufferIndex();
-    const auto sync_interval = d3d12_sc->flags & platform::swapchain_flag::vsync ? 1 : 0;
-    const auto present_flags =
-        d3d12_sc->flags & platform::swapchain_flag::tearing && !sync_interval ? DXGI_PRESENT_ALLOW_TEARING : 0;
-
-    D3D12_ASSERT_ON_FAIL(d3d12_sc->swapchain->Present(sync_interval, present_flags));
-    d3d12_signal_fence(d3d12_sc->sc_sync_fence, d3d12_queue, ++d3d12_sc->frame_counter);
-    d3d12_sc->back_buffers[bb_index].wait_value = d3d12_sc->frame_counter;
 }
 
 auto rhi::d3d12_ffx_create_upscale_context(context ctx, const ffx_upscale_desc& desc) -> result<ffx_context>

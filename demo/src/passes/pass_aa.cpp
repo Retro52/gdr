@@ -117,7 +117,7 @@ void app::pass_aa::on_render_display_size_changed(const uvec2 new_render_size, c
 void app::pass_aa::run_blit(const rhi::command_buffer cmd, const draw_params& params) const
 {
     ZoneScoped;
-    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Copy AA");
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Blit AA");
 
     m_rhi.cmd_image_blit(cmd,
                          params.color,
@@ -193,7 +193,7 @@ void app::pass_aa::run_fsr(const rhi::command_buffer cmd, const draw_params& par
 void app::pass_aa::run_mv_reconstruct(const rhi::command_buffer cmd, const draw_params& params) const
 {
     ZoneScoped;
-    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Motion vectors reconstruction");
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Motion vectors from depth");
 
     const rhi::image_barrier sync[] = {
         app::make_image_barrier(motion_vectors, rhi::image_layout::common),

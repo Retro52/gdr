@@ -1131,6 +1131,7 @@ void platform::vk_destroy_swapchain(const vk_context& vk_context, vk_swapchain& 
         for (auto& img : swapchain.images)
         {
             VK_DESTROY(img.image.view, vkDestroyImageView, vk_context.device);
+            VK_DESTROY(img.acquire_semaphore, vkDestroySemaphore, vk_context.device);
             VK_DESTROY(img.release_semaphore, vkDestroySemaphore, vk_context.device);
         }
 
@@ -1142,7 +1143,8 @@ void platform::vk_destroy_swapchain(const vk_context& vk_context, vk_swapchain& 
 }
 
 result<vk_swapchain> platform::vk_create_swapchain(const vk_context& vk_context, VkFormat format, ivec2 size,
-                                                   u32 frames_in_flight, bool vsync, const vk_swapchain* old_swapchain)
+                                                   const u32 request_images_count, const bool vsync,
+                                                   const vk_swapchain* old_swapchain)
 {
     ZoneScoped;
     vk_swapchain sc_data;
@@ -1157,19 +1159,22 @@ result<vk_swapchain> platform::vk_create_swapchain(const vk_context& vk_context,
     VkSurfaceCapabilitiesKHR capabilities;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_context.physical_device, vk_context.surface, &capabilities);
 
+    const auto min_img_count =
+        std::clamp(request_images_count,
+                   capabilities.minImageCount,
+                   capabilities.maxImageCount > 0 ? capabilities.maxImageCount
+                                                  : std::max(request_images_count, capabilities.minImageCount));
+
     const VkSwapchainCreateInfoKHR swapchain_create_info {
-        .sType   = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .pNext   = nullptr,
-        .flags   = 0,
-        .surface = vk_context.surface,
-        .minImageCount =
-            std::clamp(frames_in_flight,
-                       capabilities.minImageCount,
-                       capabilities.maxImageCount > 0 ? capabilities.maxImageCount
-                                                      : (std::max(frames_in_flight, capabilities.minImageCount))),
-        .imageFormat      = sc_data.surface_format.format,
-        .imageColorSpace  = sc_data.surface_format.colorSpace,
-        .imageExtent      = choose_extent(capabilities, {static_cast<u32>(size.x), static_cast<u32>(size.y)}),
+        .sType           = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .pNext           = nullptr,
+        .flags           = 0,
+        .surface         = vk_context.surface,
+        .minImageCount   = min_img_count,
+        .imageFormat     = sc_data.surface_format.format,
+        .imageColorSpace = sc_data.surface_format.colorSpace,
+        .imageExtent =
+            choose_extent(capabilities, {.width = static_cast<u32>(size.x), .height = static_cast<u32>(size.y)}),
         .imageArrayLayers = 1,
         .imageUsage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
                     | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
