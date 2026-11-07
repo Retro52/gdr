@@ -18,7 +18,10 @@ struct PrimitiveOutput
 [outputtopology("triangle")]
 [numthreads(kMeshWorkGroups, 1, 1)]
 void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID, in payload DrawMeshletsTask meshlet_task,
-          out vertices VertexOutput vs_out[64], out indices uint3 triangles[96], out primitives PrimitiveOutput prims[96])
+          out vertices VertexOutput vs_out[kMaxVerticesPerMeshlet],
+          out indices uint3 triangles[kMaxTrianglesPerMeshlet],
+          out primitives PrimitiveOutput prims[kMaxTrianglesPerMeshlet]
+)
 {
     const uint t_idx = local_id.x;
     const uint m_idx = meshlet_task.meshlet_ids[group_id.x];
@@ -56,6 +59,6 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID, in paylo
             load_u8(meshlet_data, iid + 2)
         );
 
-        prims[i].primitive_id = (m_idx << 7) | i;
+        prims[i].primitive_id = (m_idx << kMeshletIndexMaxSizeInBits) | i;
     }
 }

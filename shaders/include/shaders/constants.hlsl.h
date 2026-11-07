@@ -25,9 +25,11 @@ namespace shader_constants
 
     static const uint kEnvPrefilterMips = 5;
 
-    static const uint kMaxVerticesPerMeshlet  = 64;
-    static const uint kMaxTrianglesPerMeshlet = 94;
-    static const uint kMaxIndicesPerMeshlet   = kMaxTrianglesPerMeshlet * 3;
+    static const uint kMaxVerticesPerMeshlet     = 64;
+    static const uint kMaxTrianglesPerMeshlet    = 84;
+    static const uint kMeshletIndexMaxSizeInBits = 7;
+    static const uint kMeshletIndexMask          = 127;
+    static const uint kMaxIndicesPerMeshlet      = kMaxTrianglesPerMeshlet * 3;
 
     static const uint kLODCount = 8;
 
@@ -36,28 +38,28 @@ namespace shader_constants
 
     static const uint kInstanceIdMask = ~(1u << 31);
 
-    static const uint kDebugModeShaded         = 0;
-    static const uint kDebugModeLit            = 1;
-    static const uint kDebugModeLitDiffuse     = 2;
-    static const uint kDebugModeLitAmbient     = 3;
-    static const uint kDebugModeLitSpecular    = 4;
-    static const uint kDebugModeUV             = 5;
-    static const uint kDebugModeNormal         = 6;
-    static const uint kDebugModeTangent        = 7;
-    static const uint kDebugModeDepth          = 8;
-    static const uint kDebugModeVelocity       = 9;
-    static const uint kDebugModeWorldPos       = 10;
-    static const uint kDebugModeColor          = 11;
-    static const uint kDebugModeMetallic       = 12;
-    static const uint kDebugModeRoughness      = 13;
-    static const uint kDebugModeAlbedoTexture  = 14;
-    static const uint kDebugModeNormalTexture  = 15;
-    static const uint kDebugModeOrmTexture     = 16;
-    static const uint kDebugModeTriangleId     = 17;
-    static const uint kDebugModeMeshletId      = 18;
-    static const uint kDebugModeInstanceId     = 19;
-    static const uint kDebugModeTriangleFace   = 20;
-    static const uint kDebugModeShadow         = 21;
+    static const uint kDebugModeShaded        = 0;
+    static const uint kDebugModeLit           = 1;
+    static const uint kDebugModeLitDiffuse    = 2;
+    static const uint kDebugModeLitAmbient    = 3;
+    static const uint kDebugModeLitSpecular   = 4;
+    static const uint kDebugModeUV            = 5;
+    static const uint kDebugModeNormal        = 6;
+    static const uint kDebugModeTangent       = 7;
+    static const uint kDebugModeDepth         = 8;
+    static const uint kDebugModeVelocity      = 9;
+    static const uint kDebugModeWorldPos      = 10;
+    static const uint kDebugModeColor         = 11;
+    static const uint kDebugModeMetallic      = 12;
+    static const uint kDebugModeRoughness     = 13;
+    static const uint kDebugModeAlbedoTexture = 14;
+    static const uint kDebugModeNormalTexture = 15;
+    static const uint kDebugModeOrmTexture    = 16;
+    static const uint kDebugModeTriangleId    = 17;
+    static const uint kDebugModeMeshletId     = 18;
+    static const uint kDebugModeInstanceId    = 19;
+    static const uint kDebugModeTriangleFace  = 20;
+    static const uint kDebugModeShadow        = 21;
 #ifdef __cplusplus
 }
 #endif

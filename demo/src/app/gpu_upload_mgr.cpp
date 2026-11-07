@@ -12,7 +12,7 @@ static u32 gpu_upload_mgr_get_offset(const u32 width, const u32 height, const u3
     return width * height * bits_per_block / 8;
 }
 
-static app::mapped_buffer gpu_upload_mgr_create_mapped_buffer(rhi::impl& impl, const rhi::context ctx,
+static app::mapped_buffer gpu_upload_mgr_create_mapped_buffer(const rhi::impl& impl, const rhi::context ctx,
                                                               const u64 staging_buffer_size)
 {
     return app::mapped_buffer::create(impl,
@@ -24,10 +24,10 @@ static app::mapped_buffer gpu_upload_mgr_create_mapped_buffer(rhi::impl& impl, c
                                       });
 }
 
-app::gpu_upload_mgr::gpu_upload_mgr(rhi::impl& impl, const rhi::context ctx, const u64 staging_buffer_size)
-    : m_rhi(impl)
+app::gpu_upload_mgr::gpu_upload_mgr(const rhi::impl& rhi, const rhi::context ctx, const u64 staging_buffer_size)
+    : m_rhi(rhi)
     , m_ctx(ctx)
-    , m_staging_buffer(gpu_upload_mgr_create_mapped_buffer(impl, ctx, staging_buffer_size))
+    , m_staging_buffer(gpu_upload_mgr_create_mapped_buffer(rhi, ctx, staging_buffer_size))
 {
     m_upload_queue = *m_rhi.query_queue(ctx, rhi::queue_kind::transfer);
     m_staging_cmd  = *m_rhi.create_command_buffer(m_ctx, rhi::queue_kind::transfer);
