@@ -625,6 +625,11 @@ auto loader::load_scene(const fs::path& path, scene& scene) -> result<scene_data
     hierarchy.nodes.resize(data->nodes_count);
 #endif
 
+    scene_data.counters.meshlets   = scene_data.meshlets.size();
+    scene_data.counters.vertices   = scene_data.vertices.size();
+    scene_data.counters.primitives = scene_data.primitives.size();
+    scene_data.counters.materials  = scene_data.materials.size();
+
     for (size_t i = 0; i < data->nodes_count; ++i)
     {
         const cgltf_node* node = &data->nodes[i];
@@ -645,7 +650,7 @@ auto loader::load_scene(const fs::path& path, scene& scene) -> result<scene_data
                 auto& instance             = scene_data.instances.emplace_back();
                 instance.pos_and_scale     = {transform_comp.position, transform_comp.uniform_scale};
                 instance.rotation_quat     = transform_comp.rotation;
-                instance.visibility_offset = scene_data.counters.meshlets;
+                instance.visibility_offset = scene_data.counters.max_onscreen_meshlets;
                 instance.mesh_data_index   = desc.offset + j;
                 instance.base_vertex       = scene_data.primitives[desc.offset + j].base_vertex;
                 instance.material_index    = node->mesh->primitives[j].material
@@ -655,8 +660,9 @@ auto loader::load_scene(const fs::path& path, scene& scene) -> result<scene_data
                     get_max_draw_commands(get_max_lod_meshlets(scene_data.primitives[desc.offset + j]));
 
                 ++scene_data.counters.instances;
-                scene_data.counters.triangles += get_max_lod_tris(raw_meshes[desc.offset + j]);
-                scene_data.counters.meshlets += get_max_lod_meshlets(scene_data.primitives[desc.offset + j]);
+                scene_data.counters.max_onscreen_triangles += get_max_lod_tris(raw_meshes[desc.offset + j]);
+                scene_data.counters.max_onscreen_meshlets +=
+                    get_max_lod_meshlets(scene_data.primitives[desc.offset + j]);
             }
         }
 

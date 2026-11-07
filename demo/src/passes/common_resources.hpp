@@ -48,7 +48,8 @@ namespace app
         u32 m_frames_in_flight = 0;
 
     public:
-        common_resources(const rhi::impl& rhi, rhi::context ctx, u32 frames_in_flight);
+        common_resources(const rhi::impl& rhi, rhi::context ctx, const loader::scene_counters& counters,
+                         u32 frames_in_flight);
 
         void next_frame();
 

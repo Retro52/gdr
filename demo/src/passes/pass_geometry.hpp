@@ -53,7 +53,8 @@ namespace app
         constexpr static u32 kMaxMeshlets  = ~static_cast<u32>(0) >> 10;
         constexpr static u32 kMaxInstances = kMaxMeshlets >> 2;
 
-        pass_geometry(const rhi::impl& impl, const app::pso_data& pipelines, rhi::context context, uvec2 render_res);
+        pass_geometry(const rhi::impl& impl, const app::pso_data& pipelines, rhi::context context,
+                      const loader::scene_counters& counters, uvec2 render_res);
 
         void shutdown();
 

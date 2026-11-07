@@ -196,7 +196,12 @@ namespace
             loader::encode_raw_mesh(data, primitives[i], layouts[i]);
         }
 
-        data.counters.instances = draw_count;
+        data.counters.instances  = draw_count;
+        data.counters.meshlets   = data.meshlets.size();
+        data.counters.vertices   = data.vertices.size();
+        data.counters.primitives = data.primitives.size();
+        data.counters.materials  = data.materials.size();
+
         for (u32 i = 0; i < draw_count; ++i)
         {
             ZoneScopedN("create models within the scene");
@@ -230,7 +235,7 @@ namespace
 #endif
 
             instance.material_index    = i;
-            instance.visibility_offset = data.counters.meshlets;
+            instance.visibility_offset = data.counters.max_onscreen_meshlets;
             instance.mesh_data_index   = layouts[id_random].prim_index;
             instance.base_vertex       = data.primitives[id_random].base_vertex;
 
@@ -243,8 +248,8 @@ namespace
                 glm::mix(0.0F, 1.0F, static_cast<f32>((i / kVolumeItemsPerSide) % kVolumeItemsPerSide) / kMixMax);
             material.met_roughness_factor.b = glm::mix(0.0F, 1.0F, static_cast<f32>(i % kVolumeItemsPerSide) / kMixMax);
 
-            data.counters.triangles += loader::get_max_lod_tris(primitives[id_random]);
-            data.counters.meshlets += loader::get_max_lod_meshlets(data.primitives[id_random]);
+            data.counters.max_onscreen_triangles += loader::get_max_lod_tris(primitives[id_random]);
+            data.counters.max_onscreen_meshlets += loader::get_max_lod_meshlets(data.primitives[id_random]);
 
             data.counters.buckets[material.material_class] +=
                 (loader::get_max_lod_meshlets(data.primitives[id_random]) + shader_constants::kTaskWorkGroups - 1)
@@ -359,7 +364,50 @@ int app::instance::run()
     RESULT_EXIT_IF_FAILED(imgui_context);
 #endif
 
-    common_resources resources(m_rhi, *context, kFramesInFlight);
+    // test scene stuff
+    loader::scene_data scene_data;
+
+    const int instance_count = m_args.read_numeric("--instances");
+    const int first_instance = m_args.get_positional_args_start();
+    auto env_map             = m_args.read_string<fs::path_string>("--skymap");
+
+    assert2(instance_count == 0 || first_instance > 0);
+
+    scene client_scene;
+    if (instance_count > 0 && first_instance > 0)
+    {
+        core::heap_array<mesh::raw_mesh> meshes;
+        for (int i = first_instance; i < m_args.argc(); ++i)
+        {
+            auto ctx = loader::load_meshes(m_args.argv()[i]);
+            if (!ctx)
+            {
+                continue;
+            }
+
+            meshes.append(ctx->primitives);
+        }
+
+        scene_data = populate_scene(instance_count, meshes, client_scene);
+    }
+    else
+    {
+        ZoneScopedN("loader::load_scene");
+        scene_data = *loader::load_scene(m_args.argv()[first_instance], client_scene);
+    }
+    core::local_array<rhi::image> textures;
+    core::local_array<rhi::bindless_set_write_info> updates;
+
+    gpu_upload_mgr upload_mgr(m_rhi, *context, 128_MB);
+
+    for (u32 i = 0; i < scene_data.textures.size(); ++i)
+    {
+        const auto handle = upload_mgr.create_texture(scene_data.textures[i]);
+        textures.emplace_back(handle);
+        updates.push_back(rhi::bindless_set_write_info {.dst = handle, .index = i + 1});
+    }
+
+    common_resources resources(m_rhi, *context, scene_data.counters, kFramesInFlight);
 
     pso_data pipelines;
     pipelines.load(m_rhi, *context, resources.bindless_textures);
@@ -368,12 +416,20 @@ int app::instance::run()
 
     app::pass_present present_pass(m_rhi, *context);
     app::pass_light_resolve lpass(m_rhi, *context, m_window.get_size_in_px());
-    app::pass_geometry gpass(m_rhi, pipelines, *context, m_window.get_size_in_px());
+    app::pass_geometry gpass(m_rhi, pipelines, *context, scene_data.counters, m_window.get_size_in_px());
 
     app::pass_aa aa_pass(m_rhi, pipelines, *context, m_window.get_size_in_px(), m_window.get_size_in_px());
     app::pass_post_process pp_pass(m_rhi, *context, m_window.get_size_in_px());
 
     app::pass_dbg_frustum dbg_frustum_pass(m_rhi, pipelines, *context);
+
+    m_rhi.update_bindless_set(*context, resources.bindless_textures, std::span {updates});
+    upload_mgr.submit(resources.vertex, scene_data.vertices.data(), scene_data.vertices.size());
+    upload_mgr.submit(resources.meshlets, scene_data.meshlets.data(), scene_data.meshlets.size());
+    upload_mgr.submit(resources.instances, scene_data.instances.data(), scene_data.instances.size());
+    upload_mgr.submit(resources.materials, scene_data.materials.data(), scene_data.materials.size());
+    upload_mgr.submit(resources.primitives, scene_data.primitives.data(), scene_data.primitives.size());
+    upload_mgr.submit(resources.meshlets_payload, scene_data.meshlets_data.data(), scene_data.meshlets_data.size());
 
     app::envmap envmap {
         m_rhi,
@@ -446,56 +502,6 @@ int app::instance::run()
             ctx.aa_pass.on_render_display_size_changed(payload.window.size_px, payload.window.size_px);
         },
         &resize_ctx);
-
-    gpu_upload_mgr upload_mgr(m_rhi, *context, 128_MB);
-
-    loader::scene_data scene_data;
-
-    const int instance_count = m_args.read_numeric("--instances");
-    const int first_instance = m_args.get_positional_args_start();
-    auto env_map             = m_args.read_string<fs::path_string>("--skymap");
-
-    assert2(instance_count == 0 || first_instance > 0);
-
-    // test scene stuff
-    scene client_scene;
-    if (instance_count > 0 && first_instance > 0)
-    {
-        core::heap_array<mesh::raw_mesh> meshes;
-        for (int i = first_instance; i < m_args.argc(); ++i)
-        {
-            auto ctx = loader::load_meshes(m_args.argv()[i]);
-            if (!ctx)
-            {
-                continue;
-            }
-
-            meshes.append(ctx->primitives);
-        }
-
-        scene_data = populate_scene(instance_count, meshes, client_scene);
-    }
-    else
-    {
-        ZoneScopedN("loader::load_scene");
-        scene_data = *loader::load_scene(m_args.argv()[first_instance], client_scene);
-    }
-    core::local_array<rhi::image> textures;
-    core::local_array<rhi::bindless_set_write_info> updates;
-    for (u32 i = 0; i < scene_data.textures.size(); ++i)
-    {
-        const auto handle = upload_mgr.create_texture(scene_data.textures[i]);
-        textures.emplace_back(handle);
-        updates.push_back(rhi::bindless_set_write_info {.dst = handle, .index = i + 1});
-    }
-
-    m_rhi.update_bindless_set(*context, resources.bindless_textures, std::span {updates});
-    upload_mgr.submit(resources.vertex, scene_data.vertices.data(), scene_data.vertices.size());
-    upload_mgr.submit(resources.meshlets, scene_data.meshlets.data(), scene_data.meshlets.size());
-    upload_mgr.submit(resources.instances, scene_data.instances.data(), scene_data.instances.size());
-    upload_mgr.submit(resources.materials, scene_data.materials.data(), scene_data.materials.size());
-    upload_mgr.submit(resources.primitives, scene_data.primitives.data(), scene_data.primitives.size());
-    upload_mgr.submit(resources.meshlets_payload, scene_data.meshlets_data.data(), scene_data.meshlets_data.size());
 
     entity camera = client_scene.empty();
     if (const auto loaded_camera = client_scene.get_view<entt::entity, camera_component>().front();
@@ -874,9 +880,9 @@ int app::instance::run()
                 ImGuizmo::BeginFrame();
 
                 ImGui::Text("Max onscreen triangles: %s",
-                            utils::format_counter_number(scene_data.counters.triangles).c_str());
+                            utils::format_counter_number(scene_data.counters.max_onscreen_triangles).c_str());
                 ImGui::Text("Max onscreen meshlets: %s",
-                            utils::format_counter_number(scene_data.counters.meshlets).c_str());
+                            utils::format_counter_number(scene_data.counters.max_onscreen_meshlets).c_str());
 
                 ImGui::BeginDisabled(!mesh_shading_supported);
                 if (ImGui::Checkbox("Enable mesh pipeline", &enable_meshlets_pipeline))
@@ -938,7 +944,7 @@ int app::instance::run()
                                  .sc_to_sync      = *swapchain,
                 });
 
-                m_rhi.present(*swapchain, *m_rhi.query_queue(*context, rhi::queue_kind::present));
+                m_rhi.present(*swapchain, *m_rhi.query_queue(*context, rhi::queue_kind::compute));
 
                 static f64 accumulated_time = 0.0;
                 accumulated_time            = accumulated_time * 0.95 + dt * 0.05;

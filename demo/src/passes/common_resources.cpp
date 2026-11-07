@@ -1,15 +1,24 @@
 #include <passes/common_resources.hpp>
 
-app::common_resources::common_resources(const rhi::impl& rhi, const rhi::context ctx, const u32 frames_in_flight)
+app::common_resources::common_resources(const rhi::impl& rhi, const rhi::context ctx,
+                                        const loader::scene_counters& counters, const u32 frames_in_flight)
     : m_frames_in_flight(frames_in_flight)
 {
-    this->vertex           = *rhi.create_buffer(ctx, {.size = 128_MB, .dbg_name = "vertex"});
-    this->meshlets         = *rhi.create_buffer(ctx, {.size = 16_MB, .dbg_name = "meshlets"});
-    this->primitives       = *rhi.create_buffer(ctx, {.size = 1_MB, .dbg_name = "primitives"});
-    this->instances        = *rhi.create_buffer(ctx, {.size = 48_MB, .dbg_name = "instances"});
-    this->materials        = *rhi.create_buffer(ctx, {.size = 48_MB, .dbg_name = "materials"});
-    this->meshlets_payload = *rhi.create_buffer(ctx, {.size = 128_MB, .dbg_name = "meshlets_payload"});
+    this->vertex =
+        *rhi.create_buffer(ctx, {.size = counters.vertices * sizeof(shader_types::Vertex), .dbg_name = "vertex"});
+    this->meshlets =
+        *rhi.create_buffer(ctx, {.size = counters.meshlets * sizeof(shader_types::Meshlet), .dbg_name = "meshlets"});
+    this->primitives = *rhi.create_buffer(
+        ctx, {.size = counters.primitives * sizeof(shader_types::MeshData), .dbg_name = "primitives"});
+    this->instances = *rhi.create_buffer(
+        ctx, {.size = counters.instances * sizeof(shader_types::MeshInstance), .dbg_name = "instances"});
+    this->materials = *rhi.create_buffer(
+        ctx, {.size = counters.materials * sizeof(shader_types::MeshMaterial), .dbg_name = "materials"});
 
+    this->meshlets_payload  = *rhi.create_buffer(ctx,
+                                                 {.size = counters.meshlets * shader_constants::kMaxIndicesPerMeshlet
+                                                        + counters.meshlets * shader_constants::kMaxVerticesPerMeshlet,
+                                                  .dbg_name = "meshlets_payload"});
     this->bindless_textures = *rhi.create_bindless_set(ctx, 65536);
     this->bindless_sampler  = *rhi.create_sampler(ctx,
                                                  rhi::create_sampler_info {
