@@ -722,7 +722,7 @@ int app::instance::run()
                     shader_types::FrameCullData fcd {.pyramid_size  = gpass.hizb.base_size,
                                                      .viewport_size = m_window.get_size_in_px(),
                                                      .draw_count    = static_cast<u32>(scene_data.counters.instances),
-                                                     .flags         = 0xFFFFFFFF};
+                                                     .flags         = client_render_settings.flags};
                     build_frustum(fcd, projection, view);
                     (*static_cast<shader_types::FrameCullData*>(frame_cull_data_buffer.mapped)) = fcd;
                 }

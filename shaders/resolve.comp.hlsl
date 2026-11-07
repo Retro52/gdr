@@ -162,8 +162,8 @@ void main(uint3 global_id: SV_DispatchThreadID)
     inst_pos_scale.xyz -= world[0].camera_pos;
 
 #ifdef FOR_MESH_PIPELINE
-    uint m_idx = data.g >> 7;
-    uint ml = (data.g & 127) * 3;
+    uint m_idx = data.g >> kMeshletIndexMaxSizeInBits;
+    uint ml = (data.g & kMeshletIndexMask) * 3;
 
     const uint meshlet_data_offset = meshlets[m_idx].data_offset;
     const uint meshlet_base_vertex = meshlet_data_offset / 4;

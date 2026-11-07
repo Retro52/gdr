@@ -41,7 +41,7 @@ namespace app
     struct gpu_upload_mgr
     {
     public:
-        gpu_upload_mgr(rhi::impl& rhi, rhi::context ctx, u64 staging_buffer_size);
+        gpu_upload_mgr(const rhi::impl& rhi, rhi::context ctx, u64 staging_buffer_size);
 
         void shutdown();
 
@@ -75,7 +75,7 @@ namespace app
         void submit_internal(rhi::buffer dst, u64 dst_offset, const void* data, u64 bytes) const;
 
     private:
-        rhi::impl& m_rhi;
+        const rhi::impl& m_rhi;
         rhi::context m_ctx;
         mapped_buffer m_staging_buffer;
 
