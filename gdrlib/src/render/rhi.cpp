@@ -44,7 +44,7 @@ rhi::impl rhi::create_for_d3d12()
 
         .query_shader_stage           = d3d12_query_shader_stage,
         .query_feature_support        = d3d12_query_feature_support,
-        .query_current_frame_index    = d3d12_query_current_frame_index,
+        .query_swapchain_image_index  = d3d12_query_swapchain_image_index,
         .query_swapchain_images_count = d3d12_query_swapchain_images_count,
         .query_swapchain_color_format = d3d12_query_swapchain_color_format,
 
@@ -159,7 +159,7 @@ rhi::impl rhi::create_for_vk()
 
         .query_shader_stage           = vk_query_shader_stage,
         .query_feature_support        = vk_query_feature_support,
-        .query_current_frame_index    = vk_query_current_frame_index,
+        .query_swapchain_image_index  = vk_query_swapchain_image_index,
         .query_swapchain_images_count = vk_query_swapchain_images_count,
         .query_swapchain_color_format = vk_query_swapchain_color_format,
 

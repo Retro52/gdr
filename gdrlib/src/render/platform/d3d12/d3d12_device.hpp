@@ -7,6 +7,8 @@
 #include <render/platform/d3d12/d3d12_fence.hpp>
 #include <render/platform/d3d12/d3d12_image.hpp>
 #include <render/types.hpp>
+#include <tracy/Tracy.hpp>
+#include <tracy/TracyD3D12.hpp>
 #include <window.hpp>
 
 namespace platform
@@ -56,6 +58,10 @@ namespace platform
         D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
 
         rhi::rendering_features_table enabled_device_features;
+
+#if TRACY_ENABLE
+        TracyD3D12Ctx tracy_ctx;
+#endif
     };
 
     struct d3d12_sc_back_buffer
@@ -81,7 +87,7 @@ namespace platform
     void d3d12_destroy_swapchain(d3d12_context& d3d12_context, d3d12_swapchain& swapchain);
 
     result<d3d12_swapchain> d3d12_create_swapchain(d3d12_context& d3d12_context, DXGI_FORMAT format, ivec2 size,
-                                                   u32 frames_in_flight, bool vsync);
+                                                   u32 request_images_count, bool vsync);
 
     result<core::heap_array<d3d12_sc_back_buffer>> d3d12_update_back_buffers(platform::d3d12_context& d3d12_context,
                                                                              IDXGISwapChain4* swapchain, u32 count);

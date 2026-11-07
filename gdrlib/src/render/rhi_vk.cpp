@@ -16,19 +16,29 @@
 
 namespace
 {
-    struct vk_swapchain_sync_objects
-    {
-        VkFence fence {VK_NULL_HANDLE};
-        VkSemaphore acquire_semaphore {VK_NULL_HANDLE};
-    };
-
     struct vk_rhi_swaphain_data
     {
         u32 image_index = 0;
-        u32 frame_index = 0;
 
         platform::vk_swapchain root;
-        core::heap_array<vk_swapchain_sync_objects> sync_objects;
+        core::local_array<VkSemaphore> acquire_semaphores_pool;
+
+        VkSemaphore get_acquire_semaphore(const VkDevice device)
+        {
+            constexpr VkSemaphoreCreateInfo semaphore_create_info {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+            if (!acquire_semaphores_pool.empty())
+            {
+                const auto semaphore = acquire_semaphores_pool.back();
+                acquire_semaphores_pool.pop_back();
+
+                return semaphore;
+            }
+
+            VkSemaphore result;
+            VK_ASSERT_ON_FAIL(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &result));
+
+            return result;
+        }
     };
 
     struct vk_rhi_image_view
@@ -188,26 +198,6 @@ static VkBufferMemoryBarrier2 vk_rhi_parse_buffer_barrier(const rhi::buffer_barr
     };
 }
 
-static core::heap_array<vk_swapchain_sync_objects> vk_rhi_create_sc_sync(VkDevice device,
-                                                                         const platform::vk_swapchain& swapchain)
-{
-    ZoneScoped;
-    constexpr VkSemaphoreCreateInfo semaphore_create_info {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    constexpr VkFenceCreateInfo fence_create_info {
-        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-        .flags = VK_FENCE_CREATE_SIGNALED_BIT,
-    };
-
-    core::heap_array<vk_swapchain_sync_objects> result(swapchain.images.size());
-    for (auto& sync : result)
-    {
-        VK_ASSERT_ON_FAIL(vkCreateFence(device, &fence_create_info, nullptr, &sync.fence));
-        VK_ASSERT_ON_FAIL(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &sync.acquire_semaphore));
-    }
-
-    return result;
-}
-
 static result<vk_rhi_attachment_objects> vk_rhi_parse_attachment_objects(const rhi::attachment attachment)
 {
     ZoneScoped;
@@ -321,14 +311,10 @@ auto rhi::vk_create_swapchain(context context, const create_swapchain_info& desc
     }
 
     auto vk_sc = platform::vk_create_swapchain(
-        *vk_ctx, static_cast<VkFormat>(desc.format), desc.size, desc.frames_in_flight, desc.vsync, nullptr);
+        *vk_ctx, static_cast<VkFormat>(desc.format), desc.size, desc.request_images_count, desc.vsync, nullptr);
 
     RESULT_FORWARD_IF_FAILED(vk_sc);
-    vk_rhi_swaphain_data rhi_sc_data;
-
-    // TODO: mb move within the vk_swapchain, like in d3d12?
-    rhi_sc_data.sync_objects = vk_rhi_create_sc_sync(vk_ctx->device, *vk_sc);
-    rhi_sc_data.root         = std::move(*vk_sc);
+    vk_rhi_swaphain_data rhi_sc_data {.root = std::move(*vk_sc)};
 
     return create_handle<swapchain>(rhi_sc_data);
 }
@@ -337,15 +323,15 @@ auto rhi::vk_resize_swapchain(context context, swapchain swapchain, const create
     -> result<rhi::swapchain>
 {
     ZoneScoped;
-    auto* vk_ctx = cast_from_handle<platform::vk_context>(context);
-    auto* vk_sc  = cast_from_handle<vk_rhi_swaphain_data>(swapchain);
+    const auto* vk_ctx = cast_from_handle<platform::vk_context>(context);
+    auto* vk_sc        = cast_from_handle<vk_rhi_swaphain_data>(swapchain);
     if (!vk_ctx || !vk_sc)
     {
         return error("failed to access the context or the swapchain");
     }
 
     auto new_sc = platform::vk_create_swapchain(
-        *vk_ctx, static_cast<VkFormat>(desc.format), desc.size, desc.frames_in_flight, desc.vsync, &vk_sc->root);
+        *vk_ctx, static_cast<VkFormat>(desc.format), desc.size, desc.request_images_count, desc.vsync, &vk_sc->root);
 
     RESULT_FORWARD_IF_FAILED(new_sc);
     platform::vk_destroy_swapchain(*vk_ctx, vk_sc->root);
@@ -363,10 +349,9 @@ void rhi::vk_destroy_swapchain(context context, swapchain& swapchain)
 
     if (vk_ctx && vk_sc)
     {
-        for (auto& sync : vk_sc->sync_objects)
+        for (auto& aq_sem : vk_sc->acquire_semaphores_pool)
         {
-            VK_DESTROY(sync.fence, vkDestroyFence, vk_ctx->device);
-            VK_DESTROY(sync.acquire_semaphore, vkDestroySemaphore, vk_ctx->device);
+            VK_DESTROY(aq_sem, vkDestroySemaphore, vk_ctx->device);
         }
 
         platform::vk_destroy_swapchain(*vk_ctx, vk_sc->root);
@@ -588,9 +573,7 @@ auto rhi::vk_create_image(context context, const create_image_info& image_info) 
     const VkImageCreateInfo image_create_info = {
         .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .flags         = image_info.layer_count == 6 ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0U,
-        .imageType     = image_info.dimensions.z > 1 ? VK_IMAGE_TYPE_3D
-                       : image_info.dimensions.y > 1 ? VK_IMAGE_TYPE_2D
-                                                     : VK_IMAGE_TYPE_1D,
+        .imageType     = image_info.dimensions.z > 1 ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D,
         .format        = static_cast<VkFormat>(image_info.format),
         .extent        = extent,
         .mipLevels     = image_info.mips_count,
@@ -814,18 +797,18 @@ auto rhi::vk_query_swapchain_images_count(swapchain swapchain) -> result<u32>
     ZoneScoped;
     if (const auto* vk_sc = cast_from_handle<vk_rhi_swaphain_data>(swapchain))
     {
-        return vk_sc->sync_objects.size();
+        return vk_sc->root.images.size();
     }
 
     return error("failed to access the swapchain");
 }
 
-auto rhi::vk_query_current_frame_index(swapchain swapchain) -> result<u32>
+auto rhi::vk_query_swapchain_image_index(swapchain swapchain) -> result<u32>
 {
     ZoneScoped;
-    if (auto* vk_sc = cast_from_handle<vk_rhi_swaphain_data>(swapchain))
+    if (const auto* vk_sc = cast_from_handle<vk_rhi_swaphain_data>(swapchain))
     {
-        return vk_sc->frame_index;
+        return vk_sc->image_index;
     }
 
     return error("failed to access the swapchain");
@@ -939,27 +922,34 @@ auto rhi::vk_acquire_next_swapchain_image(context context, swapchain swapchain) 
     TracyVkCollectHost(vk_ctx->tracy_ctx);
 #endif
 
-    vkWaitForFences(vk_ctx->device, 1, &vk_sc->sync_objects[vk_sc->frame_index].fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(vk_ctx->device, 1, &vk_sc->sync_objects[vk_sc->frame_index].fence);
+    u32 new_image_index = 0;
+    auto acquire_sem    = vk_sc->get_acquire_semaphore(vk_ctx->device);
 
-    u32 new_image_index       = 0;
-    const auto acquire_result = vkAcquireNextImageKHR(vk_ctx->device,
-                                                      vk_sc->root.sc,
-                                                      UINT64_MAX,
-                                                      vk_sc->sync_objects[vk_sc->frame_index].acquire_semaphore,
-                                                      VK_NULL_HANDLE,
-                                                      &new_image_index);
+    const auto acquire_result = vkAcquireNextImageKHR(
+        vk_ctx->device, vk_sc->root.sc, UINT64_MAX, acquire_sem, VK_NULL_HANDLE, &new_image_index);
 
-    vk_sc->image_index = new_image_index & 0xFF;
     switch (acquire_result)
     {
     case VK_SUCCESS :
     case VK_SUBOPTIMAL_KHR :
-        return image {.id = reinterpret_cast<u64>(&vk_sc->root.images[vk_sc->image_index].image)};
-    case VK_ERROR_OUT_OF_DATE_KHR :
-        return error("failed to acquire swapchain image (out of date)");
+    {
+        vk_sc->image_index = new_image_index & 0xFF;
+
+        auto& vk_sc_image = vk_sc->root.images[vk_sc->image_index];
+        std::swap(vk_sc_image.acquire_semaphore, acquire_sem);
+
+        if (acquire_sem != VK_NULL_HANDLE)
+        {
+            vk_sc->acquire_semaphores_pool.push_back(acquire_sem);
+        }
+
+        return image {.id = reinterpret_cast<u64>(&vk_sc_image.image)};
+    }
     default :
+    {
+        vk_sc->acquire_semaphores_pool.push_back(acquire_sem);
         return error("failed to acquire swapchain image (unknown result)");
+    }
     }
 }
 
@@ -1614,6 +1604,39 @@ void rhi::vk_cmd_debug_label_end(command_buffer cmd, context context)
 #endif
 }
 
+void rhi::vk_present(swapchain swapchain, rhi::queue queue)
+{
+    ZoneScoped;
+    auto* vk_sc   = cast_from_handle<vk_rhi_swaphain_data>(swapchain);
+    auto vk_queue = vk_rhi_vkobj_from_handle<VkQueue>(queue);
+
+    if (!vk_sc || vk_queue == VK_NULL_HANDLE)
+    {
+        return;
+    }
+
+    const VkPresentInfoKHR present_info_khr {
+        .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores    = &vk_sc->root.images[vk_sc->image_index].release_semaphore,
+        .swapchainCount     = 1,
+        .pSwapchains        = &vk_sc->root.sc,
+        .pImageIndices      = &vk_sc->image_index,
+        .pResults           = nullptr,
+    };
+
+    // ReSharper disable once CppTooWideScope
+    const auto present_result = vkQueuePresentKHR(vk_queue, &present_info_khr);
+    switch (present_result)
+    {
+    case VK_SUBOPTIMAL_KHR :
+    case VK_ERROR_OUT_OF_DATE_KHR :
+        return;
+    default :
+        VK_ASSERT_ON_FAIL(present_result);
+    }
+}
+
 void rhi::vk_submit(context context, queue queue, const submit_info& info)
 {
     ZoneScoped;
@@ -1686,6 +1709,25 @@ void rhi::vk_submit(context context, queue queue, const submit_info& info)
         };
     }
 
+    if (info.sc_to_sync != rhi::null_swapchain)
+    {
+        const auto* vk_sc     = cast_from_handle<vk_rhi_swaphain_data>(info.sc_to_sync);
+        const auto& vk_sc_img = vk_sc->root.images[vk_sc->image_index];
+
+        wait_semaphore_submit_info.emplace_back() = {
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = vk_sc_img.acquire_semaphore,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        };
+
+        signal_semaphore_submit_info.emplace_back() = {
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .pNext     = nullptr,
+            .semaphore = vk_sc_img.release_semaphore,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        };
+    }
+
     const VkSubmitInfo2 submit_info {
         .sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
         .waitSemaphoreInfoCount   = static_cast<u32>(wait_semaphore_submit_info.size()),
@@ -1697,77 +1739,6 @@ void rhi::vk_submit(context context, queue queue, const submit_info& info)
     };
 
     vkQueueSubmit2(vk_queue, 1, &submit_info, VK_NULL_HANDLE);
-}
-
-void rhi::vk_present(command_buffer cmd, swapchain swapchain, queue submit, queue present)
-{
-    ZoneScoped;
-    const auto* vk_cmd = cast_from_handle<platform::vk_command_buffer>(cmd);
-    auto* vk_sc        = cast_from_handle<vk_rhi_swaphain_data>(swapchain);
-    if (!vk_cmd || !vk_sc)
-    {
-        return;
-    }
-
-    const VkSemaphoreSubmitInfo wait_semaphore_info {
-        .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-        .pNext     = nullptr,
-        .semaphore = vk_sc->sync_objects[vk_sc->frame_index].acquire_semaphore,
-        .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-    };
-
-    const VkSemaphoreSubmitInfo signal_semaphore_info {
-        .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-        .pNext     = nullptr,
-        .semaphore = vk_sc->root.images[vk_sc->image_index].release_semaphore,
-        .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-    };
-
-    const VkCommandBufferSubmitInfo command_buffer_submit_info {
-        .sType         = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-        .pNext         = nullptr,
-        .commandBuffer = vk_cmd->cmd_buffer,
-    };
-
-    const VkSubmitInfo2 gfx_submit_info {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-        .pNext = nullptr,
-
-        .waitSemaphoreInfoCount = 1,
-        .pWaitSemaphoreInfos    = &wait_semaphore_info,
-
-        .commandBufferInfoCount = 1,
-        .pCommandBufferInfos    = &command_buffer_submit_info,
-
-        .signalSemaphoreInfoCount = 1,
-        .pSignalSemaphoreInfos    = &signal_semaphore_info,
-    };
-
-    VK_ASSERT_ON_FAIL(vkQueueSubmit2(
-        vk_rhi_vkobj_from_handle<VkQueue>(submit), 1, &gfx_submit_info, vk_sc->sync_objects[vk_sc->frame_index].fence));
-
-    const VkPresentInfoKHR present_info_khr {
-        .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores    = &vk_sc->root.images[vk_sc->image_index].release_semaphore,
-        .swapchainCount     = 1,
-        .pSwapchains        = &vk_sc->root.sc,
-        .pImageIndices      = &vk_sc->image_index,
-        .pResults           = nullptr,
-    };
-
-    // ReSharper disable once CppTooWideScope
-    const auto present_result = vkQueuePresentKHR(vk_rhi_vkobj_from_handle<VkQueue>(present), &present_info_khr);
-    switch (present_result)
-    {
-    case VK_SUBOPTIMAL_KHR :
-    case VK_ERROR_OUT_OF_DATE_KHR :
-        return;
-    default :
-        VK_ASSERT_ON_FAIL(present_result);
-    }
-
-    vk_sc->frame_index = (vk_sc->frame_index + 1) % vk_sc->sync_objects.size();
 }
 
 auto rhi::vk_ffx_create_upscale_context(context ctx, const ffx_upscale_desc& desc) -> result<ffx_context>

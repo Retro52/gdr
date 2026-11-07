@@ -13,6 +13,7 @@ namespace platform
     struct vk_swapchain_image
     {
         vk_image image;
+        VkSemaphore acquire_semaphore = VK_NULL_HANDLE;
         VkSemaphore release_semaphore = VK_NULL_HANDLE;
     };
 
@@ -51,7 +52,7 @@ namespace platform
     void vk_destroy_swapchain(const vk_context& vk_context, vk_swapchain& swapchain);
 
     result<vk_swapchain> vk_create_swapchain(const vk_context& vk_context, VkFormat format, ivec2 size,
-                                             u32 frames_in_flight, bool vsync,
+                                             u32 request_images_count, bool vsync,
                                              const vk_swapchain* old_swapchain = nullptr);
 
     void vk_destroy_context(vk_context& ctx);

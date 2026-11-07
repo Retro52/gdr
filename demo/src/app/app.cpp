@@ -49,13 +49,36 @@ namespace
     {
         struct frame_data
         {
+            u64 fence_wait                     = 0;
+            rhi::fence fence                   = rhi::null_fence;
             rhi::command_buffer command_buffer = rhi::null_command_buffer;
         };
 
         u32 frame_index = 0;
+        u32 frame_count = 0;
         core::heap_array<frame_data> frame_data;
 
-        void next_frame() { frame_index = (frame_index + 1) % frame_data.size(); }
+        void next_frame()
+        {
+            frame_index = (frame_index + 1) % frame_data.size();
+            ++frame_count;
+        }
+
+        [[nodiscard]] rhi::fence_submit_info get_frame_signal_info() const noexcept
+        {
+            return rhi::fence_submit_info {
+                .fence = get_frame_fence(),
+                .value = get_next_frame_fence_value(),
+            };
+        }
+
+        [[nodiscard]] rhi::fence get_frame_fence() const noexcept { return frame_data[frame_index].fence; }
+
+        [[nodiscard]] u64 get_frame_fence_value() const noexcept { return frame_data[frame_index].fence_wait; }
+
+        [[nodiscard]] auto& get_frame_data() noexcept { return frame_data[frame_index]; }
+
+        [[nodiscard]] u64 get_next_frame_fence_value() const noexcept { return frame_data[frame_index].fence_wait + 1; }
 
         [[nodiscard]] rhi::command_buffer get_frame_command_buffer() const noexcept
         {
@@ -72,6 +95,7 @@ namespace
         {
             for (auto& frame : frame_data)
             {
+                rhi.destroy_fence(ctx, frame.fence);
                 rhi.destroy_command_buffer(ctx, frame.command_buffer);
             }
         }
@@ -81,6 +105,7 @@ namespace
             frame_data.resize(frames_in_flight);
             for (auto& frame : frame_data)
             {
+                frame.fence          = *rhi.create_fence(ctx, 0);
                 frame.command_buffer = *rhi.create_command_buffer(ctx, rhi::queue_kind::gfx);
             }
         }
@@ -313,15 +338,16 @@ int app::instance::run()
     auto context = m_rhi.create_context(m_window, get_instance_desc(m_args));
     RESULT_EXIT_IF_FAILED(context);
 
-    // TODO: decouple frames in flight from swapchain images count
-    constexpr auto kFramesInFlight  = 2;
-    constexpr auto kSwapchainVsync  = false;
-    constexpr auto kSwapchainFormat = rhi::image_format::r8g8b8a8un;
+    constexpr auto kFramesInFlight     = 2;
+    constexpr auto kRequestImagesCount = 3;
+    constexpr auto kSwapchainVsync     = false;
+    constexpr auto kSwapchainFormat    = rhi::image_format::r8g8b8a8un;
+
     rhi::create_swapchain_info create_swapchain_info {
-        .size             = m_window.get_size_in_px(),
-        .frames_in_flight = kFramesInFlight,
-        .format           = kSwapchainFormat,
-        .vsync            = kSwapchainVsync,
+        .size                 = m_window.get_size_in_px(),
+        .request_images_count = kRequestImagesCount,
+        .format               = kSwapchainFormat,
+        .vsync                = kSwapchainVsync,
     };
 
     auto swapchain = m_rhi.create_swapchain(*context, create_swapchain_info);
@@ -406,10 +432,10 @@ int app::instance::run()
             ctx.rhi.device_wait_idle(ctx.context);
 
             const rhi::create_swapchain_info update_swapchain_info {
-                .size             = payload.window.size_px,
-                .frames_in_flight = kFramesInFlight,
-                .format           = kSwapchainFormat,
-                .vsync            = kSwapchainVsync,
+                .size                 = payload.window.size_px,
+                .request_images_count = kRequestImagesCount,
+                .format               = kSwapchainFormat,
+                .vsync                = kSwapchainVsync,
             };
 
             ctx.swapchain = *ctx.rhi.resize_swapchain(ctx.context, ctx.swapchain, update_swapchain_info);
@@ -620,7 +646,7 @@ int app::instance::run()
         auto cmd   = *m_rhi.create_command_buffer(*context, rhi::queue_kind::gfx);
 
         m_rhi.cmd_begin_recording(cmd);
-        m_rhi.cmd_debug_label_begin(cmd, *context, {.label = "preload"});
+        m_rhi.cmd_debug_label_begin(cmd, *context, {.label = "Preload"});
         envmap.init(cmd, pipelines);
         if (!env_map.empty())
         {
@@ -664,20 +690,25 @@ int app::instance::run()
             return;
         }
 
+        tracker.next_frame();
+        resources.next_frame();
+
+        m_rhi.fence_wait_for_value(*context, tracker.get_frame_fence(), tracker.get_frame_fence_value());
+
         const auto frame_image = m_rhi.acquire_next_swapchain_image(*context, *swapchain);
         if (!frame_image)
         {
             return;
         }
 
-        tracker.next_frame();
-        resources.next_frame();
         tracker.submit(
             [&](const rhi::command_buffer buffer)
             {
                 ZoneScopedN("main.m_renderer.submit");
 
                 m_rhi.cmd_begin_recording(buffer);
+                m_rhi.cmd_debug_label_begin(buffer, *context, {.label = "Frame"});
+
                 auto& frame_cull_data_buffer = resources.frame_cull_data_buffer();
                 if (!freeze_cull_data)
                 {
@@ -893,6 +924,22 @@ int app::instance::run()
                                          .display_res = m_window.get_size_in_px(),
                                      });
 
+                m_rhi.cmd_debug_label_end(buffer, *context);
+                m_rhi.cmd_end_recording(buffer);
+
+                const auto signal                   = tracker.get_frame_signal_info();
+                tracker.get_frame_data().fence_wait = signal.value;
+
+                m_rhi.submit(*context,
+                             *m_rhi.query_queue(*context, rhi::queue_kind::gfx),
+                             {
+                                 .signals         = std::span {&signal, 1},
+                                 .command_buffers = std::span {&buffer, 1},
+                                 .sc_to_sync      = *swapchain,
+                });
+
+                m_rhi.present(*swapchain, *m_rhi.query_queue(*context, rhi::queue_kind::present));
+
                 static f64 accumulated_time = 0.0;
                 accumulated_time            = accumulated_time * 0.95 + dt * 0.05;
                 const auto str              = core::stack_string::make_formatted("[%s] [%s] CPU: %.3lfms",
@@ -914,7 +961,10 @@ int app::instance::run()
         },
         &wrapper);
 
-    while (!exit)
+    const auto max_frames = m_args.read_numeric("--max_frames", -1);
+
+    // frame count is of-by-one since it starts at 0
+    while (!exit && (max_frames < 0 || max_frames + 1 >= tracker.frame_count))
     {
         m_events_queue.poll();
     }

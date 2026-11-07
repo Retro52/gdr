@@ -197,7 +197,7 @@ void app::envmap::load(const rhi::command_buffer cmd, const app::pso_data& pso, 
         equirect = upload_mgr.create_texture(*equirect_desc);
 
         {
-            SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "unpack equirect");
+            SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Env. equirect unpack");
             const rhi::binding pass_bindings[] = {
                 rhi::binding(equirect, sampler),
                 rhi::binding(cubemap),
@@ -223,7 +223,7 @@ void app::envmap::load(const rhi::command_buffer cmd, const app::pso_data& pso, 
         }
 
         {
-            SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "cubemap mips generation");
+            SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Env. mipmaps generation");
             generate_mips(m_rhi, cmd, cubemap, env_resolution);
 
             rhi::global_barrier barriers[] {
@@ -238,7 +238,7 @@ void app::envmap::load(const rhi::command_buffer cmd, const app::pso_data& pso, 
         }
 
         {
-            SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "cubemap convolution");
+            SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Env. convolution");
             const rhi::binding pass_bindings[] = {
                 rhi::binding(cube_view, sampler),
                 rhi::binding(convolution),
@@ -265,7 +265,7 @@ void app::envmap::load(const rhi::command_buffer cmd, const app::pso_data& pso, 
         }
 
         {
-            SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "cubemap prefilter");
+            SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Env. prefilter");
             const rhi::pipeline& pass = pso[pso_id::cubemap_prefilter_pipeline];
 
             struct push_constants

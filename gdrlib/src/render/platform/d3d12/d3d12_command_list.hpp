@@ -9,6 +9,7 @@
 #include <render/platform/d3d12/d3d12_image.hpp>
 #include <render/platform/d3d12/d3d12_pipeline.hpp>
 #include <result.hpp>
+#include <tracy/TracyD3D12.hpp>
 
 #include <array>
 #include <unordered_map>
@@ -73,6 +74,10 @@ namespace platform
 
         std::unordered_map<u32, com_ptr<ID3D12CommandSignature>> command_signatures;
         std::array<ID3D12DescriptorHeap*, kD3D12_ShaderVisibleHeapsCount> shader_visible_heaps = {};
+
+#if TRACY_ENABLE
+        core::local_array<std::unique_ptr<tracy::D3D12ZoneScope>> tracy_alive_scopes;
+#endif
 
         void free_scratch(d3d12_desc_heap& heap) const;
 

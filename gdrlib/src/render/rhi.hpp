@@ -57,7 +57,7 @@ namespace rhi
                                                          const pso_options& options);
     using destroy_pso_pfn         = void (*)(context context, pipeline& pso);
 
-    using query_current_frame_index_pfn    = result<u32> (*)(swapchain swapchain);
+    using query_swapchain_image_index_pfn  = result<u32> (*)(swapchain swapchain);
     using query_swapchain_images_count_pfn = result<u32> (*)(swapchain swapchain);
     using query_shader_stage_pfn           = result<shader_stage> (*)(shader shader);
     using query_swapchain_color_format_pfn = result<image_format> (*)(swapchain swapchain);
@@ -126,8 +126,8 @@ namespace rhi
     using cmd_debug_label_begin_pfn = void (*)(command_buffer cmd, context context, const debug_label& label);
     using cmd_debug_label_end_pfn   = void (*)(command_buffer cmd, context context);
 
+    using present_pfn = void (*)(swapchain swapchain, queue queue);
     using submit_pfn  = void (*)(context context, queue queue, const submit_info& info);
-    using present_pfn = void (*)(command_buffer cmd, swapchain swapchain, queue submit, queue present);
 
     using ffx_create_upscale_context_pfn = result<ffx_context> (*)(context ctx, const ffx_upscale_desc& desc);
     using ffx_destroy_context_pfn        = void (*)(ffx_context& ffx_ctx);
@@ -187,7 +187,7 @@ namespace rhi
 
         query_shader_stage_pfn query_shader_stage;
         query_feature_support_pfn query_feature_support;
-        query_current_frame_index_pfn query_current_frame_index;
+        query_swapchain_image_index_pfn query_swapchain_image_index;
         query_swapchain_images_count_pfn query_swapchain_images_count;
         query_swapchain_color_format_pfn query_swapchain_color_format;
 

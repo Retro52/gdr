@@ -13,7 +13,7 @@ app::pass_dbg_frustum::pass_dbg_frustum(const rhi::impl& impl, const app::pso_da
 void app::pass_dbg_frustum::draw(const rhi::command_buffer cmd, const draw_params& params) const
 {
     ZoneScoped;
-    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Debug frustum pass");
+    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Debug frustum");
 
     constexpr rhi::barrier_stage_bits kAttachmentStages = rhi::barrier_stage::color_attachment
                                                         | rhi::barrier_stage::early_depth_stencil
