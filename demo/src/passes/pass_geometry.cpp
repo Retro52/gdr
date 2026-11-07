@@ -35,7 +35,7 @@ static const rhi::pipeline& gpass_get_render_pipeline(const app::pso_data& pipel
 }
 
 app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pipelines, const rhi::context context,
-                                  const uvec2 render_res)
+                                  const loader::scene_counters& counters, const uvec2 render_res)
     : m_ctx(context)
     , m_rhi(impl)
     , m_pipelines(pipelines)
@@ -62,7 +62,7 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
     mesh_visibility = *m_rhi.create_buffer(
         m_ctx,
         {
-            .size        = kMaxInstances / 8,
+            .size        = (counters.instances + 31) / 8,
             .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
             .dbg_name    = "mesh_visibility",
         });
@@ -70,23 +70,24 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
     meshlets_visibility = *m_rhi.create_buffer(
         m_ctx,
         {
-            .size        = kMaxMeshlets / 8,
+            .size        = (counters.meshlets + 31) / 8,
             .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
             .dbg_name    = "meshlets_visibility",
         });
 
-    indices = *m_rhi.create_buffer(
-        m_ctx,
-        {
-            .size        = 96_MB,
-            .usage_flags = rhi::buffer_usage::index | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
-            .dbg_name    = "indices",
-        });
+    indices =
+        *m_rhi.create_buffer(m_ctx,
+                             {
+                                 .size = counters.meshlets * shader_constants::kMaxIndicesPerMeshlet * sizeof(u32),
+                                 .usage_flags = rhi::buffer_usage::index | rhi::buffer_usage::indirect
+                                              | rhi::buffer_usage::shader_rw | rhi::buffer_usage::copy_dst,
+                                 .dbg_name = "indices",
+                             });
 
     mesh_draw_commands = *m_rhi.create_buffer(
         m_ctx,
         {
-            .size        = kMaxMeshlets * sizeof(shader_types::DrawTaskCommandIndirect),
+            .size        = counters.meshlets * sizeof(shader_types::DrawTaskCommandIndirect),
             .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
             .dbg_name    = "mesh_draw_commands",
         });
@@ -94,7 +95,7 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
     indexed_draw_commands = *m_rhi.create_buffer(
         m_ctx,
         {
-            .size        = kMaxMeshlets * sizeof(shader_types::DrawIndexedIndirect),
+            .size        = counters.meshlets * sizeof(shader_types::DrawIndexedIndirect),
             .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
             .dbg_name    = "indexed_draw_commands",
         });

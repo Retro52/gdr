@@ -52,9 +52,15 @@ namespace loader
 
     struct scene_counters
     {
-        u64 meshlets  = 0;
-        u64 triangles = 0;
-        u64 instances = 0;
+        u64 vertices   = 0;
+        u64 meshlets   = 0;
+        u64 materials  = 0;
+        u64 instances  = 0;
+        u64 primitives = 0;
+
+        u64 max_onscreen_meshlets  = 0;
+        u64 max_onscreen_triangles = 0;
+
         material_buckets buckets {};
         material_buckets buckets_offset {};
     };
