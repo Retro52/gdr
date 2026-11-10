@@ -100,11 +100,6 @@ static const platform::d3d12_image_view* d3d12_rhi_view_of(const rhi::attachment
 
 static rhi::image_view_kind d3d12_rhi_default_view_kind(const rhi::create_image_info& image_info)
 {
-    if (image_info.dimensions.y <= 1)
-    {
-        return image_info.layer_count > 1 ? rhi::image_view_kind::array_1d : rhi::image_view_kind::flat_1d;
-    }
-
     if (image_info.dimensions.z > 1)
     {
         return rhi::image_view_kind::flat_3d;

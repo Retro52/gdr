@@ -1,6 +1,7 @@
 #include <passes/pass_geometry.hpp>
 #include <passes/scoped_label.hpp>
 #include <tracy/Tracy.hpp>
+#include <utils.hpp>
 
 #include <shaders/bindings/draw.hlsl>
 #include <shaders/constants.hlsl.h>
@@ -70,24 +71,27 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
     meshlets_visibility = *m_rhi.create_buffer(
         m_ctx,
         {
-            .size        = (counters.meshlets + 31) / 8,
+            .size        = (counters.max_onscreen_meshlets + 31) / 8,
             .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
             .dbg_name    = "meshlets_visibility",
         });
 
-    indices =
-        *m_rhi.create_buffer(m_ctx,
-                             {
-                                 .size = counters.meshlets * shader_constants::kMaxIndicesPerMeshlet * sizeof(u32),
-                                 .usage_flags = rhi::buffer_usage::index | rhi::buffer_usage::indirect
-                                              | rhi::buffer_usage::shader_rw | rhi::buffer_usage::copy_dst,
-                                 .dbg_name = "indices",
-                             });
+    const u64 indices_clamped_size =
+        core::min<u64>(counters.max_onscreen_meshlets * shader_constants::kMaxIndicesPerMeshlet * sizeof(u32), 2_GB);
+
+    indices = *m_rhi.create_buffer(m_ctx,
+                                   {
+                                       .size        = indices_clamped_size,
+                                       .usage_flags = rhi::buffer_usage::index | rhi::buffer_usage::indirect
+                                                    | rhi::buffer_usage::shader_rw | rhi::buffer_usage::copy_dst,
+                                       .dbg_name = "indices",
+                                   });
 
     mesh_draw_commands = *m_rhi.create_buffer(
         m_ctx,
         {
-            .size        = counters.meshlets * sizeof(shader_types::DrawTaskCommandIndirect),
+            .size = (counters.buckets_offset.back() + counters.buckets.back())
+                  * sizeof(shader_types::DrawTaskCommandIndirect),
             .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
             .dbg_name    = "mesh_draw_commands",
         });
@@ -95,7 +99,8 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
     indexed_draw_commands = *m_rhi.create_buffer(
         m_ctx,
         {
-            .size        = counters.meshlets * sizeof(shader_types::DrawIndexedIndirect),
+            .size = utils::align_divide(counters.max_onscreen_meshlets * sizeof(shader_types::DrawIndexedIndirect),
+                                        shader_constants::kTaskWorkGroups),
             .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
             .dbg_name    = "indexed_draw_commands",
         });
