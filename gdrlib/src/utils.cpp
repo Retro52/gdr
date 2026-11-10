@@ -3,6 +3,11 @@
 
 #include <cmath>
 
+u64 utils::align_divide(const u64 number, const u64 alignment)
+{
+    return (number + alignment - 1) / alignment;
+}
+
 core::stack_string utils::format_bytes_number(u64 number)
 {
     ZoneScoped;

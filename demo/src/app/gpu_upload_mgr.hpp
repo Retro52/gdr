@@ -72,7 +72,7 @@ namespace app
         [[nodiscard]] rhi::image create_texture(const loader::texture_desc& texture) const;
 
     private:
-        void submit_internal(rhi::buffer dst, u64 dst_offset, const void* data, u64 bytes) const;
+        void submit_internal(rhi::buffer dst, u64 dst_offset, const void* data, u64 bytes);
 
     private:
         const rhi::impl& m_rhi;

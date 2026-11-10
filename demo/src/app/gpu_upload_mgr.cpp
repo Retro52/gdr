@@ -28,6 +28,7 @@ app::gpu_upload_mgr::gpu_upload_mgr(const rhi::impl& rhi, const rhi::context ctx
     : m_rhi(rhi)
     , m_ctx(ctx)
     , m_staging_buffer(gpu_upload_mgr_create_mapped_buffer(rhi, ctx, staging_buffer_size))
+    , m_max_capacity(staging_buffer_size)
 {
     m_upload_queue = *m_rhi.query_queue(ctx, rhi::queue_kind::transfer);
     m_staging_cmd  = *m_rhi.create_command_buffer(m_ctx, rhi::queue_kind::transfer);
@@ -110,9 +111,16 @@ rhi::image app::gpu_upload_mgr::create_texture(const loader::texture_desc& textu
     return image;
 }
 
-void app::gpu_upload_mgr::submit_internal(const rhi::buffer dst, const u64 dst_offset, const void* data,
-                                          u64 bytes) const
+void app::gpu_upload_mgr::submit_internal(const rhi::buffer dst, const u64 dst_offset, const void* data, u64 bytes)
 {
+    if (m_max_capacity < bytes)
+    {
+        m_max_capacity = bytes * 3 / 2;
+
+        m_rhi.destroy_buffer(m_ctx, m_staging_buffer.buffer);
+        m_staging_buffer = gpu_upload_mgr_create_mapped_buffer(m_rhi, m_ctx, m_max_capacity);
+    }
+
     core::cx_memcpy(m_staging_buffer.mapped, data, bytes);
 
     const auto cmd = m_staging_cmd;
