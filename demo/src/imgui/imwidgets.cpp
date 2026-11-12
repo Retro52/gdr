@@ -100,90 +100,6 @@ namespace
 
         return pos;
     }
-
-    bool gizmo_op_impl(const glm::mat4& view, const glm::mat4& proj, const glm::mat4& source,
-                       ImGuizmo::OPERATION& operation)
-    {
-        ImGuiIO& io = ImGui::GetIO();
-
-        const glm::vec3 origin = glm::vec3(source[3]);
-
-        const glm::vec3 camera_pos = glm::vec3(glm::inverse(view)[3]);
-        const f32 camera_distance  = glm::length(camera_pos - origin);
-        const f32 axis_probe_len   = glm::clamp(camera_distance * 0.12F, 0.25F, 10.0F);
-
-        auto x_axis = glm::vec3(source[0]);
-        auto y_axis = glm::vec3(source[1]);
-        auto z_axis = glm::vec3(source[2]);
-
-        x_axis = glm::normalize(glm::length2(x_axis) < 0.0001F ? glm::vec3(1.0F, 0.0F, 0.0F) : x_axis);
-        y_axis = glm::normalize(glm::length2(y_axis) < 0.0001F ? glm::vec3(0.0F, 1.0F, 0.0F) : y_axis);
-        z_axis = glm::normalize(glm::length2(z_axis) < 0.0001F ? glm::vec3(0.0F, 0.0F, 1.0F) : z_axis);
-
-        ImVec2 screen_origin {};
-        ImVec2 screen_x {};
-        ImVec2 screen_y {};
-        ImVec2 screen_z {};
-
-        const bool origin_visible = world_to_screen(view, proj, origin, io.DisplaySize, screen_origin);
-
-        if (!origin_visible)
-        {
-            return false;
-        }
-
-        const bool x_visible = world_to_screen(view, proj, origin + x_axis * axis_probe_len, io.DisplaySize, screen_x);
-        const bool y_visible = world_to_screen(view, proj, origin + y_axis * axis_probe_len, io.DisplaySize, screen_y);
-        const bool z_visible = world_to_screen(view, proj, origin + z_axis * axis_probe_len, io.DisplaySize, screen_z);
-
-        f32 max_x = screen_origin.x;
-        f32 min_y = screen_origin.y;
-
-        if (x_visible)
-        {
-            max_x = glm::max(max_x, screen_x.x);
-            min_y = glm::min(min_y, screen_x.y);
-        }
-
-        if (y_visible)
-        {
-            max_x = glm::max(max_x, screen_y.x);
-            min_y = glm::min(min_y, screen_y.y);
-        }
-
-        if (z_visible)
-        {
-            max_x = glm::max(max_x, screen_z.x);
-            min_y = glm::min(min_y, screen_z.y);
-        }
-
-        ImVec2 menu_pos = clamp_menu_pos(ImVec2(max_x + 12.0F, min_y - 8.0F), io.DisplaySize);
-
-        ImGui::SetNextWindowPos(menu_pos, ImGuiCond_Always);
-        ImGui::SetNextWindowBgAlpha(0.75F);
-
-        constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize
-                                         | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove
-                                         | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing;
-
-        bool hovered = false;
-        {
-            ImGuiEx::ScopedBegin _("##gizmo_operation_selector", nullptr, flags);
-            ImGui::TextUnformatted(gizmo_op_to_str(operation));
-
-            gizmo_op_button("T", ImGuizmo::OPERATION::TRANSLATE, operation);
-            ImGui::SameLine();
-            gizmo_op_button("R", ImGuizmo::OPERATION::ROTATE, operation);
-            ImGui::SameLine();
-            gizmo_op_button("S", ImGuizmo::OPERATION::SCALE, operation);
-            hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
-        }
-
-        ImDrawList* draw_list = ImGui::GetForegroundDrawList();
-        draw_list->AddLine(screen_origin, ImVec2(menu_pos.x, menu_pos.y + 18.0F), IM_COL32(255, 255, 255, 80), 1.0F);
-
-        return hovered;
-    }
 }
 
 bool ImGuiWidgets::ButtonCheckbox(const char* label, bool& value, u32 active_color, u32 inactive_color)
@@ -267,27 +183,16 @@ bool ImGuiWidgets::Bits(u32& mask, const char* const names[], u32 count, const u
 }
 
 void ImGuiWidgets::Gizmo(const glm::mat4& view, const glm::mat4& proj, glm::mat4& source,
-                         ImGuizmo::OPERATION& operation)
+                         const ImGuizmo::OPERATION operation)
 {
     ImGuiIO& io      = ImGui::GetIO();
     ImDrawList* draw = ImGui::GetForegroundDrawList();
 
-    // link from the gizmo origin to the operation selector.
-
     const auto gizmo_proj = build_gizmo_proj(proj);
-    ImGuizmo::Enable(!gizmo_op_impl(view, gizmo_proj, source, operation));
 
     ImGuizmo::SetDrawlist(draw);
     ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
     ImGuizmo::Manipulate(&view[0][0], &gizmo_proj[0][0], operation, ImGuizmo::MODE::WORLD, &source[0][0]);
-
-    ImGuizmo::Enable(true);
-}
-
-bool ImGuiWidgets::GizmoOp(const glm::mat4& view, const glm::mat4& proj, const glm::mat4& source,
-                           ImGuizmo::OPERATION& operation)
-{
-    return gizmo_op_impl(view, build_gizmo_proj(proj), source, operation);
 }
 
 ImGuiWidgets::CommonImageControls ImGuiWidgets::ImageControls(const char* id, f32 mips_count, f32 layers_count)

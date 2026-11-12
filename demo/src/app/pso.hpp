@@ -24,6 +24,8 @@ namespace app
         task_cull_pipeline           = "task_cull_pipeline"_crc32,
         task_occlusion_cull_pipeline = "task_occlusion_cull_pipeline"_crc32,
 
+        task_count_patch_pipeline = "task_count_patch_pipeline"_crc32,
+
         task_render_pipeline         = "task_render_pipeline"_crc32,
         task_render_late_pipeline    = "task_render_late_pipeline"_crc32,
         task_render_ds_pipeline      = "task_render_ds_pipeline"_crc32,

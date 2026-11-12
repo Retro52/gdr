@@ -40,8 +40,9 @@ namespace app
         rhi::image v_buffer = rhi::null_image;
         depth_pyramid_data hizb;
 
-        rhi::buffer mesh_draw_count      = rhi::null_buffer;
-        rhi::buffer indexed_count_buffer = rhi::null_buffer;
+        rhi::buffer mesh_draw_count      = rhi::null_buffer; // Raw per-mat class counter of task shader dispatches
+        rhi::buffer mesh_dispatch_count  = rhi::null_buffer; // Patched dispatch thread count used to dispatch task shaders
+        rhi::buffer indexed_count_buffer = rhi::null_buffer; // Counter for vkCmdDrawIndexedIndirectCount/ExecuteIndirect
 
         rhi::buffer mesh_visibility     = rhi::null_buffer;
         rhi::buffer meshlets_visibility = rhi::null_buffer;
@@ -71,6 +72,8 @@ namespace app
         void on_pre_draw(rhi::command_buffer cmd) const;
 
         void build_hzb(rhi::command_buffer cmd) const;
+
+        void patch_task_count(rhi::command_buffer cmd) const;
 
         void cull_scene(rhi::command_buffer cmd, const common_resources& res, const loader::scene_counters& counters,
                         bool occlusion_cull) const;

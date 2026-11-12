@@ -735,7 +735,7 @@ static void log_device_features_table(const char* name, const rhi::rendering_fea
 }
 
 static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR surface,
-                                             rhi::rendering_features_table& required_features, u32 wanted_index)
+                                             rhi::rendering_features_table& required_features, core::stack_string hint)
 {
     ZoneScoped;
     u32 device_count = 0;
@@ -758,9 +758,10 @@ static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR s
                                                  .pNext = &driver_properties};
         vkGetPhysicalDeviceProperties2(device, &properties2);
 
+        core::stack_string device_name = properties2.properties.deviceName;
         LOG_DEBUG("Evaluating device #{}: {} ({}). Driver: {} ({})",
                   i,
-                  properties2.properties.deviceName,
+                  device_name.c_str(),
                   device_type_to_str(properties2.properties.deviceType),
                   driver_properties.driverName,
                   driver_properties.driverInfo);
@@ -768,15 +769,15 @@ static VkPhysicalDevice pick_physical_device(VkInstance instance, VkSurfaceKHR s
         if (!check_device_basic_features_support(device, surface, required_features))
         {
             LOG_DEBUG("Device #{} does not support all required features", i);
-            log_device_features_table(properties2.properties.deviceName, required_features);
+            log_device_features_table(device_name.c_str(), required_features);
             continue;
         }
 
-        if (wanted_index == i)
+        if (!hint.empty() && device_name.contains(hint))
         {
             current_pick            = device;
             device_features_support = required_features;
-            LOG_DEBUG("Device #{} selected according to device id hint", i);
+            LOG_DEBUG("Device {} selected according to device id hint", device_name.c_str());
             break;
         }
 
@@ -940,8 +941,8 @@ static result<vk_context> create_vk_context(const window& window, const rhi::ins
 
     // Application info
     VkApplicationInfo application_info {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO};
-    application_info.pApplicationName = desc.app_name ? desc.app_name : "NoName";
-    application_info.pEngineName      = desc.app_name ? desc.app_name : "NoName";
+    application_info.pApplicationName = !desc.app_name.empty() ? desc.app_name.c_str() : "NoName";
+    application_info.pEngineName      = !desc.app_name.empty() ? desc.app_name.c_str() : "NoName";
     application_info.engineVersion    = 1;
     application_info.apiVersion       = VK_API_VERSION_1_4;
 
@@ -1002,7 +1003,7 @@ static result<vk_context> create_vk_context(const window& window, const rhi::ins
 
     // here context.enabled_device_features is populated with all supported features, both required and requested
     context.physical_device =
-        pick_physical_device(context.instance, context.surface, context.enabled_device_features, desc.device_id_hint);
+        pick_physical_device(context.instance, context.surface, context.enabled_device_features, desc.device_name);
 
     // build new extensions table with required + (requested & supported) extensions included
     VK_RETURN_ON_FAIL(create_vulkan_device(context.physical_device, context.surface, &context.device));

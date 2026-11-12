@@ -21,6 +21,9 @@ namespace platform
     D3D12_BARRIER_SUBRESOURCE_RANGE d3d12_rhi_parse_image_range(const rhi::image_subresource_range& range,
                                                                 u32 mips_count, u32 layers_count);
 
+    D3D12_BLEND_OP d3d12_rhi_parse_blend_op(rhi::blend_op op);
+    D3D12_BLEND d3d12_rhi_parse_blend_factor(rhi::blend_factor factor);
+
     D3D_PRIMITIVE_TOPOLOGY d3d12_rhi_parse_topology(rhi::topology topology);
     D3D12_COMPARISON_FUNC d3d12_rhi_parse_comparison_func(rhi::compare_op op);
     D3D12_BARRIER_SYNC d3d12_rhi_parse_stage_flags(rhi::barrier_stage_bits stages);

@@ -4,6 +4,7 @@
 #include <core/alg_constexpr.hpp>
 
 #include <cstdio>
+#include <cstring>
 
 #if ENABLE_STL
 #include <core/hash/crc_hash.hpp>
@@ -82,6 +83,33 @@ namespace core
 #endif
 
         [[nodiscard]] constexpr const char* c_str() const { return data(); }
+
+        [[nodiscard]] constexpr bool contains(const char* other) const noexcept
+        {
+            const auto len_other = core::cx_strlen(other);
+            const auto len_self  = this->length();
+
+            if (len_other > len_self)
+            {
+                return false;
+            }
+
+            for (u32 i = 0; i < len_self - len_other; ++i)
+            {
+                if (std::memcmp(&this->m_str[i], other, len_other) == 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        template<u64 No>
+        [[nodiscard]] constexpr bool contains(const stack_string_base<No>& other) const noexcept
+        {
+            return this->contains(other.c_str());
+        }
 
         [[nodiscard]] constexpr stack_string_base substring(const u64 off, u64 count) const
         {

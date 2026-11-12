@@ -40,13 +40,14 @@ namespace loader
 
     struct texture_desc
     {
-        uvec3 dimensions         = uvec3(0);
-        u16 mips_count           = 0;
-        u16 arrays_count         = 0;
-        u32 block_size           = 0;
-        u32 bits_per_block       = 0;
-        texture_usage usage      = texture_usage::unknown;
-        rhi::image_format format = rhi::image_format::none;
+        uvec3 dimensions              = uvec3(0);
+        u16 mips_count                = 0;
+        u16 arrays_count              = 0;
+        u32 block_size                = 0;
+        u32 bits_per_block            = 0;
+        texture_usage usage           = texture_usage::unknown;
+        rhi::image_format format      = rhi::image_format::none;
+        core::stack_string debug_name = "";
         bytes pdata;
     };
 
