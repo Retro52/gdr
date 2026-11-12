@@ -166,15 +166,17 @@ namespace shader_types
 #ifdef __cplusplus
         DrawPushConstants() = default;
 
-        DrawPushConstants(const glm::mat4& ivp, const uint ico)
+        DrawPushConstants(const glm::mat4& ivp, const uint in_cmd_offset, const uint in_count_offset)
             : vp(ivp)
-            , cmd_offset(ico)
+            , cmd_offset(in_cmd_offset)
+            , count_offset(in_count_offset)
         {
         }
 #endif
 
         float4x4 vp;
         uint cmd_offset;
+        uint count_offset;
     };
 
     struct ResolvePassPushConstants

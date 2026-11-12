@@ -33,8 +33,9 @@ namespace shader_constants
 
     static const uint kLODCount = 8;
 
-    static const uint kTaskWorkGroups = 64;
-    static const uint kMeshWorkGroups = 64;
+    static const uint kTaskWorkGroups           = 64;
+    static const uint kMeshWorkGroups           = 64;
+    static const uint kMaxTaskDispatchDimension = 65535;
 
     static const uint kInstanceIdMask = ~(1u << 31);
 
