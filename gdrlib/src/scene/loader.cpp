@@ -49,6 +49,7 @@ namespace
     {
         loader::texture_usage usage {loader::texture_usage::unknown};
         std::variant<dds_data, exr_data, SDL_Surface*> desc;
+        core::stack_string debug_name;
     };
 
     result<exr_data> read_exr_data(const bytes& data)
@@ -128,7 +129,7 @@ namespace
     template<typename Data>
     loader::texture_desc desc_from_parse_result(Data&& parsed_texture)
     {
-        loader::texture_desc result;
+        loader::texture_desc result {.debug_name = parsed_texture.debug_name};
         std::visit(
             [&]<typename T>(T&& data)
             {
@@ -351,7 +352,8 @@ static result<parsed_texture> read_texture(const fs::path& uri, loader::texture_
     }
 
     parsed_texture result;
-    result.usage = usage;
+    result.usage      = usage;
+    result.debug_name = uri.filename().c_str();
 
     if (std::memcmp(r_data->data(), "DDS ", 4) == 0)
     {

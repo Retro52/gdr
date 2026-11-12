@@ -27,8 +27,6 @@ namespace app
     void zero_buffer(const rhi::impl& rhi, rhi::command_buffer cmd, const rhi::buffer& draw_count_buffer,
                      u64 offset = 0, u64 size = 0);
 
-    void reset_draw_count_buffer(const rhi::impl& rhi, rhi::command_buffer cmd, const rhi::buffer& draw_count_buffer);
-
     rhi::image create_color_image(const rhi::impl& rhi, const ivec2& size, rhi::image_format format, rhi::context ctx,
                                   const char* dbg_name, rhi::image_usage_bits extra_usage = rhi::image_usage::sampled);
 

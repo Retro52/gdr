@@ -684,12 +684,24 @@ auto platform::d3d12_create_pipeline_graphics(ID3D12Device2* device, const d3d12
     desc.DSVFormat = d3d12_format_from_vk(static_cast<VkFormat>(options.depth_format));
 
     assert2(options.color_attachments_count < COUNT_OF(options.color_formats));
+
+    CD3DX12_BLEND_DESC blend_desc(D3D12_DEFAULT);
     D3D12_RT_FORMAT_ARRAY rt_format_array = {.NumRenderTargets = options.color_attachments_count};
+
     for (u32 i = 0; i < options.color_attachments_count; ++i)
     {
         rt_format_array.RTFormats[i] = d3d12_format_from_vk(static_cast<VkFormat>(options.color_formats[i]));
+
+        blend_desc.RenderTarget[i].BlendEnable    = options.enable_blend;
+        blend_desc.RenderTarget[i].SrcBlend       = d3d12_rhi_parse_blend_factor(options.src_color_blend_factor);
+        blend_desc.RenderTarget[i].DestBlend      = d3d12_rhi_parse_blend_factor(options.dst_color_blend_factor);
+        blend_desc.RenderTarget[i].BlendOp        = d3d12_rhi_parse_blend_op(options.color_blend_op);
+        blend_desc.RenderTarget[i].SrcBlendAlpha  = d3d12_rhi_parse_blend_factor(options.src_alpha_blend_factor);
+        blend_desc.RenderTarget[i].DestBlendAlpha = d3d12_rhi_parse_blend_factor(options.dst_alpha_blend_factor);
+        blend_desc.RenderTarget[i].BlendOpAlpha   = d3d12_rhi_parse_blend_op(options.alpha_blend_op);
     }
 
+    desc.BlendState = blend_desc;
     desc.RTVFormats = rt_format_array;
 
     CD3DX12_RASTERIZER_DESC raster(D3D12_DEFAULT);

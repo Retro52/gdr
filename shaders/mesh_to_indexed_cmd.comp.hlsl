@@ -7,20 +7,21 @@ ByteAddressBuffer              meshlet_data:   register(t1);
 StructuredBuffer<MeshData>     meshes_data:    register(t2);
 StructuredBuffer<MeshInstance> mesh_instances: register(t3);
 
-StructuredBuffer<DrawTaskCommandIndirect> draw_mesh_cmds: register(t4);
-StructuredBuffer<FrameCullData>           frame_cull:     register(t5);
+StructuredBuffer<DrawTaskCommandIndirect> draw_mesh_cmds:      register(t4);
+StructuredBuffer<uint>                    draw_mesh_cmd_count: register(t5);
 
-RWStructuredBuffer<uint>                indices:             register(u6);
-RWStructuredBuffer<DrawIndexedIndirect> draw_indirects:      register(u7);
-RWStructuredBuffer<uint>                indexed_draw_counts: register(u8);
+StructuredBuffer<FrameCullData>           frame_cull:          register(t6);
+RWStructuredBuffer<uint>                  indices:             register(u7);
+RWStructuredBuffer<DrawIndexedIndirect>   draw_indirects:      register(u8);
+RWStructuredBuffer<uint>                  indexed_draw_counts: register(u9);
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-RWStructuredBuffer<uint> meshlets_visibility_buffer: register(u9);
+RWStructuredBuffer<uint> meshlets_visibility_buffer: register(u10);
 
-[[vk::combinedImageSampler]] Texture2D    depth_pyramid:         register(t10);
-[[vk::combinedImageSampler]] SamplerState depth_pyramid_sampler: register(s10);
+[[vk::combinedImageSampler]] Texture2D    depth_pyramid:         register(t11);
+[[vk::combinedImageSampler]] SamplerState depth_pyramid_sampler: register(s11);
 #else
-StructuredBuffer<uint> meshlets_visibility_buffer: register(t9);
+StructuredBuffer<uint> meshlets_visibility_buffer: register(t10);
 #endif
 
 groupshared uint s_indices_count;
@@ -28,7 +29,8 @@ groupshared uint s_indices_offset_global;
 
 struct PushConstants
 {
-    uint offset;
+    uint cmd_offset;
+    uint count_offset;
 };
 
 [[vk::push_constant]] ConstantBuffer<PushConstants> pc: register(b0);
@@ -37,10 +39,16 @@ struct PushConstants
 [numthreads(kTaskWorkGroups, 1, 1)]
 void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
 {
-    uint instance_id      = draw_mesh_cmds[group_id.x + pc.offset].instance_id;
-    uint meshlets_in_task = draw_mesh_cmds[group_id.x + pc.offset].meshlet_count & 0x7FFFFFFFu;
-    uint meshlet_id       = draw_mesh_cmds[group_id.x + pc.offset].meshlet_offset + local_id.x;
-    uint visibility_bit   = draw_mesh_cmds[group_id.x + pc.offset].visibility_offset + local_id.x;
+    uint group_idx = group_id.y * kMaxTaskDispatchDimension + group_id.x;
+    if (group_idx >= draw_mesh_cmd_count[pc.count_offset])
+        return;
+
+    uint cmd_idx = group_idx + pc.cmd_offset;
+
+    uint instance_id      = draw_mesh_cmds[cmd_idx].instance_id;
+    uint meshlets_in_task = draw_mesh_cmds[cmd_idx].meshlet_count & 0x7FFFFFFFu;
+    uint meshlet_id       = draw_mesh_cmds[cmd_idx].meshlet_offset + local_id.x;
+    uint visibility_bit   = draw_mesh_cmds[cmd_idx].visibility_offset + local_id.x;
     uint cmd_base_vertex = meshes_data[mesh_instances[instance_id].mesh_data_index].base_vertex;
 
     if (local_id.x == 0)
@@ -97,7 +105,7 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
     bool emit = visible && local_id.x < meshlets_in_task;
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-    bool drawn_in_early = was_visible_last_frame && visible && GET_BIT(draw_mesh_cmds[group_id.x + pc.offset].meshlet_count, 31) == 1;
+    bool drawn_in_early = was_visible_last_frame && visible && GET_BIT(draw_mesh_cmds[cmd_idx].meshlet_count, 31) == 1;
     if (visible && DBG_GET_BIT1(frame_cull[0].flags, kMeshletOcclusionCullBit) == 1 && project_sphere(view_center, sphere_radius, frame_cull[0].frustum[4], frame_cull[0].p00, frame_cull[0].p11, p_aabb))
     {
         float2 pmd_size = float2(p_aabb.z - p_aabb.x, p_aabb.w - p_aabb.y) * frame_cull[0].pyramid_size;

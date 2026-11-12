@@ -281,7 +281,7 @@ static rhi::impl load_rhi(const app::argv_handler& args)
 #endif
 }
 
-static rhi::instance_desc get_instance_desc(auto& args)
+static rhi::instance_desc get_instance_desc(const app::argv_handler& args)
 {
     auto features_table = rhi::rendering_features_table()
 #if !defined(__APPLE__)
@@ -305,7 +305,7 @@ static rhi::instance_desc get_instance_desc(auto& args)
 
     return rhi::instance_desc {
         .app_name        = "GDR",
-        .device_id_hint  = static_cast<u32>(args.read_numeric("--device_id", 0)),
+        .device_name     = args.read_string("--device"),
         .device_features = features_table,
     };
 }
@@ -363,6 +363,9 @@ int app::instance::run()
         *context, m_window, app::pass_post_process::kOutputFormat, *m_rhi.query_swapchain_images_count(*swapchain));
     RESULT_EXIT_IF_FAILED(imgui_context);
 #endif
+
+    const auto str = core::stack_string::make_formatted("GDR [%s]", m_rhi.name);
+    SDL_SetWindowTitle(m_window.get_native_handle().window, str.c_str());
 
     // test scene stuff
     loader::scene_data scene_data;
@@ -558,7 +561,11 @@ int app::instance::run()
     glm::mat4 debug_camera_view;
     glm::mat4 mv_pref_frame_view_proj;
 
-    debug_mode draw_debug_mode {debug_mode::shaded};
+    auto draw_debug_mode = debug_mode::shaded;
+
+    u32 imguizmo_op                              = 0;
+    constexpr ImGuizmo::OPERATION imguizmo_ops[] = {
+        ImGuizmo::OPERATION::TRANSLATE, ImGuizmo::OPERATION::ROTATE, ImGuizmo::OPERATION::SCALE};
 
     f32 camera_exposure        = 10.0F;
     f32 envmap_compensation_ev = 0.0f;
@@ -588,8 +595,9 @@ int app::instance::run()
         bool& freeze_cull_data;
         bool& enable_meshlets_pipeline;
 
+        u32& imguizmo_op;
         debug_mode& draw_debug_mode;
-    } keyboard_controls_ctx(fsr_aa_reset, freeze_cull_data, enable_meshlets_pipeline, draw_debug_mode);
+    } keyboard_controls_ctx(fsr_aa_reset, freeze_cull_data, enable_meshlets_pipeline, imguizmo_op, draw_debug_mode);
 
     m_events_queue.add_watcher(
         event_type::key_pressed,
@@ -631,6 +639,12 @@ int app::instance::run()
                 var             = static_cast<debug_mode>(core::max(static_cast<u32>(var), 1U) - 1);
 
                 LOG_INFO("New debug view mode: {}", reflection::get_enum_name_at<debug_mode>(static_cast<u32>(var)));
+            }
+            if (payload.keyboard.key == keycode::sc_space
+                && static_cast<keyboard_controls_context*>(user_data)->freeze_cull_data)
+            {
+                auto& var = static_cast<keyboard_controls_context*>(user_data)->imguizmo_op;
+                ++var;
             }
         },
         &keyboard_controls_ctx);
@@ -879,6 +893,29 @@ int app::instance::run()
                 ImGui::NewFrame();
                 ImGuizmo::BeginFrame();
 
+                static f64 smoothed_dt = 0.0;
+                smoothed_dt            = smoothed_dt * 0.95 + dt * 0.05;
+
+                ImGuiWidgets::TopBar(
+                    [&]
+                    {
+                        ImGui::Text("DT: %.2f ms (%.2f FPS)", smoothed_dt * 1000.0, ImGui::GetIO().Framerate);
+                    },
+                    [&]
+                    {
+                        ImGui::Text("Camera speed: %.1f", controller.base_move_speed);
+                    },
+                    [&]
+                    {
+                        ImGui::SetNextItemWidth(120.0f);
+                        ImGuiWidgets::Enum("##AA mode", aa_mode);
+                    },
+                    [&]
+                    {
+                        ImGui::SetNextItemWidth(120.0f);
+                        ImGuiWidgets::Enum("##Overlay", draw_debug_mode);
+                    });
+
                 ImGui::Text("Max onscreen triangles: %s",
                             utils::format_counter_number(scene_data.counters.max_onscreen_triangles).c_str());
                 ImGui::Text("Max onscreen meshlets: %s",
@@ -905,12 +942,30 @@ int app::instance::run()
                 };
                 ImGuiWidgets::Bits(client_render_settings.flags, names, COUNT_OF(names));
 
+                ImGui::InputFloat3("Camera pos", &camera_transform.position.x);
+                ImGui::BeginDisabled(true);
+                ImGui::InputFloat4("Camera rotation", &camera_transform.rotation.x);
+                ImGui::EndDisabled();
+                if (ImGui::Button("Copy as CLI params"))
+                {
+                    core::big_stack_string cli = "--camera_position ";
+                    cli += core::big_stack_string::make_formatted("%f;%f;%f",
+                                                                  camera_transform.position.x,
+                                                                  camera_transform.position.y,
+                                                                  camera_transform.position.z);
+
+                    const auto dir =
+                        glm::degrees(glm::eulerAngles(camera.get_component<transform_component>().rotation));
+                    cli += core::big_stack_string::make_formatted(" --camera_direction %f;%f;%f", dir.x, dir.y, dir.z);
+
+                    SDL_SetClipboardText(cli.c_str());
+                }
+
                 if (freeze_cull_data)
                 {
-                    static ImGuizmo::OPERATION op = ImGuizmo::OPERATION::TRANSLATE;
-
                     auto tmp = glm::inverse(debug_camera_view);
-                    ImGuiWidgets::Gizmo(camera_view, camera_proj, tmp, op);
+                    ImGuiWidgets::Gizmo(
+                        camera_view, camera_proj, tmp, imguizmo_ops[imguizmo_op % COUNT_OF(imguizmo_ops)]);
                     debug_camera_view = glm::inverse(tmp);
                 }
 
@@ -945,14 +1000,6 @@ int app::instance::run()
                 });
 
                 m_rhi.present(*swapchain, *m_rhi.query_queue(*context, rhi::queue_kind::compute));
-
-                static f64 accumulated_time = 0.0;
-                accumulated_time            = accumulated_time * 0.95 + dt * 0.05;
-                const auto str              = core::stack_string::make_formatted("[%s] [%s] CPU: %.3lfms",
-                                                                    reflection::string_from_enum(draw_debug_mode),
-                                                                    m_rhi.name,
-                                                                    accumulated_time * 1000.0F);
-                SDL_SetWindowTitle(m_window.get_native_handle().window, str.c_str());
 
                 FrameMark;
             });

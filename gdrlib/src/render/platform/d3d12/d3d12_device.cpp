@@ -266,7 +266,8 @@ static bool check_device_features(ID3D12Device* device, const D3D_SHADER_MODEL d
 }
 
 static HRESULT pick_and_create_device(platform::d3d12_context& ctx,
-                                      const rhi::rendering_features_table& wanted_features, const u32 device_hint_id)
+                                      const rhi::rendering_features_table& wanted_features,
+                                      const core::stack_string& hint)
 {
     ZoneScoped;
 
@@ -313,7 +314,7 @@ static HRESULT pick_and_create_device(platform::d3d12_context& ctx,
             continue;
         }
 
-        const bool force_select = i == device_hint_id;
+        const bool force_select = !hint.empty() && name.contains(hint);
         if (!ctx.device || force_select)
         {
             ctx.adapter                 = adapter;
@@ -399,7 +400,7 @@ auto platform::d3d12_create_context(const window& window, const rhi::instance_de
     D3D12_RETURN_ON_FAIL(CreateDXGIFactory2(factory_flags, IID_PPV_ARGS(&context.factory)));
 
     context.window_handle = static_cast<HWND>(window.get_native_handle().windows.hwnd);
-    D3D12_RETURN_ON_FAIL(pick_and_create_device(context, desc.device_features, desc.device_id_hint));
+    D3D12_RETURN_ON_FAIL(pick_and_create_device(context, desc.device_features, desc.device_name));
 
     const D3D12MA::ALLOCATOR_DESC allocator_desc {
         .Flags              = static_cast<D3D12MA::ALLOCATOR_FLAGS>(D3D12MA_RECOMMENDED_ALLOCATOR_FLAGS),

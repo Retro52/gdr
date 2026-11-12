@@ -731,8 +731,8 @@ namespace rhi
 
     struct instance_desc
     {
-        const char* app_name = "";
-        u32 device_id_hint   = kDeviceIdDealersChoice;
+        core::stack_string app_name    = "";
+        core::stack_string device_name = "";
 
         rhi::rendering_features_table device_features;
     };

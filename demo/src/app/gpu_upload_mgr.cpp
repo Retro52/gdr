@@ -48,7 +48,7 @@ rhi::image app::gpu_upload_mgr::create_texture(const loader::texture_desc& textu
         .layer_count = texture.arrays_count,
         .dimensions  = texture.dimensions,
         .usage_flags = rhi::image_usage::transfer_dst | rhi::image_usage::sampled,
-        .dbg_name    = "generic texture",
+        .dbg_name    = texture.debug_name.empty() ? "generic texture" : texture.debug_name.c_str(),
     };
 
     const auto image = *m_rhi.create_image(m_ctx, image_info);

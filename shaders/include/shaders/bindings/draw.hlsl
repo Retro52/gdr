@@ -13,9 +13,10 @@ namespace shader_bindings::draw
     const uint kInstanceBinding    = 5;
     const uint kTextureBinding     = 6;
     const uint kDrawBinding        = 7;
-    const uint kCullBinding        = 8;
-    const uint kVisibilityBinding  = 9;
-    const uint kHiZBinding         = 10;
+    const uint kCountBinding       = 8;
+    const uint kCullBinding        = 9;
+    const uint kVisibilityBinding  = 10;
+    const uint kHiZBinding         = 11;
 }
 #endif
 
@@ -31,14 +32,15 @@ StructuredBuffer<MeshInstance>        mesh_instances:            register(t5);
 SamplerState                          textures_sampler:          register(s6);
 #ifdef FOR_MESH_PIPELINE
 StructuredBuffer<DrawTaskCommandIndirect> draw_mesh_cmds:        register(t7);
-StructuredBuffer<FrameCullData>           frame_cull:            register(t8);
+StructuredBuffer<uint>                    draw_mesh_count:       register(t8);
+StructuredBuffer<FrameCullData>           frame_cull:            register(t9);
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-RWStructuredBuffer<uint> meshlets_visibility_buffer:             register(u9);
-[[vk::combinedImageSampler]] Texture2D    depth_pyramid:         register(t10);
-[[vk::combinedImageSampler]] SamplerState depth_pyramid_sampler: register(s10);
+RWStructuredBuffer<uint> meshlets_visibility_buffer:             register(u10);
+[[vk::combinedImageSampler]] Texture2D    depth_pyramid:         register(t11);
+[[vk::combinedImageSampler]] SamplerState depth_pyramid_sampler: register(s11);
 #else
-StructuredBuffer<uint> meshlets_visibility_buffer:               register(t9);
+StructuredBuffer<uint> meshlets_visibility_buffer:               register(t10);
 #endif
 #else
 StructuredBuffer<DrawIndexedIndirect>     draw_cmds:             register(t7);

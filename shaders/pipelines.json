@@ -108,6 +108,11 @@
       "cull_occlusion_tasks.comp"
     ]
   },
+  "task_count_patch_pipeline": {
+    "shaders": [
+      "cull_pass_patch.comp"
+    ]
+  },
   "indexed_render_pipeline": {
     "shaders": [
       "mesh.vert",

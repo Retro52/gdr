@@ -382,6 +382,54 @@ D3D12_CLEAR_FLAGS platform::d3d12_dsv_clear_flags(const DXGI_FORMAT format)
                                             : D3D12_CLEAR_FLAG_DEPTH;
 }
 
+D3D12_BLEND_OP platform::d3d12_rhi_parse_blend_op(const rhi::blend_op op)
+{
+    ZoneScoped;
+    switch (op)
+    {
+    case rhi::blend_op::max :
+        return D3D12_BLEND_OP_MAX;
+    case rhi::blend_op::add :
+        return D3D12_BLEND_OP_ADD;
+    case rhi::blend_op::subtract :
+        return D3D12_BLEND_OP_SUBTRACT;
+    case rhi::blend_op::reverse_subtract :
+        return D3D12_BLEND_OP_REV_SUBTRACT;
+    default :
+    case rhi::blend_op::min :
+        return D3D12_BLEND_OP_MIN;
+    }
+}
+
+D3D12_BLEND platform::d3d12_rhi_parse_blend_factor(const rhi::blend_factor factor)
+{
+    ZoneScoped;
+    switch (factor)
+    {
+    case rhi::blend_factor::one :
+        return D3D12_BLEND_ONE;
+    case rhi::blend_factor::src_color :
+        return D3D12_BLEND_SRC_COLOR;
+    case rhi::blend_factor::src_alpha :
+        return D3D12_BLEND_SRC_ALPHA;
+    case rhi::blend_factor::one_minus_src_color :
+        return D3D12_BLEND_INV_SRC_COLOR;
+    case rhi::blend_factor::one_minus_src_alpha :
+        return D3D12_BLEND_INV_SRC_ALPHA;
+    case rhi::blend_factor::dst_color :
+        return D3D12_BLEND_SRC1_COLOR;
+    case rhi::blend_factor::dst_alpha :
+        return D3D12_BLEND_SRC1_ALPHA;
+    case rhi::blend_factor::one_minus_dst_color :
+        return D3D12_BLEND_INV_SRC1_COLOR;
+    case rhi::blend_factor::one_minus_dst_alpha :
+        return D3D12_BLEND_INV_SRC1_ALPHA;
+    default :
+    case rhi::blend_factor::zero :
+        return D3D12_BLEND_ZERO;
+    }
+}
+
 D3D_PRIMITIVE_TOPOLOGY platform::d3d12_rhi_parse_topology(const rhi::topology topology)
 {
     ZoneScoped;

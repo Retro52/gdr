@@ -41,9 +41,36 @@ namespace ImGuiWidgets
 
     bool Bits(u32& mask, const char* const names[], u32 count, u32 columns = 2);
 
-    void Gizmo(const glm::mat4& view, const glm::mat4& proj, glm::mat4& source, ImGuizmo::OPERATION& operation);
+    void Gizmo(const glm::mat4& view, const glm::mat4& proj, glm::mat4& source, ImGuizmo::OPERATION operation);
 
-    bool GizmoOp(const glm::mat4& view, const glm::mat4& proj, const glm::mat4& source, ImGuizmo::OPERATION& operation);
+    template<typename... Items>
+    void TopBar(Items&&... items)
+    {
+        static_assert(sizeof...(Items) > 0, "BeginTable needs at least one column");
+
+        const ImGuiViewport* vp = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(vp->Pos);
+        ImGui::SetNextWindowSize(ImVec2(vp->Size.x, 0.0f));
+        ImGui::SetNextWindowBgAlpha(0.35f);
+
+        constexpr ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove
+                                                | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing
+                                                | ImGuiWindowFlags_NoNav;
+        constexpr ImGuiTableFlags table_flags = ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        const bool open = ImGui::Begin("##TopBar", nullptr, window_flags);
+        ImGui::PopStyleVar(2);
+
+        if (open && ImGui::BeginTable("##items", static_cast<int>(sizeof...(Items)), table_flags))
+        {
+            // one cell per callback
+            ((ImGui::TableNextColumn(), ImGui::AlignTextToFramePadding(), items()), ...);
+            ImGui::EndTable();
+        }
+        ImGui::End();
+    }
 
     template<typename T>
     bool Enum(const char* label, T& evalue)

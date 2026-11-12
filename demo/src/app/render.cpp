@@ -60,49 +60,6 @@ void app::zero_buffer(const rhi::impl& rhi, const rhi::command_buffer cmd, const
     rhi.cmd_barriers(cmd, {.buffers = post_barriers});
 }
 
-void app::reset_draw_count_buffer(const rhi::impl& rhi, rhi::command_buffer cmd, const rhi::buffer& draw_count_buffer)
-{
-    ZoneScoped;
-
-#ifdef __APPLE__
-    constexpr auto stage_bits = rhi::barrier_stage::indirect | rhi::barrier_stage::compute_shader;
-#else
-    constexpr auto stage_bits = rhi::barrier_stage::indirect | rhi::barrier_stage::task_shader
-                              | rhi::barrier_stage::mesh_shader | rhi::barrier_stage::compute_shader;
-#endif
-
-    const rhi::buffer_barrier pre_barrier = {
-        .buffer = draw_count_buffer,
-        .before = {.stages = stage_bits,
-                   .access = rhi::barrier_access::indirect_read | rhi::barrier_access::storage_read
-                           | rhi::barrier_access::storage_write                                 },
-        .after  = {.stages = rhi::barrier_stage::copy, .access = rhi::barrier_access::copy_write}
-    };
-
-    const rhi::buffer_barrier pre_barriers[] = {pre_barrier};
-    rhi.cmd_barriers(cmd, {.buffers = pre_barriers});
-
-    u32 counts[shader_constants::kMatClassCount * 3];
-    for (u32 i = 0; i < shader_constants::kMatClassCount; ++i)
-    {
-        counts[i * 3]     = 0;
-        counts[i * 3 + 1] = 1;
-        counts[i * 3 + 2] = 1;
-    }
-
-    rhi.cmd_update_buffer(cmd, draw_count_buffer, u64vec2(0, sizeof(u32) * COUNT_OF(counts)), counts);
-    const rhi::buffer_barrier post_barrier = {
-        .buffer = draw_count_buffer,
-        .before = pre_barrier.after,
-        .after  = {.stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::indirect,
-                   .access = rhi::barrier_access::indirect_read | rhi::barrier_access::storage_read
-                           | rhi::barrier_access::storage_write}
-    };
-
-    const rhi::buffer_barrier post_barriers[] = {post_barrier};
-    rhi.cmd_barriers(cmd, {.buffers = post_barriers});
-}
-
 rhi::image app::create_color_image(const rhi::impl& rhi, const ivec2& size, const rhi::image_format format,
                                    const rhi::context ctx, const char* dbg_name,
                                    const rhi::image_usage_bits extra_usage)

@@ -106,7 +106,7 @@ void main(uint3 global_id: SV_DispatchThreadID)
         uint task_count = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
 
         uint dci;
-        InterlockedAdd(draw_commands_count[material_class * 3], task_count, dci);
+        InterlockedAdd(draw_commands_count[material_class], task_count, dci);
         dci += pc.offset_table[material_class];
 
         for (uint i = task_count; i > 0; i--)
