@@ -130,6 +130,9 @@ app::depth_pyramid_data app::create_depth_pyramid(const rhi::impl& rhi, const iv
         .base_size     = {1 << static_cast<i32>(std::log2(size.x)), 1 << static_cast<i32>(std::log2(size.y))},
     };
 
+    depth_pyramid.base_size.x = core::min(depth_pyramid.base_size.x, 2048);
+    depth_pyramid.base_size.y = core::min(depth_pyramid.base_size.y, 2048);
+
     ivec2 size_cpy = depth_pyramid.base_size;
     while (size_cpy.x > 1 || size_cpy.y > 1)
     {

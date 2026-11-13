@@ -61,7 +61,7 @@ void main(uint3 global_id: SV_DispatchThreadID)
     center = mul(frame_cull[0].view, float4(center, 1.0F)).xyz;
 
     float scale = mesh_instances[idx].pos_and_scale.w;
-    float radius = meshes_data[mesh_idx].radius * scale;
+    float radius = abs(meshes_data[mesh_idx].radius * scale);
 
     bool visible = true;
     visible = visible && center.z * frame_cull[0].frustum[1] - abs(center.x) * frame_cull[0].frustum[0] > -radius;

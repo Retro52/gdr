@@ -24,8 +24,8 @@ RWStructuredBuffer<uint> meshlets_visibility_buffer: register(u10);
 StructuredBuffer<uint> meshlets_visibility_buffer: register(t10);
 #endif
 
-groupshared uint s_indices_count;
-groupshared uint s_indices_offset_global;
+static const uint kEmitMaskWords = (kTaskWorkGroups + 31) / 32;
+groupshared uint s_emit_mask[kEmitMaskWords];
 
 struct PushConstants
 {
@@ -51,20 +51,13 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
     uint visibility_bit   = draw_mesh_cmds[cmd_idx].visibility_offset + local_id.x;
     uint cmd_base_vertex = meshes_data[mesh_instances[instance_id].mesh_data_index].base_vertex;
 
-    if (local_id.x == 0)
-    {
-        s_indices_count = 0;
-        s_indices_offset_global = 0;
-    }
-    GroupMemoryBarrierWithGroupSync();
-
     float3 sphere_center = float3(
         meshlets[meshlet_id].sphere_center[0],
         meshlets[meshlet_id].sphere_center[1],
         meshlets[meshlet_id].sphere_center[2]
     );
 
-    float sphere_radius = float(meshlets[meshlet_id].sphere_radius) * mesh_instances[instance_id].pos_and_scale.w;
+    float sphere_radius = abs(float(meshlets[meshlet_id].sphere_radius) * mesh_instances[instance_id].pos_and_scale.w);
     float3 view_center = mul(frame_cull[0].view, float4(transform_vec3(sphere_center, mesh_instances[instance_id].pos_and_scale, mesh_instances[instance_id].rotation_quat), 1.0F)).xyz;
 
     bool visible = true;
@@ -134,24 +127,44 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
     emit = emit && (was_visible_last_frame || DBG_GET_BIT1(frame_cull[0].flags, kMeshletOcclusionCullBit) == 0);
 #endif
 
-    uint indices_offset_local = 0;
-    if (emit)
-    {
-        InterlockedAdd(s_indices_count, meshlets[meshlet_id].triangles_count() * 3, indices_offset_local);
-    }
+    const uint t = local_id.x;
 
+    if (t < kEmitMaskWords)
+        s_emit_mask[t] = 0;
     GroupMemoryBarrierWithGroupSync();
-    if (s_indices_count == 0)
-        return;
 
-    if (local_id.x == 0)
+    if (emit)
+        InterlockedOr(s_emit_mask[t >> 5], 1u << (t & 31));
+    GroupMemoryBarrierWithGroupSync();
+
+    const bool prev_emit = t > 0 && ((s_emit_mask[(t - 1) >> 5] >> ((t - 1) & 31)) & 1u);
+    const bool is_start  = emit && !prev_emit;
+
+    const uint run_count = WaveActiveCountBits(is_start);
+    const uint run_slot  = WavePrefixCountBits(is_start);
+
+    uint base_dci = 0;
+    if (WaveIsFirstLane() && run_count > 0)
+        InterlockedAdd(indexed_draw_counts[1], run_count, base_dci);
+
+    base_dci = WaveReadLaneFirst(base_dci);
+
+    if (is_start)
     {
-        uint indices_offset_global;
-        InterlockedAdd(indexed_draw_counts[0], s_indices_count, indices_offset_global);
-        s_indices_offset_global = indices_offset_global;
+        uint w     = t >> 5;
+        uint zeros = ~s_emit_mask[w] & ~((2u << (t & 31)) - 1u);   // t & 31 == 31 -> zeros == 0
+        while (zeros == 0 && w + 1 < kEmitMaskWords)
+        {
+            ++w;
+            zeros = ~s_emit_mask[w];
+        }
+        const uint last = (zeros != 0 ? w * 32 + firstbitlow(zeros) : kEmitMaskWords * 32) - 1;
 
-        uint dci;
-        InterlockedAdd(indexed_draw_counts[1], 1, dci);
+        const uint last_meshlet = meshlet_id + (last - t);
+        const uint first_index  = meshlets[meshlet_id].index_offset;
+        const uint end_index    = meshlets[last_meshlet].index_offset + meshlets[last_meshlet].triangles_count() * 3;
+
+        const uint dci = base_dci + run_slot;
 
 #ifdef EMULATE_DRAW_ID
         draw_indirects[dci].first_instance = dci;
@@ -159,29 +172,10 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
         draw_indirects[dci].first_instance = 0;
 #endif
         draw_indirects[dci].instance_count = 1;
-        draw_indirects[dci].instance_id = instance_id;
-        draw_indirects[dci].vertex_offset = int(cmd_base_vertex);
+        draw_indirects[dci].instance_id    = instance_id;
+        draw_indirects[dci].vertex_offset  = int(cmd_base_vertex);
 
-        draw_indirects[dci].index_count = s_indices_count;
-        draw_indirects[dci].first_index = s_indices_offset_global;
-    }
-
-    GroupMemoryBarrierWithGroupSync();
-    if (emit)
-    {
-        indices_offset_local += s_indices_offset_global;
-
-        const uint base_vertex = meshlets[meshlet_id].data_offset / 4;
-        const uint base_index  = meshlets[meshlet_id].data_offset + meshlets[meshlet_id].vertices_count() * 4;
-
-        for (uint i = 0; i < meshlets[meshlet_id].triangles_count(); ++i)
-        {
-            const uint store_base = indices_offset_local + i * 3;
-            const uint iid = base_index + i * 3;
-
-            indices[store_base + 0] = meshlet_data.Load((base_vertex + load_u8(meshlet_data, iid + 0)) * 4);
-            indices[store_base + 1] = meshlet_data.Load((base_vertex + load_u8(meshlet_data, iid + 1)) * 4);
-            indices[store_base + 2] = meshlet_data.Load((base_vertex + load_u8(meshlet_data, iid + 2)) * 4);
-        }
+        draw_indirects[dci].first_index = first_index;
+        draw_indirects[dci].index_count = end_index - first_index;
     }
 }
