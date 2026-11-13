@@ -1,3 +1,5 @@
+#pragma once
+
 float3 from_srgb(float3 color)
 {
     return pow(color, 2.2.xxx);

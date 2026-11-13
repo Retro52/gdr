@@ -1,3 +1,5 @@
+#pragma once
+
 // https://registry.khronos.org/OpenGL-Refpages/gl4/html/textureGather.xhtml
 // https://registry.khronos.org/OpenGL-Refpages/gl4/html/textureLod.xhtml
 float4 textureGatherLod(Texture2D tex, SamplerState tex_sampler, float2 uv, float lod, int comp)
