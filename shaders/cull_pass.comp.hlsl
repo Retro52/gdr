@@ -1,5 +1,5 @@
-#include "utils/math.hlsl"
-#include "utils/gather.hlsl"
+#include "utils/cull.hlsl"
+#include "utils/parsers.hlsl"
 #include "include/shaders/types.hlsl.h"
 
 #define TRANSPARENCIES_BUCKET_ONLY 0
@@ -35,6 +35,11 @@ struct PushConstants
 void main(uint3 global_id: SV_DispatchThreadID)
 {
     uint idx = global_id.x;
+    if (idx >= frame_cull[0].draw_count)
+    {
+        return;
+    }
+
     bool inv_visibility_bit = (GET_BIT(mesh_visibility_buffer[idx >> 5], idx & 31u) == 0);
     uint material_class = uint(mesh_materials[mesh_instances[idx].material_index].material_class);
 
@@ -50,47 +55,47 @@ void main(uint3 global_id: SV_DispatchThreadID)
     bool early_out = (inv_visibility_bit && DBG_GET_BIT1(frame_cull[0].flags, kOcclusionCullBit) == 1) || bucket_only;
 #endif
 
-    if (idx >= frame_cull[0].draw_count || early_out)
+    if (early_out)
     {
         return;
     }
 
-    // draw only last frame occluders
     uint mesh_idx = mesh_instances[idx].mesh_data_index;
-    float3 center = transform_vec3(float3(meshes_data[mesh_idx].center[0], meshes_data[mesh_idx].center[1], meshes_data[mesh_idx].center[2]), mesh_instances[idx].pos_and_scale, mesh_instances[idx].rotation_quat);
-    center = mul(frame_cull[0].view, float4(center, 1.0F)).xyz;
 
-    float scale = mesh_instances[idx].pos_and_scale.w;
-    float radius = abs(meshes_data[mesh_idx].radius * scale);
+    float4 sphere;
+    unpack_instance_data(
+        meshes_data[mesh_idx],
+        frame_cull[0].view,
+        mesh_instances[idx].pos_and_scale,
+        mesh_instances[idx].rotation_quat,
+        sphere
+    );
 
-    bool visible = true;
-    visible = visible && center.z * frame_cull[0].frustum[1] - abs(center.x) * frame_cull[0].frustum[0] > -radius;
-    visible = visible && center.z * frame_cull[0].frustum[3] - abs(center.y) * frame_cull[0].frustum[2] > -radius;
-    visible = visible && center.z - radius < -frame_cull[0].frustum[4] && center.z + radius > -frame_cull[0].frustum[5];
-    visible = visible || DBG_GET_BIT1(frame_cull[0].flags, kFrustumCullBit) == 0;
+    bool visible = DBG_GET_BIT1(frame_cull[0].flags, kFrustumCullBit) == 0
+                   || is_within_frustum(sphere.xyz, sphere.w, frame_cull[0].frustum);
 
+    // draw only last frame occluders
 #ifdef FOR_LATE_OCCLUSION_TEST
-    float4 p_aabb;
-    if (visible && DBG_GET_BIT1(frame_cull[0].flags, kOcclusionCullBit) == 1 && project_sphere(center, radius, frame_cull[0].frustum[4], frame_cull[0].p00, frame_cull[0].p11, p_aabb))
+    if (visible && DBG_GET_BIT1(frame_cull[0].flags, kOcclusionCullBit) == 1)
     {
-        float2 pmd_size = float2(p_aabb.z - p_aabb.x, p_aabb.w - p_aabb.y) * frame_cull[0].pyramid_size;
-        float level = ceil(log2(max(pmd_size.x, pmd_size.y)));
-        float spr_depth = -frame_cull[0].frustum[4] / (center.z + radius);
-
-#ifdef EMULATE_SAMPLER_REDUCE
-        float pmd_depth = textureGatherLodMin(depth_pyramid, depth_pyramid_sampler, (p_aabb.xy + p_aabb.zw) * 0.5, level, 0);
-#else
-        float pmd_depth = depth_pyramid.SampleLevel(depth_pyramid_sampler, (p_aabb.xy + p_aabb.zw) * 0.5, level).x;
-#endif
-
-        visible = visible && spr_depth >= pmd_depth;
+        visible = !is_hizb_occluded2(
+                sphere.xyz,
+                sphere.w,
+                frame_cull[0].frustum[4],
+                frame_cull[0].p00,
+                frame_cull[0].p11,
+                frame_cull[0].pyramid_size,
+                depth_pyramid,
+                depth_pyramid_sampler
+        );
     }
 #endif
 
     if (visible)
     {
         uint lod_base = 0;
-        float dist = max(length(center) - radius, 0);
+        float scale = mesh_instances[idx].pos_and_scale.w;
+        float dist = max(length(sphere.xyz) - sphere.w, 0);
 
         for (uint i = 1; i < meshes_data[mesh_idx].lod_count; ++i)
         {
