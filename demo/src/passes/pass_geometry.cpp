@@ -329,7 +329,7 @@ void app::pass_geometry::patch_task_count(const rhi::command_buffer cmd) const
     };
 
     m_rhi.cmd_bind_pso(cmd, patch_pass);
-    m_rhi.cmd_push_bindings(cmd, patch_pass, bindings);
+    m_rhi.cmd_push_bindings(cmd, patch_pass, std::span {bindings});
     m_rhi.cmd_dispatch(cmd, patch_pass, uvec3(1));
 
     rhi::global_barrier barrier {

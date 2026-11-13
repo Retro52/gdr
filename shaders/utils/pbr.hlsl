@@ -1,3 +1,5 @@
+#pragma once
+
 static const float kPI = 3.14159265359;
 
 float3 fresnel_schlick(float h_dot_v, float3 f0)

@@ -1,3 +1,5 @@
+#pragma once
+
 struct BaryDeriv
 {
     float3 lambda;
