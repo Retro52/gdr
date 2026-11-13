@@ -68,6 +68,13 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
             .dbg_name    = "mesh_dispatch_count",
         });
 
+    m_spd_counter = *m_rhi.create_buffer(m_ctx,
+                                         {
+                                             .size        = sizeof(u32),
+                                             .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
+                                             .dbg_name    = "spd_counter",
+                                         });
+
     mesh_visibility = *m_rhi.create_buffer(
         m_ctx,
         {
@@ -84,17 +91,6 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
             .dbg_name    = "meshlets_visibility",
         });
 
-    const u64 indices_clamped_size =
-        core::min<u64>(counters.max_onscreen_meshlets * shader_constants::kMaxIndicesPerMeshlet * sizeof(u32), 2_GB);
-
-    indices = *m_rhi.create_buffer(m_ctx,
-                                   {
-                                       .size        = indices_clamped_size,
-                                       .usage_flags = rhi::buffer_usage::index | rhi::buffer_usage::indirect
-                                                    | rhi::buffer_usage::shader_rw | rhi::buffer_usage::copy_dst,
-                                       .dbg_name = "indices",
-                                   });
-
     mesh_draw_commands = *m_rhi.create_buffer(
         m_ctx,
         {
@@ -104,11 +100,16 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
             .dbg_name    = "mesh_draw_commands",
         });
 
+    u32 biggest_bucket = 0;
+    for (auto& entry : counters.buckets)
+    {
+        biggest_bucket = core::max(biggest_bucket, entry);
+    }
+
     indexed_draw_commands = *m_rhi.create_buffer(
         m_ctx,
         {
-            .size = utils::align_divide(counters.max_onscreen_meshlets * sizeof(shader_types::DrawIndexedIndirect),
-                                        shader_constants::kTaskWorkGroups),
+            .size = biggest_bucket * sizeof(shader_types::DrawIndexedIndirect) * shader_constants::kTaskWorkGroups,
             .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
             .dbg_name    = "indexed_draw_commands",
         });
@@ -119,7 +120,8 @@ void app::pass_geometry::shutdown()
     ZoneScoped;
     destroy_resources();
 
-    m_rhi.destroy_buffer(m_ctx, indices);
+    m_rhi.destroy_buffer(m_ctx, m_spd_counter);
+
     m_rhi.destroy_buffer(m_ctx, mesh_draw_count);
     m_rhi.destroy_buffer(m_ctx, mesh_visibility);
     m_rhi.destroy_buffer(m_ctx, mesh_draw_commands);
@@ -247,61 +249,71 @@ void app::pass_geometry::on_pre_draw(const rhi::command_buffer cmd) const
     app::zero_buffer(m_rhi, cmd, indexed_count_buffer);
 }
 
-void app::pass_geometry::build_hzb(rhi::command_buffer cmd) const
+void app::pass_geometry::build_hzb(const rhi::command_buffer cmd) const
 {
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Build HiZB");
 
-    constexpr rhi::global_barrier barrier {
-        .before =
-            {
-                     .stages = rhi::barrier_stage::early_depth_stencil | rhi::barrier_stage::late_depth_stencil,
-                     .access = rhi::barrier_access::depth_stencil_write,
-                     },
-        .after = {.stages = rhi::barrier_stage::compute_shader, .access = rhi::barrier_access::sampled_read},
-    };
+    app::zero_buffer(m_rhi, cmd, m_spd_counter);
 
     const rhi::image_barrier img_barrier {
         app::make_image_barrier(this->hizb.image, rhi::image_layout::common),
     };
 
     const rhi::barrier_batch barriers {
-        .images  = {&img_barrier, 1},
-        .globals = {&barrier,     1},
+        .images = {&img_barrier, 1},
     };
 
     m_rhi.cmd_barriers(cmd, barriers);
 
-    const auto& depth_reduce_pipeline = m_pipelines[pso_id::depth_reduce_pipeline];
-    m_rhi.cmd_bind_pso(cmd, depth_reduce_pipeline);
+    constexpr u32 kSpdMaxMips = 12;
+    constexpr u32 kSpdTile    = 64;
+    constexpr u32 kSpdThreads = 256;
 
-    for (i32 i = 0; i < this->hizb.pyramid_count; ++i)
+    const u32 mips = core::min<u32>(this->hizb.pyramid_count, kSpdMaxMips);
+    assert2(mips == this->hizb.pyramid_count);
+
+    rhi::binding bindings[2 + kSpdMaxMips];
+    bindings[0] = rhi::binding(rhi::attachment(this->depth), this->hizb.sampler);
+    bindings[1] = rhi::binding(m_spd_counter);
+    for (u32 i = 0; i < kSpdMaxMips; ++i)
     {
-        const rhi::binding cull_pass_bindings[] = {
-            rhi::binding(i == 0 ? rhi::attachment(this->depth) : rhi::attachment(this->hizb.views[i - 1]),
-                         this->hizb.sampler),
-            rhi::binding(this->hizb.views[i], this->hizb.sampler),
-        };
-
-        m_rhi.cmd_push_bindings(cmd, depth_reduce_pipeline, std::span {cull_pass_bindings});
-
-        const ivec2 out_size = glm::max(this->hizb.base_size >> i, ivec2(1));
-        const vec2 push_constants(out_size);
-        m_rhi.cmd_push_constants(cmd, depth_reduce_pipeline, &push_constants, sizeof(push_constants), 0);
-        m_rhi.cmd_dispatch(cmd, depth_reduce_pipeline, {out_size.x, out_size.y, 1});
-
-        constexpr rhi::global_barrier dp_barrier {
-            .before = {.stages = rhi::barrier_stage::compute_shader, .access = rhi::barrier_access::storage_write},
-            .after  = {.stages = rhi::barrier_stage::compute_shader,
-                       .access = rhi::barrier_access::sampled_read | rhi::barrier_access::storage_read           },
-        };
-
-        const rhi::barrier_batch dp_barriers {
-            .globals = {&dp_barrier, 1}
-        };
-
-        m_rhi.cmd_barriers(cmd, dp_barriers);
+        bindings[2 + i] = rhi::binding(rhi::attachment(this->hizb.views[core::min(i, mips - 1)]));
     }
+
+    const auto& spd_pipeline = m_pipelines[pso_id::build_hizb_pipeline];
+    const uvec2 groups       = (uvec2(this->hizb.base_size) * 2U + (kSpdTile - 1U)) / kSpdTile;
+
+    const struct
+    {
+        uvec2 src_size;
+        uvec2 hiz_size;
+        u32 mips;
+        u32 workgroups;
+    } pc {.src_size   = m_render_res,
+          .hiz_size   = uvec2(this->hizb.base_size),
+          .mips       = mips,
+          .workgroups = groups.x * groups.y};
+
+    m_rhi.cmd_bind_pso(cmd, spd_pipeline);
+    m_rhi.cmd_push_bindings(cmd, spd_pipeline, std::span {bindings});
+    m_rhi.cmd_push_constants(cmd, spd_pipeline, &pc, sizeof(pc), 0);
+    m_rhi.cmd_dispatch(cmd, spd_pipeline, {groups.x * kSpdThreads, groups.y, 1});
+
+    constexpr rhi::global_barrier done_barrier {
+        .before = {.stages = rhi::barrier_stage::compute_shader, .access = rhi::barrier_access::storage_write},
+        .after =
+            {
+                   .stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::all_graphics,
+                   .access = rhi::barrier_access::sampled_read | rhi::barrier_access::storage_read,
+                   },
+    };
+
+    const rhi::barrier_batch done_barriers {
+        .globals = {&done_barrier, 1}
+    };
+
+    m_rhi.cmd_barriers(cmd, done_barriers);
 }
 
 void app::pass_geometry::patch_task_count(const rhi::command_buffer cmd) const
@@ -345,6 +357,16 @@ void app::pass_geometry::cull_scene(const rhi::command_buffer cmd, const common_
     core::cx_fill(&update_data[0], update_data + COUNT_OF(update_data), 0);
 
     constexpr auto update_range = u64vec2(0, sizeof(update_data));
+
+    rhi::global_barrier pre_barrier {
+        .before = {.stages = rhi::barrier_stage::copy, .access = rhi::barrier_access::copy_write},
+        .after  = {.stages = rhi::barrier_stage::copy, .access = rhi::barrier_access::copy_write}
+    };
+    const rhi::barrier_batch pre_barriers {
+        .globals = {&pre_barrier, 1}
+    };
+
+    m_rhi.cmd_barriers(cmd, pre_barriers);
     m_rhi.cmd_update_buffer(cmd, mesh_draw_count, update_range, update_data);
 
     rhi::global_barrier update_barrier {
@@ -458,17 +480,20 @@ void app::pass_geometry::draw_scene(const rhi::command_buffer cmd, const common_
     else
     {
         m_rhi.cmd_push_bindings(cmd, pipeline, bindings.get());
-        m_rhi.cmd_bind_index(cmd, indices);
+        m_rhi.cmd_bind_index(cmd, res.index);
 #if defined(__APPLE__)
-        m_rhi.cmd_draw_indexed_indirect(
-            cmd, indexed_draw_commands, 0, counters.buckets[material_class], sizeof(shader_types::DrawIndexedIndirect));
+        m_rhi.cmd_draw_indexed_indirect(cmd,
+                                        indexed_draw_commands,
+                                        0,
+                                        counters.buckets[material_class] * shader_constants::kTaskWorkGroups,
+                                        sizeof(shader_types::DrawIndexedIndirect));
 #else
         m_rhi.cmd_draw_indexed_indirect_count(cmd,
                                               indexed_draw_commands,
                                               0,
                                               indexed_count_buffer,
                                               sizeof(u32),
-                                              counters.buckets[material_class],
+                                              counters.buckets[material_class] * shader_constants::kTaskWorkGroups,
                                               sizeof(shader_types::DrawIndexedIndirect));
 #endif
     }
@@ -496,7 +521,7 @@ void app::pass_geometry::build_indexed_draw_commands(const rhi::command_buffer c
     bindings.bind_next(mesh_draw_commands);
     bindings.bind_next(mesh_draw_count);
     bindings.bind_next(res.frame_cull_data_buffer().buffer);
-    bindings.bind_next(indices);
+    bindings.bind_next(res.index);
     bindings.bind_next(indexed_draw_commands);
     bindings.bind_next(indexed_count_buffer);
     bindings.bind_next(meshlets_visibility);

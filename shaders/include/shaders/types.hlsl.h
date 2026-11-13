@@ -61,7 +61,8 @@ namespace shader_types
 
     struct Meshlet
     {
-        uint data_offset;  // offset (in bytes) into a shader vertices/indices array
+        uint data_offset;   // offset (in bytes) into a shader vertices/indices array
+        uint index_offset;  // for FFP only: base index in the global array
         float16_t cone_axis[3];
         float16_t cone_cutoff;
         float16_t sphere_center[3];

@@ -150,6 +150,46 @@ namespace
         return min + static_cast<T>(static_cast<f64>(rand() * (max - min)) / static_cast<f64>(RAND_MAX));
     }
 
+    core::heap_array<u32> resolve_meshlet_indices(loader::scene_data& scene)
+    {
+        ZoneScoped;
+
+        u32 base_index = 0;
+        core::heap_array<u32> result;
+
+        auto load = [](const u32* data, const u32 byte_offset) -> u32
+        {
+            return data[byte_offset / 4];
+        };
+
+        auto load_u8 = [](const u32* data, const u32 byte_offset) -> u32
+        {
+            return (data[(byte_offset & ~3u) / 4] >> ((byte_offset & 3u) * 8u)) & 0xFFu;
+        };
+
+        const u32* data = reinterpret_cast<const u32*>(scene.meshlets_data.data());
+
+        for (auto& meshlet : scene.meshlets)
+        {
+            meshlet.index_offset = base_index;
+            base_index += meshlet.triangles_count() * 3;
+
+            const u32 m_base_vertex = meshlet.data_offset / 4;
+            const u32 m_base_index  = meshlet.data_offset + meshlet.vertices_count() * 4;
+
+            for (u32 i = 0; i < meshlet.triangles_count(); ++i)
+            {
+                const u32 iid = m_base_index + i * 3;
+
+                result.emplace_back() = load(data, (m_base_vertex + load_u8(data, iid + 0)) * 4);
+                result.emplace_back() = load(data, (m_base_vertex + load_u8(data, iid + 1)) * 4);
+                result.emplace_back() = load(data, (m_base_vertex + load_u8(data, iid + 2)) * 4);
+            }
+        }
+
+        return result;
+    }
+
     loader::scene_data populate_scene(const u32 draw_count, const core::heap_array<mesh::raw_mesh>& primitives,
                                       scene& scene)
     {
@@ -410,7 +450,8 @@ int app::instance::run()
         updates.push_back(rhi::bindless_set_write_info {.dst = handle, .index = i + 1});
     }
 
-    common_resources resources(m_rhi, *context, scene_data.counters, kFramesInFlight);
+    const auto meshlets_indices_lookup = resolve_meshlet_indices(scene_data);
+    common_resources resources(m_rhi, *context, scene_data.counters, meshlets_indices_lookup.size(), kFramesInFlight);
 
     pso_data pipelines;
     pipelines.load(m_rhi, *context, resources.bindless_textures);
@@ -428,6 +469,7 @@ int app::instance::run()
 
     m_rhi.update_bindless_set(*context, resources.bindless_textures, std::span {updates});
     upload_mgr.submit(resources.vertex, scene_data.vertices.data(), scene_data.vertices.size());
+    upload_mgr.submit(resources.index, meshlets_indices_lookup.data(), meshlets_indices_lookup.size());
     upload_mgr.submit(resources.meshlets, scene_data.meshlets.data(), scene_data.meshlets.size());
     upload_mgr.submit(resources.instances, scene_data.instances.data(), scene_data.instances.size());
     upload_mgr.submit(resources.materials, scene_data.materials.data(), scene_data.materials.size());
@@ -821,7 +863,7 @@ int app::instance::run()
                 pass_light_resolve::draw_params light_params {
                     .color         = gpass.v_buffer,
                     .depth         = gpass.depth,
-                    .indices       = gpass.indices,
+                    .indices       = resources.index,
                     .pipeline      = enable_meshlets_pipeline ? pipelines[pso_id::mesh_resolve_pipeline]
                                                               : pipelines[pso_id::vert_resolve_pipeline],
                     .brdf_lookup   = envmap.get_lut_descriptor_info(),
@@ -1036,6 +1078,7 @@ int app::instance::run()
     tracker.shutdown(m_rhi, *context);
     pipelines.shutdown(m_rhi, *context);
 
+    m_rhi.destroy_buffer(*context, resources.index);
     m_rhi.destroy_buffer(*context, resources.vertex);
     m_rhi.destroy_buffer(*context, resources.meshlets);
     m_rhi.destroy_buffer(*context, resources.primitives);

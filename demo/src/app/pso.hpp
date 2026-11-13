@@ -39,7 +39,7 @@ namespace app
         mesh_to_indexed_ds_pipeline      = "mesh_to_indexed_ds_pipeline"_crc32,
         mesh_to_indexed_ds_late_pipeline = "mesh_to_indexed_ds_late_pipeline"_crc32,
 
-        depth_reduce_pipeline      = "depth_reduce_pipeline"_crc32,
+        build_hizb_pipeline        = "build_hizb_pipeline"_crc32,
         equirect_unpack_pipeline   = "equirect_unpack_pipeline"_crc32,
         make_brdf_lookup_pipeline  = "make_brdf_lookup_pipeline"_crc32,
         cubemap_convolute_pipeline = "cubemap_convolute_pipeline"_crc32,
