@@ -28,7 +28,7 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
             meshlets[meshlet_id].sphere_center[1],
             meshlets[meshlet_id].sphere_center[2]
         );
-        float sphere_radius = float(meshlets[meshlet_id].sphere_radius) * mesh_instances[instance_id].pos_and_scale.w;
+        float sphere_radius = abs(float(meshlets[meshlet_id].sphere_radius) * mesh_instances[instance_id].pos_and_scale.w);
         float3 view_center = mul(frame_cull[0].view, float4(transform_vec3(sphere_center, mesh_instances[instance_id].pos_and_scale, mesh_instances[instance_id].rotation_quat), 1.0F)).xyz;
 
         bool visible = true;

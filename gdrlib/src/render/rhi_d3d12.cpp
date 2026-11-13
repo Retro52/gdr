@@ -1783,11 +1783,24 @@ void rhi::d3d12_cmd_push_bindings(command_buffer cmd, pipeline pso, std::span<co
                     assert2(binding.has_buffer() || binding.has_attachment());
                     if (binding.has_attachment())
                     {
-                        d3d12_cmd->storage_views.push_back(platform::d3d12_binding_expected_layout {
-                            .layout = D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
-                            .access = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                            .view   = d3d12_rhi_view_of(binding.get_attachment()),
-                        });
+                        bool already_tracked     = false;
+                        const auto* storage_view = d3d12_rhi_view_of(binding.get_attachment());
+                        for (const auto& tracked : d3d12_cmd->storage_views)
+                        {
+                            already_tracked = already_tracked
+                                           || (tracked.view->source == storage_view->source
+                                               && tracked.view->desc.mips == storage_view->desc.mips
+                                               && tracked.view->desc.layers == storage_view->desc.layers);
+                        }
+
+                        if (!already_tracked)
+                        {
+                            d3d12_cmd->storage_views.push_back(platform::d3d12_binding_expected_layout {
+                                .layout = D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+                                .access = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                                .view   = storage_view,
+                            });
+                        }
                         d3d12_rhi_set_root_desc_table(d3d12_cmd->command_list.Get(),
                                                       index,
                                                       d3d12_rhi_view_of(binding.get_attachment())->uav().gpu_handle,

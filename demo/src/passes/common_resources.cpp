@@ -1,9 +1,18 @@
 #include <passes/common_resources.hpp>
 
 app::common_resources::common_resources(const rhi::impl& rhi, const rhi::context ctx,
-                                        const loader::scene_counters& counters, const u32 frames_in_flight)
+                                        const loader::scene_counters& counters, const u32 indices_size,
+                                        const u32 frames_in_flight)
     : m_frames_in_flight(frames_in_flight)
 {
+    this->index = *rhi.create_buffer(ctx,
+                                     {
+                                         .size        = indices_size * sizeof(u32),
+                                         .usage_flags = rhi::buffer_usage::index | rhi::buffer_usage::indirect
+                                                      | rhi::buffer_usage::shader_rw | rhi::buffer_usage::copy_dst,
+                                         .dbg_name = "indices",
+                                     });
+
     this->vertex =
         *rhi.create_buffer(ctx, {.size = counters.vertices * sizeof(shader_types::Vertex), .dbg_name = "vertex"});
     this->meshlets =

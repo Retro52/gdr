@@ -40,14 +40,13 @@ namespace app
         rhi::image v_buffer = rhi::null_image;
         depth_pyramid_data hizb;
 
-        rhi::buffer mesh_draw_count      = rhi::null_buffer; // Raw per-mat class counter of task shader dispatches
-        rhi::buffer mesh_dispatch_count  = rhi::null_buffer; // Patched dispatch thread count used to dispatch task shaders
-        rhi::buffer indexed_count_buffer = rhi::null_buffer; // Counter for vkCmdDrawIndexedIndirectCount/ExecuteIndirect
+        rhi::buffer mesh_draw_count      = rhi::null_buffer;  // Raw per-mat class counter of task shader dispatches
+        rhi::buffer mesh_dispatch_count  = rhi::null_buffer;  // Patched thread count used to dispatch task shaders
+        rhi::buffer indexed_count_buffer = rhi::null_buffer;  // Counter for DrawIndexedIndirectCount/ExecuteIndirect
 
         rhi::buffer mesh_visibility     = rhi::null_buffer;
         rhi::buffer meshlets_visibility = rhi::null_buffer;
 
-        rhi::buffer indices               = rhi::null_buffer;
         rhi::buffer mesh_draw_commands    = rhi::null_buffer;
         rhi::buffer indexed_draw_commands = rhi::null_buffer;
 
@@ -86,8 +85,9 @@ namespace app
                                          bool enable_occlusion_cull) const;
 
     private:
-        uvec2 m_render_res = uvec2(0);
-        rhi::context m_ctx = rhi::null_context;
+        uvec2 m_render_res        = uvec2(0);
+        rhi::context m_ctx        = rhi::null_context;
+        rhi::buffer m_spd_counter = rhi::null_buffer;
 
         const rhi::impl& m_rhi;
         const app::pso_data& m_pipelines;

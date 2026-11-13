@@ -139,9 +139,9 @@
       "dynstate_cull_mode": true
     }
   },
-  "depth_reduce_pipeline": {
+  "build_hizb_pipeline": {
     "shaders": [
-      "depth_reduce.comp"
+      "hizb_spd.comp"
     ]
   },
   "mesh_to_indexed_pipeline": {
