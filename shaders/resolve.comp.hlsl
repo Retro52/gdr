@@ -2,6 +2,7 @@
 
 #include "utils/pbr.hlsl"
 #include "utils/math.hlsl"
+#include "utils/parsers.hlsl"
 
 [[vk::image_format("unknown")]] RWTexture2D<float4> o_color:  register(u0);
 [[vk::image_format("unknown")]] RWTexture2D<uint2>  i_visbuf: register(u1);
@@ -166,13 +167,16 @@ void main(uint3 global_id: SV_DispatchThreadID)
     uint ml = (data.g & kMeshletIndexMask) * 3;
 
     const uint meshlet_data_offset = meshlets[m_idx].data_offset;
-    const uint meshlet_base_vertex = meshlet_data_offset / 4;
-    const uint meshlet_base_index  = meshlet_data_offset + meshlets[m_idx].vertices_count() * 4;
+    const uint meshlet_idx_size_bytes = meshlets[m_idx].index_size_bytes;
+    const uint meshlet_base_index  = meshlet_data_offset + meshlets[m_idx].vertices_count() * meshlet_idx_size_bytes;
 
-    uint i0 = meshlet_data.Load((meshlet_base_vertex + load_u8(meshlet_data, meshlet_base_index + ml + 0)) * 4) + base_vertex;
-    uint i1 = meshlet_data.Load((meshlet_base_vertex + load_u8(meshlet_data, meshlet_base_index + ml + 1)) * 4) + base_vertex;
-    uint i2 = meshlet_data.Load((meshlet_base_vertex + load_u8(meshlet_data, meshlet_base_index + ml + 2)) * 4) + base_vertex;
+    const uint li0 = load_u8(meshlet_data, meshlet_base_index + ml + 0);
+    const uint li1 = load_u8(meshlet_data, meshlet_base_index + ml + 1);
+    const uint li2 = load_u8(meshlet_data, meshlet_base_index + ml + 2);
 
+    uint i0  = read_meshlet_vertex(meshlet_data, meshlet_data_offset + li0 * meshlet_idx_size_bytes, meshlet_idx_size_bytes) + base_vertex;
+    uint i1  = read_meshlet_vertex(meshlet_data, meshlet_data_offset + li1 * meshlet_idx_size_bytes, meshlet_idx_size_bytes) + base_vertex;
+    uint i2  = read_meshlet_vertex(meshlet_data, meshlet_data_offset + li2 * meshlet_idx_size_bytes, meshlet_idx_size_bytes) + base_vertex;
 #else
     uint i0 = indices[data.g + 0] + base_vertex;
     uint i1 = indices[data.g + 1] + base_vertex;
@@ -329,7 +333,12 @@ void main(uint3 global_id: SV_DispatchThreadID)
         if (world[0].debug_mode == kDebugModeMeshletId)      { color = hash_color(i0); }
 #endif
         if (world[0].debug_mode == kDebugModeInstanceId)     { color = hash_color(instance_id); }
-        if (world[0].debug_mode == kDebugModeTriangleFace)   { color = hash_color(uint(is_front_face)); }
+        if (world[0].debug_mode == kDebugModeTriangleFace)   { color = is_front_face ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0); }
+#ifdef FOR_MESH_PIPELINE
+        if (world[0].debug_mode == kDebugModeIndexSize)      { color = lerp(float3(0.0, 1.0, 0.0), float3(1.0, 0.0, 0.0), float(meshlet_idx_size_bytes / 2) / 2.0); }
+#else
+        if (world[0].debug_mode == kDebugModeIndexSize)      { color = float3(1.0, 0.0, 0.0); }
+#endif
         result = float4(color, 1.0F);
     }
 #endif

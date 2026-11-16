@@ -60,7 +60,7 @@ namespace shader_constants
     static const uint kDebugModeMeshletId     = 18;
     static const uint kDebugModeInstanceId    = 19;
     static const uint kDebugModeTriangleFace  = 20;
-    static const uint kDebugModeShadow        = 21;
+    static const uint kDebugModeIndexSize     = 21;
 #ifdef __cplusplus
 }
 #endif

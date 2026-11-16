@@ -40,7 +40,8 @@ namespace mesh
     {
         core::heap_array<raw_vertex> raw_vertices;
 
-        u32 lod_count = 0;
+        u32 lod_count        = 0;
+        u32 index_size_bytes = 0;
         raw_lod lod_array[shader_constants::kLODCount];
     };
 
@@ -56,5 +57,6 @@ namespace mesh
     raw_primitive_data load_raw_primitive_data(const cgltf_primitive& prim);
 
     void build_meshlets(const core::heap_array<raw_vertex>& vertices, const core::heap_array<u32>& indices,
-                        core::heap_array<raw_meshlet>& meshlets, core::heap_array<u8>& meshlets_payload) noexcept;
+                        core::heap_array<raw_meshlet>& meshlets, core::heap_array<u8>& meshlets_payload,
+                        u32 index_size_bytes) noexcept;
 }

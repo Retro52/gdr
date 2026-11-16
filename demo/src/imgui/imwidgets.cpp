@@ -182,7 +182,7 @@ bool ImGuiWidgets::Bits(u32& mask, const char* const names[], u32 count, const u
     return modified;
 }
 
-void ImGuiWidgets::Gizmo(const glm::mat4& view, const glm::mat4& proj, glm::mat4& source,
+bool ImGuiWidgets::Gizmo(const glm::mat4& view, const glm::mat4& proj, glm::mat4& source,
                          const ImGuizmo::OPERATION operation)
 {
     ImGuiIO& io      = ImGui::GetIO();
@@ -192,7 +192,7 @@ void ImGuiWidgets::Gizmo(const glm::mat4& view, const glm::mat4& proj, glm::mat4
 
     ImGuizmo::SetDrawlist(draw);
     ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
-    ImGuizmo::Manipulate(&view[0][0], &gizmo_proj[0][0], operation, ImGuizmo::MODE::WORLD, &source[0][0]);
+    return ImGuizmo::Manipulate(&view[0][0], &gizmo_proj[0][0], operation, ImGuizmo::MODE::WORLD, &source[0][0]);
 }
 
 ImGuiWidgets::CommonImageControls ImGuiWidgets::ImageControls(const char* id, f32 mips_count, f32 layers_count)

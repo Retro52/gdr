@@ -2,7 +2,7 @@
 
 app::common_resources::common_resources(const rhi::impl& rhi, const rhi::context ctx,
                                         const loader::scene_counters& counters, const u32 indices_size,
-                                        const u32 frames_in_flight)
+                                        const u32 meshlets_payload_size, const u32 frames_in_flight)
     : m_frames_in_flight(frames_in_flight)
 {
     this->index = *rhi.create_buffer(ctx,
@@ -24,11 +24,7 @@ app::common_resources::common_resources(const rhi::impl& rhi, const rhi::context
     this->materials = *rhi.create_buffer(
         ctx, {.size = counters.materials * sizeof(shader_types::MeshMaterial), .dbg_name = "materials"});
 
-    this->meshlets_payload =
-        *rhi.create_buffer(ctx,
-                           {.size = counters.meshlets * shader_constants::kMaxIndicesPerMeshlet
-                                  + counters.meshlets * shader_constants::kMaxVerticesPerMeshlet * sizeof(u32),
-                            .dbg_name = "meshlets_payload"});
+    this->meshlets_payload  = *rhi.create_buffer(ctx, {.size = meshlets_payload_size, .dbg_name = "meshlets_payload"});
     this->bindless_textures = *rhi.create_bindless_set(ctx, 65536);
     this->bindless_sampler  = *rhi.create_sampler(ctx,
                                                  rhi::create_sampler_info {

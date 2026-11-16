@@ -1,4 +1,5 @@
 #include "utils/math.hlsl"
+#include "utils/parsers.hlsl"
 #include "include/shaders/types.hlsl.h"
 #include "include/shaders/bindings/draw.hlsl"
 
@@ -29,15 +30,19 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID, in paylo
     const uint vertex_count = meshlets[m_idx].vertices_count();
     const uint triangle_count = meshlets[m_idx].triangles_count();
 
-    const uint base_vertex = meshlets[m_idx].data_offset / 4;
-    const uint base_index  = meshlets[m_idx].data_offset + vertex_count * 4;
+    const uint base_vertex = meshlets[m_idx].data_offset;
+
+    const uint idx_size_bytes = meshlets[m_idx].index_size_bytes;
+    const uint base_index  = meshlets[m_idx].data_offset + vertex_count * idx_size_bytes;
 
     SetMeshOutputCounts(vertex_count, triangle_count);
 
     // Each thread processes multiple vertices, striding by workgroup size
     for (uint i = t_idx; i < vertex_count; i += kMeshWorkGroups)
     {
-        const uint vid = meshlet_task.base_vertex + meshlet_data.Load((base_vertex + i) * 4);
+        uint addr = base_vertex + i * idx_size_bytes;
+        uint vid  = read_meshlet_vertex(meshlet_data, addr, idx_size_bytes) + meshlet_task.base_vertex;
+
         float4 world_pos = float4(transform_vec3(
             float3(vertices[vid].px, vertices[vid].py, vertices[vid].pz),
             mesh_instances[meshlet_task.instance_id].pos_and_scale,
