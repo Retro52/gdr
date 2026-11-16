@@ -43,7 +43,7 @@ namespace
 {
     REGISTER_ENUM(debug_mode, shaded, lit, lit_diffuse, lit_ambient, lit_specular, uv, normal, tangent, depth, velocity,
                   world_pos, color, metallic, roughness, albedo_texture, normal_texture, orm_texture, triangle_id,
-                  meshlet_id, instance_id, triangle_face);
+                  meshlet_id, instance_id, triangle_face, index_size_bytes);
 
     struct frames_tracker
     {
@@ -167,6 +167,13 @@ namespace
             return (data[(byte_offset & ~3u) / 4] >> ((byte_offset & 3u) * 8u)) & 0xFFu;
         };
 
+        auto meshlet_read_vertex = [&](const u32* meshlet_data, const u32 addr, const u32 idx_size_bytes)
+        {
+            const u32 word = load(meshlet_data, addr & ~3u);
+            const u32 mask = static_cast<u32>((1ull << (idx_size_bytes * 8)) - 1);
+            return (word >> ((addr & 3u) * 8)) & mask;
+        };
+
         const u32* data = reinterpret_cast<const u32*>(scene.meshlets_data.data());
 
         for (auto& meshlet : scene.meshlets)
@@ -174,16 +181,19 @@ namespace
             meshlet.index_offset = base_index;
             base_index += meshlet.triangles_count() * 3;
 
-            const u32 m_base_vertex = meshlet.data_offset / 4;
-            const u32 m_base_index  = meshlet.data_offset + meshlet.vertices_count() * 4;
+            const u32 index_size_bytes = meshlet.index_size_bytes;
+            const u32 m_base_index     = meshlet.data_offset + meshlet.vertices_count() * index_size_bytes;
 
             for (u32 i = 0; i < meshlet.triangles_count(); ++i)
             {
                 const u32 iid = m_base_index + i * 3;
 
-                result.emplace_back() = load(data, (m_base_vertex + load_u8(data, iid + 0)) * 4);
-                result.emplace_back() = load(data, (m_base_vertex + load_u8(data, iid + 1)) * 4);
-                result.emplace_back() = load(data, (m_base_vertex + load_u8(data, iid + 2)) * 4);
+                result.emplace_back() = meshlet_read_vertex(
+                    data, meshlet.data_offset + load_u8(data, iid + 0) * index_size_bytes, index_size_bytes);
+                result.emplace_back() = meshlet_read_vertex(
+                    data, meshlet.data_offset + load_u8(data, iid + 1) * index_size_bytes, index_size_bytes);
+                result.emplace_back() = meshlet_read_vertex(
+                    data, meshlet.data_offset + load_u8(data, iid + 2) * index_size_bytes, index_size_bytes);
             }
         }
 
@@ -451,7 +461,12 @@ int app::instance::run()
     }
 
     const auto meshlets_indices_lookup = resolve_meshlet_indices(scene_data);
-    common_resources resources(m_rhi, *context, scene_data.counters, meshlets_indices_lookup.size(), kFramesInFlight);
+    common_resources resources(m_rhi,
+                               *context,
+                               scene_data.counters,
+                               meshlets_indices_lookup.size(),
+                               scene_data.meshlets_data.size(),
+                               kFramesInFlight);
 
     pso_data pipelines;
     pipelines.load(m_rhi, *context, resources.bindless_textures);
@@ -1003,12 +1018,14 @@ int app::instance::run()
                     SDL_SetClipboardText(cli.c_str());
                 }
 
-                if (freeze_cull_data)
+                auto inv_debug_camera_view = glm::inverse(debug_camera_view);
+                if (freeze_cull_data
+                    && ImGuiWidgets::Gizmo(camera_view,
+                                           camera_proj,
+                                           inv_debug_camera_view,
+                                           imguizmo_ops[imguizmo_op % COUNT_OF(imguizmo_ops)]))
                 {
-                    auto tmp = glm::inverse(debug_camera_view);
-                    ImGuiWidgets::Gizmo(
-                        camera_view, camera_proj, tmp, imguizmo_ops[imguizmo_op % COUNT_OF(imguizmo_ops)]);
-                    debug_camera_view = glm::inverse(tmp);
+                    debug_camera_view = glm::inverse(inv_debug_camera_view);
                 }
 
                 m_rhi.cmd_debug_label_begin(

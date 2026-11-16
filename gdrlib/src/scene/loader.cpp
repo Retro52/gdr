@@ -850,9 +850,10 @@ void loader::encode_raw_mesh(scene_data& data, const mesh::raw_mesh& primitive, 
             encoded_mst.sphere_center[1] = meshlet.sphere_center.y;
             encoded_mst.sphere_center[2] = meshlet.sphere_center.z;
 
-            encoded_mst.cone_cutoff   = meshlet.cone_cutoff;
-            encoded_mst.sphere_radius = meshlet.sphere_radius;
-            encoded_mst.data_offset   = meshlet_base_offset + meshlet.data_prefix_sum;
+            encoded_mst.cone_cutoff      = meshlet.cone_cutoff;
+            encoded_mst.sphere_radius    = meshlet.sphere_radius;
+            encoded_mst.index_size_bytes = primitive.index_size_bytes;
+            encoded_mst.data_offset      = meshlet_base_offset + meshlet.data_prefix_sum;
 
             encoded_mst.set_vertices_count(meshlet.vertices_count);
             encoded_mst.set_triangles_count(meshlet.triangles_count);

@@ -4,6 +4,41 @@
 #include <cgltf.h>
 #include <meshoptimizer.h>
 
+namespace
+{
+    void write_indices(const u32* src, u8* dst, const u32 vtx_count, const u32 index_size_bytes)
+    {
+        ZoneScoped;
+        for (u32 j = 0; j < vtx_count; ++j)
+        {
+            const u32 v = src[j];
+            switch (index_size_bytes)
+            {
+            case 1 :
+            {
+                const u8 x = static_cast<u8>(v);
+                core::cx_memcpy(dst, &x, 1);
+                break;
+            }
+            case 2 :
+            {
+                const u16 x = static_cast<u16>(v);
+                core::cx_memcpy(dst, &x, 2);
+                break;
+            }
+            case 4 :
+            {
+                core::cx_memcpy(dst, &v, 4);
+                break;
+            }
+            default :
+                break;
+            }
+            dst += index_size_bytes;
+        }
+    }
+}
+
 mesh::raw_mesh mesh::build_mesh(const cgltf_primitive& prim)
 {
     ZoneScoped;
@@ -17,7 +52,9 @@ mesh::raw_mesh mesh::build_mesh(const cgltf_primitive& prim)
         indices_work_copy         = std::move(loaded_raw_prim_data.raw_indices);
     }
 
-    auto& vertices      = result.raw_vertices;
+    auto& vertices          = result.raw_vertices;
+    result.index_size_bytes = vertices.size() > 0xFFFF ? 4 : (vertices.size() > 0xFF ? 2 : 1);
+
     const f32 lod_scale = meshopt_simplifyScale(&vertices[0].position.x, vertices.size(), sizeof(vertices[0]));
 
     f32 curr_error = 0.0F;
@@ -31,7 +68,8 @@ mesh::raw_mesh mesh::build_mesh(const cgltf_primitive& prim)
         build_meshlets(vertices,
                        result.lod_array[j].raw_indices,
                        result.lod_array[j].raw_meshlets,
-                       result.lod_array[j].raw_meshlets_payload);
+                       result.lod_array[j].raw_meshlets_payload,
+                       result.index_size_bytes);
 
         ++result.lod_count;
         auto& curr_lod = result.lod_array[j];
@@ -82,7 +120,6 @@ mesh::raw_primitive_data mesh::load_raw_primitive_data(const cgltf_primitive& pr
 {
     ZoneScoped;
 
-    // for (int i = 0; i < prim.attributes_count; ++i)
     constexpr int kAttrIdx = 0;
     const u64 vtx_count    = prim.attributes[kAttrIdx].data->count;
 
@@ -152,7 +189,8 @@ mesh::raw_primitive_data mesh::load_raw_primitive_data(const cgltf_primitive& pr
 }
 
 void mesh::build_meshlets(const core::heap_array<raw_vertex>& vertices, const core::heap_array<u32>& indices,
-                          core::heap_array<raw_meshlet>& meshlets, core::heap_array<u8>& meshlets_payload) noexcept
+                          core::heap_array<raw_meshlet>& meshlets, core::heap_array<u8>& meshlets_payload,
+                          const u32 index_size_bytes) noexcept
 {
     ZoneScoped;
     const u64 meshlets_upper_bound = meshopt_buildMeshletsBound(
@@ -216,10 +254,11 @@ void mesh::build_meshlets(const core::heap_array<raw_vertex>& vertices, const co
             meshlet.triangles_count = meshopt_meshlet.triangle_count;
             meshlet.vertices_count  = meshopt_meshlet.vertex_count;
 
-            core::cx_memcpy(meshlets_payload.data() + total_bytes_written,
-                            &meshlet_vertices_ptr[meshopt_meshlet.vertex_offset],
-                            meshlet.vertices_count * sizeof(u32));
-            total_bytes_written += sizeof(u32) * meshlet.vertices_count;
+            write_indices(&meshlet_vertices_ptr[meshopt_meshlet.vertex_offset],
+                          meshlets_payload.data() + total_bytes_written,
+                          meshlet.vertices_count,
+                          index_size_bytes);
+            total_bytes_written += index_size_bytes * meshlet.vertices_count;
 
             core::cx_memcpy(meshlets_payload.data() + total_bytes_written,
                             &meshlet_indices_ptr[meshopt_meshlet.triangle_offset],

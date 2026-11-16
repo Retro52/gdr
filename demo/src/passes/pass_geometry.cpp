@@ -68,12 +68,14 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
             .dbg_name    = "mesh_dispatch_count",
         });
 
-    m_spd_counter = *m_rhi.create_buffer(m_ctx,
-                                         {
-                                             .size        = sizeof(u32),
-                                             .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
-                                             .dbg_name    = "spd_counter",
-                                         });
+    m_spd_counter = m_rhi
+                        .create_buffer(m_ctx,
+                                       {
+                                           .size        = sizeof(u32),
+                                           .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
+                                           .dbg_name    = "spd_counter",
+                                       })
+                        .value.id;
 
     mesh_visibility = *m_rhi.create_buffer(
         m_ctx,
@@ -109,7 +111,7 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
     indexed_draw_commands = *m_rhi.create_buffer(
         m_ctx,
         {
-            .size = biggest_bucket * sizeof(shader_types::DrawIndexedIndirect) * shader_constants::kTaskWorkGroups,
+            .size = biggest_bucket * sizeof(shader_types::DrawIndexedIndirect) * shader_constants::kTaskWorkGroups / 2,
             .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
             .dbg_name    = "indexed_draw_commands",
         });
@@ -120,7 +122,8 @@ void app::pass_geometry::shutdown()
     ZoneScoped;
     destroy_resources();
 
-    m_rhi.destroy_buffer(m_ctx, m_spd_counter);
+    auto spd_ref = rhi::buffer {.id = m_spd_counter.value()};
+    m_rhi.destroy_buffer(m_ctx, spd_ref);
 
     m_rhi.destroy_buffer(m_ctx, mesh_draw_count);
     m_rhi.destroy_buffer(m_ctx, mesh_visibility);
@@ -132,7 +135,7 @@ void app::pass_geometry::shutdown()
 }
 
 void app::pass_geometry::draw(const rhi::command_buffer cmd, const common_resources& res,
-                              const loader::scene_counters& counters, const draw_params& params) const
+                              const loader::scene_counters& counters, const draw_params& params)
 {
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "V-buffer");
@@ -249,12 +252,16 @@ void app::pass_geometry::on_pre_draw(const rhi::command_buffer cmd) const
     app::zero_buffer(m_rhi, cmd, indexed_count_buffer);
 }
 
-void app::pass_geometry::build_hzb(const rhi::command_buffer cmd) const
+void app::pass_geometry::build_hzb(const rhi::command_buffer cmd)
 {
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Build HiZB");
 
-    app::zero_buffer(m_rhi, cmd, m_spd_counter);
+    if (!m_spd_counter.get_flag())
+    {
+        m_spd_counter.set_flag(true);
+        app::zero_buffer(m_rhi, cmd, rhi::buffer {.id = m_spd_counter.value()});
+    }
 
     const rhi::image_barrier img_barrier {
         app::make_image_barrier(this->hizb.image, rhi::image_layout::common),
@@ -275,7 +282,7 @@ void app::pass_geometry::build_hzb(const rhi::command_buffer cmd) const
 
     rhi::binding bindings[2 + kSpdMaxMips];
     bindings[0] = rhi::binding(rhi::attachment(this->depth), this->hizb.sampler);
-    bindings[1] = rhi::binding(m_spd_counter);
+    bindings[1] = rhi::binding(rhi::buffer {.id = m_spd_counter.value()});
     for (u32 i = 0; i < kSpdMaxMips; ++i)
     {
         bindings[2 + i] = rhi::binding(rhi::attachment(this->hizb.views[core::min(i, mips - 1)]));
@@ -485,7 +492,7 @@ void app::pass_geometry::draw_scene(const rhi::command_buffer cmd, const common_
         m_rhi.cmd_draw_indexed_indirect(cmd,
                                         indexed_draw_commands,
                                         0,
-                                        counters.buckets[material_class] * shader_constants::kTaskWorkGroups,
+                                        counters.buckets[material_class] * shader_constants::kTaskWorkGroups / 2,
                                         sizeof(shader_types::DrawIndexedIndirect));
 #else
         m_rhi.cmd_draw_indexed_indirect_count(cmd,
@@ -493,7 +500,7 @@ void app::pass_geometry::draw_scene(const rhi::command_buffer cmd, const common_
                                               0,
                                               indexed_count_buffer,
                                               sizeof(u32),
-                                              counters.buckets[material_class] * shader_constants::kTaskWorkGroups,
+                                              counters.buckets[material_class] * shader_constants::kTaskWorkGroups / 2,
                                               sizeof(shader_types::DrawIndexedIndirect));
 #endif
     }

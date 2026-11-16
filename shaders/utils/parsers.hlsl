@@ -17,6 +17,13 @@ void unpack_instance_data(MeshData instance, float4x4 view, float4 translation_s
     sphere.w = abs(float(instance.radius) * translation_scale.w);
 }
 
+uint read_meshlet_vertex(ByteAddressBuffer meshlet_data, uint addr, uint idx_size_bytes)
+{
+    uint word = meshlet_data.Load(addr & ~3u);
+    uint mask = (uint)((1ull << (idx_size_bytes * 8)) - 1);
+    return ((word >> ((addr & 3u) * 8)) & mask);
+}
+
 void unpack_meshlet_data(Meshlet meshlet, float4x4 view, float4 translation_scale, float4 rotation, out float4 sphere, out float4 cone)
 {
     float3 local_center = float3(

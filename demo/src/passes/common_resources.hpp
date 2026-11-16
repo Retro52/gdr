@@ -49,7 +49,7 @@ namespace app
 
     public:
         common_resources(const rhi::impl& rhi, rhi::context ctx, const loader::scene_counters& counters,
-                         u32 indices_size, u32 frames_in_flight);
+                         u32 indices_size, u32 meshlets_payload_size, u32 frames_in_flight);
 
         void next_frame();
 

@@ -41,7 +41,7 @@ namespace ImGuiWidgets
 
     bool Bits(u32& mask, const char* const names[], u32 count, u32 columns = 2);
 
-    void Gizmo(const glm::mat4& view, const glm::mat4& proj, glm::mat4& source, ImGuizmo::OPERATION operation);
+    bool Gizmo(const glm::mat4& view, const glm::mat4& proj, glm::mat4& source, ImGuizmo::OPERATION operation);
 
     template<typename... Items>
     void TopBar(Items&&... items)

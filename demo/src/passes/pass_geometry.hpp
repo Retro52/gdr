@@ -59,7 +59,7 @@ namespace app
         void shutdown();
 
         void draw(rhi::command_buffer cmd, const common_resources& res, const loader::scene_counters& counters,
-                  const draw_params& params) const;
+                  const draw_params& params);
 
         void on_render_size_changed(uvec2 new_render_size);
 
@@ -70,7 +70,7 @@ namespace app
 
         void on_pre_draw(rhi::command_buffer cmd) const;
 
-        void build_hzb(rhi::command_buffer cmd) const;
+        void build_hzb(rhi::command_buffer cmd);
 
         void patch_task_count(rhi::command_buffer cmd) const;
 
@@ -85,9 +85,9 @@ namespace app
                                          bool enable_occlusion_cull) const;
 
     private:
-        uvec2 m_render_res        = uvec2(0);
-        rhi::context m_ctx        = rhi::null_context;
-        rhi::buffer m_spd_counter = rhi::null_buffer;
+        uvec2 m_render_res             = uvec2(0);
+        rhi::context m_ctx             = rhi::null_context;
+        core::tagged_u64 m_spd_counter = 0;
 
         const rhi::impl& m_rhi;
         const app::pso_data& m_pipelines;
