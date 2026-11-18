@@ -345,8 +345,22 @@ namespace
                 rptr->ParameterType    = resource.size > 0 ? D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE
                                                            : get_root_parameter_type(resource.resource_type);
 
+                if (resource.resource_type == platform::PSVResourceType::CBV
+                    && resource.space == platform::kD3D12_DrawIdRegisterSpace)
+                {
+                    rptr->ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+                }
+
                 switch (rptr->ParameterType)
                 {
+                case D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS :
+                {
+                    size_in_dwords += 1;
+                    rptr->Constants.RegisterSpace  = resource.space;
+                    rptr->Constants.ShaderRegister = resource.slot;
+                    rptr->Constants.Num32BitValues = 1;
+                    break;
+                }
                 case D3D12_ROOT_PARAMETER_TYPE_CBV :
                 case D3D12_ROOT_PARAMETER_TYPE_SRV :
                 case D3D12_ROOT_PARAMETER_TYPE_UAV :

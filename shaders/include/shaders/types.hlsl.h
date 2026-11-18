@@ -163,6 +163,16 @@ namespace shader_types
         uint visibility_offset;
     };
 
+    struct DrawMeshTasksIndirect
+    {
+        uint draw_id;
+        uint group_count[3];
+        uint instance_id;
+        uint meshlet_count;
+        uint meshlet_offset;
+        uint visibility_offset;
+    };
+
     struct DrawPushConstants
     {
 #ifdef __cplusplus

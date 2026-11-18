@@ -10,6 +10,7 @@ static D3D12_INDIRECT_ARGUMENT_TYPE d3d12_get_indirect_arg_type(const platform::
     case platform::d3d12_command_signature_type::dispatch_indirect :
         return D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH;
     case platform::d3d12_command_signature_type::draw_mesh_task_indirect :
+    case platform::d3d12_command_signature_type::draw_mesh_task_indirect_draw_id :
         return D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH;
     default :
     case platform::d3d12_command_signature_type::draw_indexed_indirect :
@@ -27,22 +28,35 @@ void platform::d3d12_command_list::free_scratch(d3d12_desc_heap& heap) const
 
 ID3D12CommandSignature* platform::d3d12_command_list::get_signature(const d3d12_command_signature_key signature)
 {
-    const auto key = signature.hash();
-    if (const auto it = this->command_signatures.find(key); it != this->command_signatures.end())
+    if (const auto it = this->command_signatures.find(signature); it != this->command_signatures.end())
     {
         return it->second.Get();
     }
 
-    const D3D12_INDIRECT_ARGUMENT_DESC arg {.Type = d3d12_get_indirect_arg_type(signature.type)};
+    const bool with_draw_id = signature.type == d3d12_command_signature_type::draw_mesh_task_indirect_draw_id;
+
+    u32 args_count = 0;
+    D3D12_INDIRECT_ARGUMENT_DESC args[2] {};
+    if (with_draw_id)
+    {
+        args[args_count].Type                             = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
+        args[args_count].Constant.RootParameterIndex      = signature.root_index;
+        args[args_count].Constant.DestOffsetIn32BitValues = 0;
+        args[args_count].Constant.Num32BitValuesToSet     = 1;
+        ++args_count;
+    }
+    args[args_count++].Type = d3d12_get_indirect_arg_type(signature.type);
+
     const D3D12_COMMAND_SIGNATURE_DESC desc {
         .ByteStride       = signature.stride,
-        .NumArgumentDescs = 1,
-        .pArgumentDescs   = &arg,
+        .NumArgumentDescs = args_count,
+        .pArgumentDescs   = args,
         .NodeMask         = 0,
     };
 
-    auto& new_entry = this->command_signatures[key];
-    D3D12_ASSERT_ON_FAIL(this->device->CreateCommandSignature(&desc, nullptr, IID_PPV_ARGS(&new_entry)));
+    auto& new_entry = this->command_signatures[signature];
+    D3D12_ASSERT_ON_FAIL(this->device->CreateCommandSignature(
+        &desc, with_draw_id ? signature.root_signature : nullptr, IID_PPV_ARGS(&new_entry)));
 
     return new_entry.Get();
 }

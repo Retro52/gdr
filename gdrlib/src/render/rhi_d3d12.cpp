@@ -302,6 +302,32 @@ static void d3d12_rhi_upload_push_constants(platform::d3d12_command_list* cmd)
     d3d12_rhi_set_root_cbv(cmd->command_list.Get(), index, cmd->scratch.va + offset, cmd->pso->is_compute());
 }
 
+static ID3D12CommandSignature* d3d12_rhi_mesh_task_signature(platform::d3d12_command_list* cmd, const u32 stride,
+                                                             u64& args_offset)
+{
+    const auto key = platform::d3d12_pso_param_key {
+        .slot = 0, .space = platform::kD3D12_DrawIdRegisterSpace, .resource_type = D3D12_DESCRIPTOR_RANGE_TYPE_CBV};
+
+    if (cmd->pso)
+    {
+        if (const auto it = cmd->pso->rs.dedup.find(key.hash()); it != cmd->pso->rs.dedup.end())
+        {
+            assert2(args_offset >= sizeof(u32));
+            args_offset -= sizeof(u32);
+
+            return cmd->get_signature({
+                .stride         = core::max<u8>(static_cast<u8>(stride), sizeof(u32[4])),
+                .type           = platform::d3d12_command_signature_type::draw_mesh_task_indirect_draw_id,
+                .root_index     = it->second,
+                .root_signature = cmd->pso->rs.signature.Get(),
+            });
+        }
+    }
+
+    return cmd->get_signature({.stride = core::max<u8>(static_cast<u8>(stride), sizeof(u32[3])),
+                               .type   = platform::d3d12_command_signature_type::draw_mesh_task_indirect});
+}
+
 // FIXME
 static void d3d12_rhi_blit_images(platform::d3d12_command_list* d3d12_cmd, const platform::d3d12_image* d3d12_src_image,
                                   const platform::d3d12_image* d3d12_dst_image, const rhi::blit_image_info& info)
@@ -1993,15 +2019,12 @@ void rhi::d3d12_cmd_draw_mesh_indirect(command_buffer cmd, buffer buffer, const 
 
     const d3d12_rhi_storage_scope storage(d3d12_cmd);
 
+    u64 args_offset = offset;
+    auto* signature = d3d12_rhi_mesh_task_signature(d3d12_cmd, stride, args_offset);
+
     d3d12_rhi_upload_push_constants(d3d12_cmd);
     d3d12_cmd->command_list->ExecuteIndirect(
-        d3d12_cmd->get_signature({.stride = core::max<u8>(static_cast<u8>(stride), sizeof(u32[3])),
-                                  .type   = platform::d3d12_command_signature_type::draw_mesh_task_indirect}),
-        count,
-        d3d12_buffer->allocation->GetResource(),
-        offset,
-        nullptr,
-        0);
+        signature, count, d3d12_buffer->allocation->GetResource(), args_offset, nullptr, 0);
 }
 
 void rhi::d3d12_cmd_draw_mesh_indirect_count(command_buffer cmd, rhi::buffer buffer, const u64 offset,
@@ -2022,15 +2045,16 @@ void rhi::d3d12_cmd_draw_mesh_indirect_count(command_buffer cmd, rhi::buffer buf
 
     const d3d12_rhi_storage_scope storage(d3d12_cmd);
 
+    u64 args_offset = offset;
+    auto* signature = d3d12_rhi_mesh_task_signature(d3d12_cmd, stride, args_offset);
+
     d3d12_rhi_upload_push_constants(d3d12_cmd);
-    d3d12_cmd->command_list->ExecuteIndirect(
-        d3d12_cmd->get_signature({.stride = static_cast<u8>(stride),
-                                  .type   = platform::d3d12_command_signature_type::draw_mesh_task_indirect}),
-        max_count,
-        d3d12_buffer->allocation->GetResource(),
-        offset,
-        d3d12_cnt_buffer->allocation->GetResource(),
-        count_offset);
+    d3d12_cmd->command_list->ExecuteIndirect(signature,
+                                             max_count,
+                                             d3d12_buffer->allocation->GetResource(),
+                                             args_offset,
+                                             d3d12_cnt_buffer->allocation->GetResource(),
+                                             count_offset);
 }
 
 void rhi::d3d12_cmd_debug_label_begin(command_buffer cmd, context context, const debug_label& label)

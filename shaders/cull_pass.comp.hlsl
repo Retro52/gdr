@@ -16,7 +16,11 @@ StructuredBuffer<uint> mesh_visibility_buffer: register(t4);
 #endif
 
 StructuredBuffer<FrameCullData>             frame_cull:         register(t5);
+#ifdef FOR_MESH_PIPELINE
+RWStructuredBuffer<DrawMeshTasksIndirect>   draw_indirect_cmds: register(u6);
+#else
 RWStructuredBuffer<DrawTaskCommandIndirect> draw_indirect_cmds: register(u6);
+#endif
 
 #ifdef FOR_LATE_OCCLUSION_TEST
 [[vk::combinedImageSampler]] Texture2D    depth_pyramid:         register(t7);
@@ -110,6 +114,28 @@ void main(uint3 global_id: SV_DispatchThreadID)
 
         uint task_count = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
 
+#ifdef FOR_MESH_PIPELINE
+        if (task_count > 0)
+        {
+            uint draw_id;
+            InterlockedAdd(draw_commands_count[material_class], 1, draw_id);
+            uint dci = draw_id + pc.offset_table[material_class];
+
+            draw_indirect_cmds[dci].draw_id = draw_id;
+            draw_indirect_cmds[dci].group_count[0] = task_count;
+            draw_indirect_cmds[dci].group_count[1] = 1;
+            draw_indirect_cmds[dci].group_count[2] = 1;
+            draw_indirect_cmds[dci].instance_id = idx;
+            draw_indirect_cmds[dci].meshlet_offset = selected_lod.base_meshlet;
+            draw_indirect_cmds[dci].visibility_offset = mesh_instances[idx].visibility_offset;
+#ifdef FOR_LATE_OCCLUSION_TEST
+            uint drawn_in_early_bit = (!inv_visibility_bit && !bucket_only) ? 1 : 0;
+            draw_indirect_cmds[dci].meshlet_count = selected_lod.meshlets_count | drawn_in_early_bit << 31;
+#else
+            draw_indirect_cmds[dci].meshlet_count = selected_lod.meshlets_count;
+#endif
+        }
+#else
         uint dci;
         InterlockedAdd(draw_commands_count[material_class], task_count, dci);
         dci += pc.offset_table[material_class];
@@ -128,6 +154,7 @@ void main(uint3 global_id: SV_DispatchThreadID)
             draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups);
 #endif
         }
+#endif
     }
 
 #ifdef FOR_LATE_OCCLUSION_TEST

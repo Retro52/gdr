@@ -12,6 +12,8 @@ namespace platform
     enum class PSVResourceType : u32;
     enum class PSVResourceKind : u32;
 
+    constexpr u16 kD3D12_DrawIdRegisterSpace = 4;
+
     // clang-format off
     REGISTER_FLAGS(d3d12_pso_dynstates,
         cull_mode_none,

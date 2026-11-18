@@ -108,6 +108,16 @@
       "cull_occlusion_tasks.comp"
     ]
   },
+  "mdi_cull_pipeline": {
+    "shaders": [
+      "cull_mdi.comp"
+    ]
+  },
+  "mdi_occlusion_cull_pipeline": {
+    "shaders": [
+      "cull_occlusion_mdi.comp"
+    ]
+  },
   "task_count_patch_pipeline": {
     "shaders": [
       "cull_pass_patch.comp"

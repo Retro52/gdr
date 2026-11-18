@@ -75,7 +75,7 @@ namespace app
         void patch_task_count(rhi::command_buffer cmd) const;
 
         void cull_scene(rhi::command_buffer cmd, const common_resources& res, const loader::scene_counters& counters,
-                        bool occlusion_cull) const;
+                        bool occlusion_cull, bool mesh_pipeline) const;
 
         void draw_scene(rhi::command_buffer cmd, const common_resources& res, const rhi::pipeline& pipeline,
                         const loader::scene_counters& counters, u32 material_class, bool mesh_pipeline) const;

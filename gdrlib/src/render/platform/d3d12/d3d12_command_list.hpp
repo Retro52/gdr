@@ -24,16 +24,29 @@ namespace platform
         dispatch_indirect,
         draw_indexed_indirect,
         draw_mesh_task_indirect,
+        draw_mesh_task_indirect_draw_id,
         COUNT
     );
     // clang-format on
 
     struct d3d12_command_signature_key
     {
-        u8 stride                         = 0;
-        d3d12_command_signature_type type = d3d12_command_signature_type::none;
+        u8 stride                           = 0;
+        d3d12_command_signature_type type   = d3d12_command_signature_type::none;
+        u32 root_index                      = 0;
+        ID3D12RootSignature* root_signature = nullptr;
 
-        [[nodiscard]] u32 hash() const { return static_cast<u32>(stride) << 8 | static_cast<u32>(type); }
+        bool operator==(const d3d12_command_signature_key&) const = default;
+
+        struct hasher
+        {
+            size_t operator()(const d3d12_command_signature_key& key) const noexcept
+            {
+                return std::hash<const void*> {}(key.root_signature)
+                     ^ (static_cast<size_t>(key.root_index) << 16 | static_cast<size_t>(key.stride) << 8
+                        | static_cast<size_t>(key.type));
+            }
+        };
     };
 
     constexpr u32 kD3D12_ShaderVisibleHeapsCount = 2;
@@ -72,7 +85,9 @@ namespace platform
         core::heap_array<D3D12_TEXTURE_BARRIER> attachment_barriers;
         core::local_array<d3d12_binding_expected_layout, 8> storage_views;
 
-        std::unordered_map<u32, com_ptr<ID3D12CommandSignature>> command_signatures;
+        std::unordered_map<d3d12_command_signature_key, com_ptr<ID3D12CommandSignature>,
+                           d3d12_command_signature_key::hasher>
+            command_signatures;
         std::array<ID3D12DescriptorHeap*, kD3D12_ShaderVisibleHeapsCount> shader_visible_heaps = {};
 
 #if TRACY_ENABLE

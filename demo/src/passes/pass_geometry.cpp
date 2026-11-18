@@ -96,8 +96,9 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
     mesh_draw_commands = *m_rhi.create_buffer(
         m_ctx,
         {
-            .size = (counters.buckets_offset.back() + counters.buckets.back())
-                  * sizeof(shader_types::DrawTaskCommandIndirect),
+            .size =
+                (counters.buckets_offset.back() + counters.buckets.back())
+                * core::max(sizeof(shader_types::DrawTaskCommandIndirect), sizeof(shader_types::DrawMeshTasksIndirect)),
             .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
             .dbg_name    = "mesh_draw_commands",
         });
@@ -150,8 +151,11 @@ void app::pass_geometry::draw(const rhi::command_buffer cmd, const common_resour
             on_pre_draw(cmd);
         }
 
-        cull_scene(cmd, res, counters, occlusion_cull_pass);
-        patch_task_count(cmd);
+        cull_scene(cmd, res, counters, occlusion_cull_pass, use_mesh_shaders);
+        if (!use_mesh_shaders)
+        {
+            patch_task_count(cmd);
+        }
     }
 
     for (const auto m_class : {shader_constants::kMatClassOpaque, shader_constants::kMatClassMasked})
@@ -355,7 +359,8 @@ void app::pass_geometry::patch_task_count(const rhi::command_buffer cmd) const
 }
 
 void app::pass_geometry::cull_scene(const rhi::command_buffer cmd, const common_resources& res,
-                                    const loader::scene_counters& counters, const bool occlusion_cull) const
+                                    const loader::scene_counters& counters, const bool occlusion_cull,
+                                    const bool mesh_pipeline) const
 {
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Cull scene");
@@ -397,8 +402,17 @@ void app::pass_geometry::cull_scene(const rhi::command_buffer cmd, const common_
     bindings.bind_next(mesh_draw_commands);
     bindings.bind_next(rhi::binding(this->hizb.image, this->hizb.sampler), occlusion_cull);
 
-    const rhi::pipeline& cull_pass =
-        occlusion_cull ? m_pipelines[pso_id::task_occlusion_cull_pipeline] : m_pipelines[pso_id::task_cull_pipeline];
+    pso_id cull_id;
+    if (mesh_pipeline)
+    {
+        cull_id = occlusion_cull ? pso_id::mdi_occlusion_cull_pipeline : pso_id::mdi_cull_pipeline;
+    }
+    else
+    {
+        cull_id = occlusion_cull ? pso_id::task_occlusion_cull_pipeline : pso_id::task_cull_pipeline;
+    }
+
+    const rhi::pipeline& cull_pass = m_pipelines[cull_id];
 
     m_rhi.cmd_bind_pso(cmd, cull_pass);
     m_rhi.cmd_push_bindings(cmd, cull_pass, bindings.get());
@@ -482,7 +496,18 @@ void app::pass_geometry::draw_scene(const rhi::command_buffer cmd, const common_
     if (mesh_pipeline)
     {
         m_rhi.cmd_push_bindings(cmd, pipeline, bindings.get());
-        m_rhi.cmd_draw_mesh_indirect(cmd, mesh_dispatch_count, material_class * 3 * sizeof(u32), 1, 0);
+        if (counters.buckets[material_class] > 0)
+        {
+            constexpr u32 kStride = sizeof(shader_types::DrawMeshTasksIndirect);
+            m_rhi.cmd_draw_mesh_indirect_count(cmd,
+                                               mesh_draw_commands,
+                                               counters.buckets_offset[material_class] * kStride
+                                                   + offsetof(shader_types::DrawMeshTasksIndirect, group_count),
+                                               mesh_draw_count,
+                                               material_class * sizeof(u32),
+                                               counters.buckets[material_class],
+                                               kStride);
+        }
     }
     else
     {

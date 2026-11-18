@@ -31,7 +31,7 @@ StructuredBuffer<MeshData>            meshes_data:               register(t4);
 StructuredBuffer<MeshInstance>        mesh_instances:            register(t5);
 SamplerState                          textures_sampler:          register(s6);
 #ifdef FOR_MESH_PIPELINE
-StructuredBuffer<DrawTaskCommandIndirect> draw_mesh_cmds:        register(t7);
+StructuredBuffer<DrawMeshTasksIndirect>   draw_mesh_cmds:        register(t7);
 StructuredBuffer<uint>                    draw_mesh_count:       register(t8);
 StructuredBuffer<FrameCullData>           frame_cull:            register(t9);
 
