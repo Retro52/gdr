@@ -102,6 +102,24 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
             .dbg_name    = "mesh_draw_commands",
         });
 
+    late_draw_count = *m_rhi.create_buffer(
+        m_ctx,
+        {
+            .size        = sizeof(u32[shader_constants::kMatClassCount]),
+            .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
+            .dbg_name    = "late_draw_count",
+        });
+
+    // Fits: an instance either has early tasks to retest or late tasks of its own, both bounded by its bucket share
+    late_draw_commands = *m_rhi.create_buffer(
+        m_ctx,
+        {
+            .size = (counters.buckets_offset.back() + counters.buckets.back())
+                  * sizeof(shader_types::DrawTaskCommandIndirect),
+            .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
+            .dbg_name    = "late_draw_commands",
+        });
+
     u32 biggest_bucket = 0;
     for (auto& entry : counters.buckets)
     {
@@ -132,6 +150,8 @@ void app::pass_geometry::shutdown()
     m_rhi.destroy_buffer(m_ctx, meshlets_visibility);
     m_rhi.destroy_buffer(m_ctx, indexed_count_buffer);
     m_rhi.destroy_buffer(m_ctx, indexed_draw_commands);
+    m_rhi.destroy_buffer(m_ctx, late_draw_count);
+    m_rhi.destroy_buffer(m_ctx, late_draw_commands);
 }
 
 void app::pass_geometry::draw(const rhi::command_buffer cmd, const common_resources& res,
@@ -143,6 +163,16 @@ void app::pass_geometry::draw(const rhi::command_buffer cmd, const common_resour
     const bool occlusion_cull_pass = params.flags & app::gpass_flags::hizb_cull;
     const bool use_mesh_shaders    = params.flags & app::gpass_flags::use_mesh_shaders;
 
+    pass_state state {
+        .late_pass      = occlusion_cull_pass,
+        .prev_hizb_mode = static_cast<bool>(params.flags & app::gpass_flags::prev_hizb),
+    };
+
+    // Prev-frame HiZB mode: the late pass consumes the list the early task / mesh_to_indexed shaders started
+    const bool use_late_list = state.late_pass && state.prev_hizb_mode;
+    state.draw_commands      = use_late_list ? late_draw_commands : mesh_draw_commands;
+    state.draw_count         = use_late_list ? late_draw_count : mesh_draw_count;
+
     if (params.flags & app::gpass_flags::any_cull)
     {
         if (params.flags & app::gpass_flags::cull)
@@ -150,15 +180,31 @@ void app::pass_geometry::draw(const rhi::command_buffer cmd, const common_resour
             on_pre_draw(cmd);
         }
 
-        cull_scene(cmd, res, counters, occlusion_cull_pass);
-        patch_task_count(cmd);
+        if (occlusion_cull_pass)
+        {
+            // Early pass task / mesh_to_indexed shaders append to the late list, late cull & patch passes continue it
+            constexpr rhi::global_barrier early_to_late_barrier {
+                .before = {.stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::all_graphics,
+                           .access = rhi::barrier_access::storage_write                                    },
+                .after  = {.stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::all_graphics,
+                           .access = rhi::barrier_access::storage_read | rhi::barrier_access::storage_write},
+            };
+
+            const rhi::barrier_batch early_to_late_barriers {
+                .globals = {&early_to_late_barrier, 1}
+            };
+            m_rhi.cmd_barriers(cmd, early_to_late_barriers);
+        }
+
+        cull_scene(cmd, res, counters, state);
+        patch_task_count(cmd, state);
     }
 
     for (const auto m_class : {shader_constants::kMatClassOpaque, shader_constants::kMatClassMasked})
     {
         if (!use_mesh_shaders)
         {
-            build_indexed_draw_commands(cmd, res, counters, m_class, occlusion_cull_pass);
+            build_indexed_draw_commands(cmd, res, counters, m_class, state);
         }
 
         const auto& render_pipeline =
@@ -171,7 +217,7 @@ void app::pass_geometry::draw(const rhi::command_buffer cmd, const common_resour
         m_rhi.cmd_set_cull_mode(
             cmd, m_class == shader_constants::kMatClassOpaque ? rhi::cull_mode::back : rhi::cull_mode::none);
 
-        draw_scene(cmd, res, render_pipeline, counters, m_class, use_mesh_shaders);
+        draw_scene(cmd, res, render_pipeline, counters, m_class, use_mesh_shaders, state);
     }
 
     if (params.flags & app::gpass_flags::build_hizb)
@@ -197,7 +243,10 @@ void app::pass_geometry::destroy_resources()
     ZoneScoped;
     m_rhi.destroy_image(m_ctx, this->depth);
     m_rhi.destroy_image(m_ctx, this->v_buffer);
-    destroy_depth_pyramid(m_rhi, this->hizb, m_ctx);
+    for (auto& pyramid : m_hizb)
+    {
+        destroy_depth_pyramid(m_rhi, pyramid, m_ctx);
+    }
 }
 
 void app::pass_geometry::create_resources(const uvec2 render_res)
@@ -206,7 +255,12 @@ void app::pass_geometry::create_resources(const uvec2 render_res)
     this->m_render_res = render_res;
     this->v_buffer     = create_vis_buffer_image(m_rhi, render_res, m_ctx);
     this->depth        = create_depth_image(m_rhi, render_res, rhi::image_format::d32sf, m_ctx);
-    this->hizb         = create_depth_pyramid(m_rhi, render_res, rhi::image_format::r32sf, m_ctx);
+
+    for (u32 i = 0; i < COUNT_OF(m_hizb); ++i)
+    {
+        m_hizb[i]       = create_depth_pyramid(m_rhi, render_res, rhi::image_format::r32sf, m_ctx);
+        m_hizb_valid[i] = false;
+    }
 }
 
 void app::pass_geometry::on_pre_draw(const rhi::command_buffer cmd) const
@@ -250,6 +304,19 @@ void app::pass_geometry::on_pre_draw(const rhi::command_buffer cmd) const
 
     m_rhi.cmd_barriers(cmd, {.images = std::span {clear_barriers}});
     app::zero_buffer(m_rhi, cmd, indexed_count_buffer);
+
+    // Both passes bind both pyramids, make sure freshly (re)created ones aren't in an undefined layout
+    for (u32 i = 0; i < COUNT_OF(m_hizb); ++i)
+    {
+        if (!m_hizb_valid[i])
+        {
+            const rhi::image_barrier hizb_barrier = app::make_image_barrier(m_hizb[i].image, rhi::image_layout::common);
+            const rhi::barrier_batch hizb_barriers {
+                .images = {&hizb_barrier, 1}
+            };
+            m_rhi.cmd_barriers(cmd, hizb_barriers);
+        }
+    }
 }
 
 void app::pass_geometry::build_hzb(const rhi::command_buffer cmd)
@@ -263,8 +330,10 @@ void app::pass_geometry::build_hzb(const rhi::command_buffer cmd)
         app::zero_buffer(m_rhi, cmd, rhi::buffer {.id = m_spd_counter.value()});
     }
 
+    const depth_pyramid_data& hizb = m_hizb[m_hizb_cur];
+
     const rhi::image_barrier img_barrier {
-        app::make_image_barrier(this->hizb.image, rhi::image_layout::common),
+        app::make_image_barrier(hizb.image, rhi::image_layout::common),
     };
 
     const rhi::barrier_batch barriers {
@@ -277,19 +346,19 @@ void app::pass_geometry::build_hzb(const rhi::command_buffer cmd)
     constexpr u32 kSpdTile    = 64;
     constexpr u32 kSpdThreads = 256;
 
-    const u32 mips = core::min<u32>(this->hizb.pyramid_count, kSpdMaxMips);
-    assert2(mips == this->hizb.pyramid_count);
+    const u32 mips = core::min<u32>(hizb.pyramid_count, kSpdMaxMips);
+    assert2(mips == hizb.pyramid_count);
 
     rhi::binding bindings[2 + kSpdMaxMips];
-    bindings[0] = rhi::binding(rhi::attachment(this->depth), this->hizb.sampler);
+    bindings[0] = rhi::binding(rhi::attachment(this->depth), hizb.sampler);
     bindings[1] = rhi::binding(rhi::buffer {.id = m_spd_counter.value()});
     for (u32 i = 0; i < kSpdMaxMips; ++i)
     {
-        bindings[2 + i] = rhi::binding(rhi::attachment(this->hizb.views[core::min(i, mips - 1)]));
+        bindings[2 + i] = rhi::binding(rhi::attachment(hizb.views[core::min(i, mips - 1)]));
     }
 
     const auto& spd_pipeline = m_pipelines[pso_id::build_hizb_pipeline];
-    const uvec2 groups       = (uvec2(this->hizb.base_size) * 2U + (kSpdTile - 1U)) / kSpdTile;
+    const uvec2 groups       = (uvec2(hizb.base_size) * 2U + (kSpdTile - 1U)) / kSpdTile;
 
     const struct
     {
@@ -297,10 +366,7 @@ void app::pass_geometry::build_hzb(const rhi::command_buffer cmd)
         uvec2 hiz_size;
         u32 mips;
         u32 workgroups;
-    } pc {.src_size   = m_render_res,
-          .hiz_size   = uvec2(this->hizb.base_size),
-          .mips       = mips,
-          .workgroups = groups.x * groups.y};
+    } pc {.src_size = m_render_res, .hiz_size = uvec2(hizb.base_size), .mips = mips, .workgroups = groups.x * groups.y};
 
     m_rhi.cmd_bind_pso(cmd, spd_pipeline);
     m_rhi.cmd_push_bindings(cmd, spd_pipeline, std::span {bindings});
@@ -321,9 +387,11 @@ void app::pass_geometry::build_hzb(const rhi::command_buffer cmd)
     };
 
     m_rhi.cmd_barriers(cmd, done_barriers);
+
+    m_hizb_valid[m_hizb_cur] = true;
 }
 
-void app::pass_geometry::patch_task_count(const rhi::command_buffer cmd) const
+void app::pass_geometry::patch_task_count(const rhi::command_buffer cmd, const pass_state& state) const
 {
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Patch task dispatch count");
@@ -331,7 +399,7 @@ void app::pass_geometry::patch_task_count(const rhi::command_buffer cmd) const
     const rhi::pipeline& patch_pass = m_pipelines[pso_id::task_count_patch_pipeline];
 
     const rhi::binding bindings[] = {
-        mesh_draw_count,
+        state.draw_count,
         mesh_dispatch_count,
     };
 
@@ -355,50 +423,67 @@ void app::pass_geometry::patch_task_count(const rhi::command_buffer cmd) const
 }
 
 void app::pass_geometry::cull_scene(const rhi::command_buffer cmd, const common_resources& res,
-                                    const loader::scene_counters& counters, const bool occlusion_cull) const
+                                    const loader::scene_counters& counters, const pass_state& state) const
 {
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Cull scene");
 
-    u32 update_data[shader_constants::kMatClassCount];
-    core::cx_fill(&update_data[0], update_data + COUNT_OF(update_data), 0);
+    // Prev-frame HiZB mode: the late pass continues the list early task / mesh_to_indexed shaders started
+    if (!(state.late_pass && state.prev_hizb_mode))
+    {
+        u32 update_data[shader_constants::kMatClassCount];
+        core::cx_fill(&update_data[0], update_data + COUNT_OF(update_data), 0);
 
-    constexpr auto update_range = u64vec2(0, sizeof(update_data));
+        constexpr auto update_range = u64vec2(0, sizeof(update_data));
 
-    rhi::global_barrier pre_barrier {
-        .before = {.stages = rhi::barrier_stage::copy, .access = rhi::barrier_access::copy_write},
-        .after  = {.stages = rhi::barrier_stage::copy, .access = rhi::barrier_access::copy_write}
-    };
-    const rhi::barrier_batch pre_barriers {
-        .globals = {&pre_barrier, 1}
-    };
+        constexpr auto kCounterUsers =
+            rhi::barrier_stage::copy | rhi::barrier_stage::compute_shader | rhi::barrier_stage::all_graphics;
+        constexpr auto kCounterAccess =
+            rhi::barrier_access::copy_write | rhi::barrier_access::storage_read | rhi::barrier_access::storage_write;
 
-    m_rhi.cmd_barriers(cmd, pre_barriers);
-    m_rhi.cmd_update_buffer(cmd, mesh_draw_count, update_range, update_data);
+        rhi::global_barrier pre_barrier {
+            .before = {.stages = kCounterUsers,            .access = kCounterAccess                 },
+            .after  = {.stages = rhi::barrier_stage::copy, .access = rhi::barrier_access::copy_write}
+        };
+        const rhi::barrier_batch pre_barriers {
+            .globals = {&pre_barrier, 1}
+        };
 
-    rhi::global_barrier update_barrier {
-        .before = {.stages = rhi::barrier_stage::copy,           .access = rhi::barrier_access::copy_write},
-        .after  = {.stages = rhi::barrier_stage::compute_shader,
-                   .access = rhi::barrier_access::storage_read | rhi::barrier_access::storage_write       }
-    };
-    const rhi::barrier_batch update_barriers {
-        .globals = {&update_barrier, 1}
-    };
+        m_rhi.cmd_barriers(cmd, pre_barriers);
+        m_rhi.cmd_update_buffer(cmd, mesh_draw_count, update_range, update_data);
+        if (state.prev_hizb_mode)
+        {
+            m_rhi.cmd_update_buffer(cmd, late_draw_count, update_range, update_data);
+        }
 
-    m_rhi.cmd_barriers(cmd, update_barriers);
+        // all_graphics: early task shaders append to the late list
+        rhi::global_barrier update_barrier {
+            .before = {.stages = rhi::barrier_stage::copy,                                              .access = rhi::barrier_access::copy_write},
+            .after  = {.stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::all_graphics,
+                       .access = rhi::barrier_access::storage_read | rhi::barrier_access::storage_write                                          }
+        };
+        const rhi::barrier_batch update_barriers {
+            .globals = {&update_barrier, 1}
+        };
+
+        m_rhi.cmd_barriers(cmd, update_barriers);
+    }
+
+    // Early pass tests against the previous frame HiZB (prev-frame HiZB mode only), late pass against this frame's
+    const depth_pyramid_data& test_hizb = state.late_pass ? cur_hizb() : prev_hizb();
 
     descriptor_bindings bindings;
     bindings.bind_next(res.primitives);
     bindings.bind_next(res.instances);
     bindings.bind_next(res.materials);
-    bindings.bind_next(mesh_draw_count);
+    bindings.bind_next(state.draw_count);
     bindings.bind_next(mesh_visibility);
     bindings.bind_next(res.frame_cull_data_buffer().buffer);
-    bindings.bind_next(mesh_draw_commands);
-    bindings.bind_next(rhi::binding(this->hizb.image, this->hizb.sampler), occlusion_cull);
+    bindings.bind_next(state.draw_commands);
+    bindings.bind_next(rhi::binding(test_hizb.image, test_hizb.sampler));
 
     const rhi::pipeline& cull_pass =
-        occlusion_cull ? m_pipelines[pso_id::task_occlusion_cull_pipeline] : m_pipelines[pso_id::task_cull_pipeline];
+        state.late_pass ? m_pipelines[pso_id::task_occlusion_cull_pipeline] : m_pipelines[pso_id::task_cull_pipeline];
 
     m_rhi.cmd_bind_pso(cmd, cull_pass);
     m_rhi.cmd_push_bindings(cmd, cull_pass, bindings.get());
@@ -423,7 +508,7 @@ void app::pass_geometry::cull_scene(const rhi::command_buffer cmd, const common_
 
 void app::pass_geometry::draw_scene(const rhi::command_buffer cmd, const common_resources& res,
                                     const rhi::pipeline& pipeline, const loader::scene_counters& counters,
-                                    const u32 material_class, const bool mesh_pipeline) const
+                                    const u32 material_class, const bool mesh_pipeline, const pass_state& state) const
 {
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Draw scene");
@@ -471,11 +556,19 @@ void app::pass_geometry::draw_scene(const rhi::command_buffer cmd, const common_
     bindings.bind_at(res.instances, shader_bindings::draw::kInstanceBinding);
     bindings.bind_at(rhi::binding(res.bindless_sampler), shader_bindings::draw::kTextureBinding);
 
-    bindings.bind_at(mesh_draw_commands, shader_bindings::draw::kDrawBinding, mesh_pipeline);
-    bindings.bind_at(mesh_draw_count, shader_bindings::draw::kCountBinding, mesh_pipeline);
+    const depth_pyramid_data& cur_pyramid  = cur_hizb();
+    const depth_pyramid_data& prev_pyramid = prev_hizb();
+
+    bindings.bind_at(state.draw_commands, shader_bindings::draw::kDrawBinding, mesh_pipeline);
+    bindings.bind_at(state.draw_count, shader_bindings::draw::kCountBinding, mesh_pipeline);
     bindings.bind_at(meshlets_visibility, shader_bindings::draw::kVisibilityBinding, mesh_pipeline);
-    bindings.bind_at(rhi::binding(hizb.image, hizb.sampler), shader_bindings::draw::kHiZBinding, mesh_pipeline);
+    bindings.bind_at(
+        rhi::binding(cur_pyramid.image, cur_pyramid.sampler), shader_bindings::draw::kHiZBinding, mesh_pipeline);
     bindings.bind_at(res.frame_cull_data_buffer().buffer, shader_bindings::draw::kCullBinding, mesh_pipeline);
+    bindings.bind_at(
+        rhi::binding(prev_pyramid.image, prev_pyramid.sampler), shader_bindings::draw::kPrevHiZBinding, mesh_pipeline);
+    bindings.bind_at(late_draw_commands, shader_bindings::draw::kLateDrawBinding, mesh_pipeline);
+    bindings.bind_at(late_draw_count, shader_bindings::draw::kLateCountBinding, mesh_pipeline);
 
     bindings.bind_at(indexed_draw_commands, shader_bindings::draw::kDrawBinding, !mesh_pipeline);
 
@@ -510,7 +603,7 @@ void app::pass_geometry::draw_scene(const rhi::command_buffer cmd, const common_
 
 void app::pass_geometry::build_indexed_draw_commands(const rhi::command_buffer cmd, const common_resources& res,
                                                      const loader::scene_counters& counters, const u32 material_class,
-                                                     const bool enable_occlusion_cull) const
+                                                     const pass_state& state) const
 {
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Build indexed draw commands");
@@ -525,25 +618,28 @@ void app::pass_geometry::build_indexed_draw_commands(const rhi::command_buffer c
     bindings.bind_next(res.meshlets_payload);
     bindings.bind_next(res.primitives);
     bindings.bind_next(res.instances);
-    bindings.bind_next(mesh_draw_commands);
-    bindings.bind_next(mesh_draw_count);
+    bindings.bind_next(state.draw_commands);
+    bindings.bind_next(state.draw_count);
     bindings.bind_next(res.frame_cull_data_buffer().buffer);
     bindings.bind_next(res.index);
     bindings.bind_next(indexed_draw_commands);
     bindings.bind_next(indexed_count_buffer);
     bindings.bind_next(meshlets_visibility);
-    bindings.bind_next(rhi::binding(this->hizb.image, this->hizb.sampler), enable_occlusion_cull);
+    bindings.bind_next(rhi::binding(cur_hizb().image, cur_hizb().sampler));
+    bindings.bind_next(rhi::binding(prev_hizb().image, prev_hizb().sampler));
+    bindings.bind_next(late_draw_commands);
+    bindings.bind_next(late_draw_count);
 
     pso_id id;
     switch (material_class)
     {
     case shader_constants::kMatClassMasked :
     case shader_constants::kMatClassTranslucent :
-        id = (enable_occlusion_cull ? pso_id::mesh_to_indexed_ds_late_pipeline : pso_id::mesh_to_indexed_ds_pipeline);
+        id = (state.late_pass ? pso_id::mesh_to_indexed_ds_late_pipeline : pso_id::mesh_to_indexed_ds_pipeline);
         break;
     default :
     case shader_constants::kMatClassOpaque :
-        id = (enable_occlusion_cull ? pso_id::mesh_to_indexed_late_pipeline : pso_id::mesh_to_indexed_pipeline);
+        id = (state.late_pass ? pso_id::mesh_to_indexed_late_pipeline : pso_id::mesh_to_indexed_pipeline);
         break;
     }
 

@@ -17,6 +17,9 @@ namespace shader_bindings::draw
     const uint kCullBinding        = 9;
     const uint kVisibilityBinding  = 10;
     const uint kHiZBinding         = 11;
+    const uint kPrevHiZBinding     = 12;
+    const uint kLateDrawBinding    = 13;
+    const uint kLateCountBinding   = 14;
 }
 #endif
 
@@ -36,12 +39,20 @@ StructuredBuffer<uint>                    draw_mesh_count:       register(t8);
 StructuredBuffer<FrameCullData>           frame_cull:            register(t9);
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-RWStructuredBuffer<uint> meshlets_visibility_buffer:             register(u10);
-[[vk::combinedImageSampler]] Texture2D    depth_pyramid:         register(t11);
+RWStructuredBuffer<uint> meshlets_visibility_buffer:             register(u10);  // bitfields mode only
+[[vk::combinedImageSampler]] Texture2D    depth_pyramid:         register(t11);  // this frame's HiZB
 [[vk::combinedImageSampler]] SamplerState depth_pyramid_sampler: register(s11);
 #else
-StructuredBuffer<uint> meshlets_visibility_buffer:               register(t10);
+StructuredBuffer<uint> meshlets_visibility_buffer:               register(t10);  // bitfields mode only
+
+// Prev-frame HiZB mode: tasks with meshlets rejected by the previous frame HiZB, retested in the late pass
+RWStructuredBuffer<DrawTaskCommandIndirect> late_draw_cmds:      register(u13);
+RWStructuredBuffer<uint>                    late_draw_count:     register(u14);
 #endif
+
+// Prev-frame HiZB mode: early pass tests against it, late pass repeats that test to skip already drawn meshlets
+[[vk::combinedImageSampler]] Texture2D    prev_depth_pyramid:         register(t12);
+[[vk::combinedImageSampler]] SamplerState prev_depth_pyramid_sampler: register(s12);
 #else
 StructuredBuffer<DrawIndexedIndirect>     draw_cmds:             register(t7);
 #endif

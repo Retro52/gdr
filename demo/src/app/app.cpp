@@ -610,6 +610,16 @@ int app::instance::run()
         m_args.read_vec3("--camera_position", camera.get_component<transform_component>().position);
 
     render_settings client_render_settings;
+    if (const auto prev_hizb = m_args.read_numeric("--prev_frame_hizb", -1); prev_hizb != -1)
+    {
+        constexpr u32 kBit = 1U << shader_constants::kPrevFrameHiZBBit;
+        client_render_settings.flags =
+            prev_hizb ? client_render_settings.flags | kBit : client_render_settings.flags & ~kBit;
+    }
+
+    // Cull data the HiZB was last built with, previous frame view for the prev-frame HiZB visibility mode
+    shader_types::FrameCullData last_cull_data {};
+    bool last_cull_data_valid = false;
 
     glm::mat4 camera_proj;
     glm::mat4 camera_proj_jittered;
@@ -630,7 +640,7 @@ int app::instance::run()
 
     bool fsr_aa_reset             = false;
     bool freeze_cull_data         = false;
-    bool enable_meshlets_pipeline = mesh_shading_supported;
+    bool enable_meshlets_pipeline = mesh_shading_supported && m_args.read_numeric("--mesh_pipeline", 1);
 
     u32 tracy_meshlets_current_section    = 0;
     auto tracy_meshlets_on_section_change = [&]
@@ -787,6 +797,18 @@ int app::instance::run()
                 m_rhi.cmd_debug_label_begin(buffer, *context, {.label = "Frame"});
 
                 auto& frame_cull_data_buffer = resources.frame_cull_data_buffer();
+
+                // last frame's HiZB becomes the previous one
+                gpass.next_frame();
+
+                constexpr u32 kPrevFrameHiZBMask = 1U << shader_constants::kPrevFrameHiZBBit;
+                const bool prev_frame_hizb       = client_render_settings.flags & kPrevFrameHiZBMask;
+
+                // Fall back to bitfields until there is a HiZB from a previous frame to test against
+                const u32 cull_flags = gpass.has_hizb_history() ? client_render_settings.flags
+                                                                : client_render_settings.flags & ~kPrevFrameHiZBMask;
+                const auto visibility_mode_flags =
+                    (cull_flags & kPrevFrameHiZBMask) ? gpass_flags::prev_hizb : gpass_flags::none;
                 if (!freeze_cull_data)
                 {
                     auto projection = client_render_settings.render_distance > 0
@@ -796,18 +818,35 @@ int app::instance::run()
                     auto view = camera_component::get_view_matrix(camera_transform.position, camera_transform.rotation);
                     debug_camera_view = view;
 
-                    shader_types::FrameCullData fcd {.pyramid_size  = gpass.hizb.base_size,
+                    shader_types::FrameCullData fcd {.pyramid_size  = gpass.cur_hizb().base_size,
                                                      .viewport_size = m_window.get_size_in_px(),
                                                      .draw_count    = static_cast<u32>(scene_data.counters.instances),
-                                                     .flags         = client_render_settings.flags};
+                                                     .flags         = cull_flags};
                     build_frustum(fcd, projection, view);
+
+                    const auto& prev = last_cull_data_valid ? last_cull_data : fcd;
+                    fcd.prev_view    = prev.view;
+                    fcd.prev_p00     = prev.p00;
+                    fcd.prev_p11     = prev.p11;
+                    fcd.prev_znear   = prev.frustum[4];
+
+                    last_cull_data       = fcd;
+                    last_cull_data_valid = true;
+
                     (*static_cast<shader_types::FrameCullData*>(frame_cull_data_buffer.mapped)) = fcd;
                 }
                 else
                 {
-                    static_cast<shader_types::FrameCullData*>(frame_cull_data_buffer.mapped)->view = debug_camera_view;
-                    static_cast<shader_types::FrameCullData*>(frame_cull_data_buffer.mapped)->flags =
-                        client_render_settings.flags;
+                    // HiZB is rebuilt from the frozen view every frame, so there is no reprojection
+                    auto* fcd       = static_cast<shader_types::FrameCullData*>(frame_cull_data_buffer.mapped);
+                    fcd->view       = debug_camera_view;
+                    fcd->prev_view  = debug_camera_view;
+                    fcd->prev_p00   = fcd->p00;
+                    fcd->prev_p11   = fcd->p11;
+                    fcd->prev_znear = fcd->frustum[4];
+                    fcd->flags      = cull_flags;
+
+                    last_cull_data.view = debug_camera_view;
                 }
 
                 camera_proj = camera_data.get_projection_matrix();
@@ -848,7 +887,8 @@ int app::instance::run()
                     pass_geometry::draw_params {
                         .view       = freeze_cull_data ? debug_camera_view : camera_view,
                         .projection = camera_proj_jittered,
-                        .flags = enable_meshlets_pipeline ? gpass_flags::pre_hizb_mesh : gpass_flags::pre_hizb_indexed,
+                        .flags = (enable_meshlets_pipeline ? gpass_flags::pre_hizb_mesh : gpass_flags::pre_hizb_indexed)
+                               | visibility_mode_flags,
                     });
 
                 if (freeze_cull_data)
@@ -859,21 +899,26 @@ int app::instance::run()
                                pass_geometry::draw_params {
                                    .view       = camera_view,
                                    .projection = camera_proj_jittered,
-                                   .flags      = (enable_meshlets_pipeline ? gpass_flags::pre_hizb_mesh
-                                                                           : gpass_flags::pre_hizb_indexed)
-                                          & ~gpass_flags::build_hizb,
+                                   .flags      = ((enable_meshlets_pipeline ? gpass_flags::pre_hizb_mesh
+                                                                            : gpass_flags::pre_hizb_indexed)
+                                             & ~gpass_flags::build_hizb)
+                                          | visibility_mode_flags,
                                });
                 }
 
-                gpass.draw(buffer,
-                           resources,
-                           scene_data.counters,
-                           pass_geometry::draw_params {
-                               .view       = camera_view,
-                               .projection = camera_proj_jittered,
-                               .flags      = enable_meshlets_pipeline ? gpass_flags::post_hizb_mesh
-                                                                      : gpass_flags::post_hizb_indexed,
-                           });
+                gpass.draw(
+                    buffer,
+                    resources,
+                    scene_data.counters,
+                    pass_geometry::draw_params {
+                        .view       = camera_view,
+                        .projection = camera_proj_jittered,
+                        // full-frame HiZB for the next frame's early pass (prev-frame HiZB mode)
+                        .flags =
+                            (enable_meshlets_pipeline ? gpass_flags::post_hizb_mesh : gpass_flags::post_hizb_indexed)
+                            | (prev_frame_hizb && !freeze_cull_data ? gpass_flags::build_hizb : gpass_flags::none)
+                            | visibility_mode_flags,
+                    });
 
                 pass_light_resolve::draw_params light_params {
                     .color         = gpass.v_buffer,
@@ -997,7 +1042,23 @@ int app::instance::run()
                     "Meshlets occlusion cull",
                     "Small meshlets cull",
                 };
-                ImGuiWidgets::Bits(client_render_settings.flags, names, COUNT_OF(names));
+
+                // Visibility source is a mode, not a debug toggle: keep it out of the All/None/Invert batch buttons
+                {
+                    constexpr u32 kModeMask = 1U << shader_constants::kPrevFrameHiZBBit;
+
+                    u32 debug_flags = client_render_settings.flags;
+                    ImGuiWidgets::Bits(debug_flags, names, COUNT_OF(names));
+                    client_render_settings.flags =
+                        (debug_flags & ~kModeMask) | (client_render_settings.flags & kModeMask);
+
+                    bool use_prev_hizb = client_render_settings.flags & kModeMask;
+                    if (ImGui::Checkbox("Prev-frame HiZB visibility (instead of bitfields)", &use_prev_hizb))
+                    {
+                        client_render_settings.flags = use_prev_hizb ? client_render_settings.flags | kModeMask
+                                                                     : client_render_settings.flags & ~kModeMask;
+                    }
+                }
 
                 ImGui::InputFloat3("Camera pos", &camera_transform.position.x);
                 ImGui::BeginDisabled(true);

@@ -14,6 +14,9 @@ namespace shader_constants
     static const uint kMeshletFrustumCullBit   = 4;
     static const uint kMeshletOcclusionCullBit = 5;
     static const uint kSmallMeshletsCullBit    = 6;
+    // Last-frame visibility source: 0 - visibility bitfields, 1 - reprojected previous frame HiZB.
+    // Runtime mode switch, not a debug toggle: always read with GET_BIT
+    static const uint kPrevFrameHiZBBit = 7;
 
     static const uint kMatGlossBit        = 0;
     static const uint kMatTransmitanceBit = 1;

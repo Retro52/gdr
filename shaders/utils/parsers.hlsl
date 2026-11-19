@@ -24,6 +24,18 @@ uint read_meshlet_vertex(ByteAddressBuffer meshlet_data, uint addr, uint idx_siz
     return ((word >> ((addr & 3u) * 8)) & mask);
 }
 
+float4 unpack_meshlet_sphere(Meshlet meshlet, float4x4 view, float4 translation_scale, float4 rotation)
+{
+    float3 local_center = float3(
+        meshlet.sphere_center[0],
+        meshlet.sphere_center[1],
+        meshlet.sphere_center[2]
+    );
+
+    float4 world_center = float4(transform_vec3(local_center, translation_scale, rotation), 1.0F);
+    return float4(mul(view, world_center).xyz, abs(float(meshlet.sphere_radius) * translation_scale.w));
+}
+
 void unpack_meshlet_data(Meshlet meshlet, float4x4 view, float4 translation_scale, float4 rotation, out float4 sphere, out float4 cone)
 {
     float3 local_center = float3(

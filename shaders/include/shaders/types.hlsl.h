@@ -218,7 +218,8 @@ namespace shader_types
     struct FrameCullData
     {
         float4x4 view;
-        float frustum[6];  // left/right/top/bottom/znear/zfar
+        float4x4 prev_view;  // view the HiZB was built with (previous frame); used by kPrevFrameHiZBBit mode
+        float frustum[6];    // left/right/top/bottom/znear/zfar
         float2 pyramid_size;
         float2 viewport_size;
         float p00;
@@ -226,6 +227,9 @@ namespace shader_types
         float lod_threshold;
         uint draw_count;
         uint flags;
+        float prev_p00;
+        float prev_p11;
+        float prev_znear;
     };
 #ifdef __cplusplus
 }

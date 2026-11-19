@@ -2,6 +2,7 @@
 
 #include "utils/math.hlsl"
 #include "utils/gather.hlsl"
+#include "utils/parsers.hlsl"
 
 bool is_within_frustum(float3 center, float radius, float frustum[6])
 {
@@ -76,4 +77,27 @@ bool is_hizb_occluded2(
     }
 
     return false;
+}
+
+// Prev-frame HiZB mode: meshlet sphere reprojected with the view & projection the previous frame HiZB was built with.
+// Deterministic, so the late pass can repeat the early pass decision instead of storing it.
+bool is_meshlet_prev_hizb_occluded(
+    Meshlet meshlet,
+    MeshInstance instance,
+    FrameCullData cull,
+    Texture2D prev_hizb,
+    SamplerState prev_hizb_sampler
+)
+{
+    const float4 sphere = unpack_meshlet_sphere(meshlet, cull.prev_view, instance.pos_and_scale, instance.rotation_quat);
+    return is_hizb_occluded2(
+        sphere.xyz,
+        sphere.w,
+        cull.prev_znear,
+        cull.prev_p00,
+        cull.prev_p11,
+        cull.pyramid_size,
+        prev_hizb,
+        prev_hizb_sampler
+    );
 }

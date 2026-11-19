@@ -9,19 +9,17 @@ StructuredBuffer<MeshInstance> mesh_instances:      register(t1);
 StructuredBuffer<MeshMaterial> mesh_materials:      register(t2);
 RWStructuredBuffer<uint>       draw_commands_count: register(u3);
 
-#ifdef FOR_LATE_OCCLUSION_TEST
+// Bitfields mode: visible last frame, written by the late pass. Prev-frame HiZB mode: drawn early, written by the early pass
 RWStructuredBuffer<uint> mesh_visibility_buffer: register(u4);
-#else
-StructuredBuffer<uint> mesh_visibility_buffer: register(t4);
-#endif
 
-StructuredBuffer<FrameCullData>             frame_cull:         register(t5);
+StructuredBuffer<FrameCullData> frame_cull: register(t5);
+
+// Prev-frame HiZB mode, late pass: appends to the list the early task / mesh_to_indexed passes started
 RWStructuredBuffer<DrawTaskCommandIndirect> draw_indirect_cmds: register(u6);
 
-#ifdef FOR_LATE_OCCLUSION_TEST
+// Early pass: previous frame HiZB (prev-frame HiZB mode only). Late pass: this frame's HiZB
 [[vk::combinedImageSampler]] Texture2D    depth_pyramid:         register(t7);
 [[vk::combinedImageSampler]] SamplerState depth_pyramid_sampler: register(s7);
-#endif
 
 struct PushConstants
 {
@@ -40,6 +38,9 @@ void main(uint3 global_id: SV_DispatchThreadID)
         return;
     }
 
+    const bool prev_hizb      = GET_BIT(frame_cull[0].flags, kPrevFrameHiZBBit) == 1;
+    const bool occlusion_cull = DBG_GET_BIT1(frame_cull[0].flags, kOcclusionCullBit) == 1;
+
     bool inv_visibility_bit = (GET_BIT(mesh_visibility_buffer[idx >> 5], idx & 31u) == 0);
     uint material_class = uint(mesh_materials[mesh_instances[idx].material_index].material_class);
 
@@ -50,9 +51,11 @@ void main(uint3 global_id: SV_DispatchThreadID)
 #endif
 
 #ifdef FOR_LATE_OCCLUSION_TEST
-    const bool early_out = DBG_GET_BIT1(frame_cull[0].flags, kOcclusionCullBit) == 0 && !bucket_only;
+    // Prev-frame HiZB mode: instances drawn early are done, their tasks with rejected meshlets are already
+    // in the late list. Not drawn ones were either frustum culled or rejected by the previous frame HiZB.
+    const bool early_out = (!occlusion_cull || (prev_hizb && !inv_visibility_bit)) && !bucket_only;
 #else
-    bool early_out = (inv_visibility_bit && DBG_GET_BIT1(frame_cull[0].flags, kOcclusionCullBit) == 1) || bucket_only;
+    bool early_out = (!prev_hizb && inv_visibility_bit && occlusion_cull) || bucket_only;
 #endif
 
     if (early_out)
@@ -74,9 +77,8 @@ void main(uint3 global_id: SV_DispatchThreadID)
     bool visible = DBG_GET_BIT1(frame_cull[0].flags, kFrustumCullBit) == 0
                    || is_within_frustum(sphere.xyz, sphere.w, frame_cull[0].frustum);
 
-    // draw only last frame occluders
 #ifdef FOR_LATE_OCCLUSION_TEST
-    if (visible && DBG_GET_BIT1(frame_cull[0].flags, kOcclusionCullBit) == 1)
+    if (visible && occlusion_cull)
     {
         visible = !is_hizb_occluded2(
                 sphere.xyz,
@@ -84,6 +86,30 @@ void main(uint3 global_id: SV_DispatchThreadID)
                 frame_cull[0].frustum[4],
                 frame_cull[0].p00,
                 frame_cull[0].p11,
+                frame_cull[0].pyramid_size,
+                depth_pyramid,
+                depth_pyramid_sampler
+        );
+    }
+#else
+    // Test against the previous frame HiZB, reprojected with the view & projection it was built with
+    if (prev_hizb && visible && occlusion_cull)
+    {
+        float4 prev_sphere;
+        unpack_instance_data(
+            meshes_data[mesh_idx],
+            frame_cull[0].prev_view,
+            mesh_instances[idx].pos_and_scale,
+            mesh_instances[idx].rotation_quat,
+            prev_sphere
+        );
+
+        visible = !is_hizb_occluded2(
+                prev_sphere.xyz,
+                prev_sphere.w,
+                frame_cull[0].prev_znear,
+                frame_cull[0].prev_p00,
+                frame_cull[0].prev_p11,
                 frame_cull[0].pyramid_size,
                 depth_pyramid,
                 depth_pyramid_sampler
@@ -130,10 +156,22 @@ void main(uint3 global_id: SV_DispatchThreadID)
         }
     }
 
+    const uint bit = 1u << (idx & 31u);
 #ifdef FOR_LATE_OCCLUSION_TEST
-    if (visible)
-        InterlockedOr(mesh_visibility_buffer[idx >> 5], 1u << (idx & 31u));
-    else
-        InterlockedAnd(mesh_visibility_buffer[idx >> 5], ~(1u << (idx & 31u)));
+    if (!prev_hizb)
+    {
+        if (visible)
+            InterlockedOr(mesh_visibility_buffer[idx >> 5], bit);
+        else
+            InterlockedAnd(mesh_visibility_buffer[idx >> 5], ~bit);
+    }
+#else
+    if (prev_hizb)
+    {
+        if (visible)
+            InterlockedOr(mesh_visibility_buffer[idx >> 5], bit);
+        else
+            InterlockedAnd(mesh_visibility_buffer[idx >> 5], ~bit);
+    }
 #endif
 }
