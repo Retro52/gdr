@@ -111,6 +111,8 @@ namespace shader_types
     {
         uint base_meshlet;
         uint meshlets_count;
+        uint base_index;
+        uint indices_count;
         float error;
     };
 

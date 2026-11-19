@@ -74,6 +74,7 @@ namespace loader
         {
             u64 meshlet_offset;
             u64 meshlet_data_offset;
+            u64 index_offset;
         };
 
         u32 prim_index;  // index into ctx.primitives
@@ -103,6 +104,7 @@ namespace loader
         scene_counters counters;
 
         core::heap_array<loader::vertex> vertices;
+        core::heap_array<u32> indices;
 
         core::heap_array<loader::meshlet> meshlets;
         core::heap_array<u8> meshlets_data;

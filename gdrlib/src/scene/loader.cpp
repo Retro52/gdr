@@ -589,6 +589,7 @@ auto loader::load_scene(const fs::path& path, scene& scene) -> result<scene_data
             layout.lod_array[i] = {
                 .meshlet_offset      = total_meshlets,
                 .meshlet_data_offset = total_payload,
+                .index_offset        = total_indices,
             };
 
             total_indices += lod.raw_indices.size();
@@ -605,6 +606,7 @@ auto loader::load_scene(const fs::path& path, scene& scene) -> result<scene_data
 
     scene_data.primitives.resize(prim_count);
     scene_data.vertices.resize(total_vertices);
+    scene_data.indices.resize(total_indices);
     scene_data.meshlets.resize(total_meshlets);
     scene_data.meshlets_data.resize(total_payload);
 
@@ -826,8 +828,14 @@ void loader::encode_raw_mesh(scene_data& data, const mesh::raw_mesh& primitive, 
 
         encoded_lod_level.base_meshlet   = lod_layout.meshlet_offset;
         encoded_lod_level.meshlets_count = lod_level.raw_meshlets.size();
+        encoded_lod_level.base_index     = lod_layout.index_offset;
+        encoded_lod_level.indices_count  = lod_level.raw_indices.size();
 
         encoded_lod_level.error = lod_level.error;
+
+        std::memcpy(data.indices.data() + lod_layout.index_offset,
+                    lod_level.raw_indices.data(),
+                    lod_level.raw_indices.size() * sizeof(u32));
 
         const u64 meshlet_base_offset = lod_layout.meshlet_data_offset;
 

@@ -19,7 +19,7 @@ StructuredBuffer<FrameCullData>             frame_cull:         register(t5);
 #ifdef FOR_MESH_PIPELINE
 RWStructuredBuffer<DrawMeshTasksIndirect>   draw_indirect_cmds: register(u6);
 #else
-RWStructuredBuffer<DrawTaskCommandIndirect> draw_indirect_cmds: register(u6);
+RWStructuredBuffer<DrawIndexedIndirect>     draw_indirect_cmds: register(u6);
 #endif
 
 #ifdef FOR_LATE_OCCLUSION_TEST
@@ -112,9 +112,8 @@ void main(uint3 global_id: SV_DispatchThreadID)
         lod_base = DBG_GET_BIT1(frame_cull[0].flags, kLodFlagBit) == 0 ? 0 : lod_base;
         MeshLod selected_lod = meshes_data[mesh_idx].lod_array[lod_base];
 
-        uint task_count = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
-
 #ifdef FOR_MESH_PIPELINE
+        uint task_count = (selected_lod.meshlets_count + kTaskWorkGroups - 1) / kTaskWorkGroups;
         if (task_count > 0)
         {
             uint draw_id;
@@ -136,23 +135,27 @@ void main(uint3 global_id: SV_DispatchThreadID)
 #endif
         }
 #else
-        uint dci;
-        InterlockedAdd(draw_commands_count[material_class], task_count, dci);
-        dci += pc.offset_table[material_class];
-
-        for (uint i = task_count; i > 0; i--)
-        {
-            uint dcii = dci + task_count - i;
-            uint offset = kTaskWorkGroups * (task_count - i);
-            draw_indirect_cmds[dcii].instance_id = idx;
-            draw_indirect_cmds[dcii].meshlet_offset = selected_lod.base_meshlet + offset;
-            draw_indirect_cmds[dcii].visibility_offset = mesh_instances[idx].visibility_offset + offset;
 #ifdef FOR_LATE_OCCLUSION_TEST
-            uint drawn_in_early_bit = (!inv_visibility_bit && !bucket_only) ? 1 : 0;
-            draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups) | drawn_in_early_bit << 31;
+        const bool drawn_in_early = !inv_visibility_bit && !bucket_only;
 #else
-            draw_indirect_cmds[dcii].meshlet_count = min(selected_lod.meshlets_count - offset, kTaskWorkGroups);
+        const bool drawn_in_early = false;
 #endif
+        if (!drawn_in_early && selected_lod.indices_count > 0)
+        {
+            uint draw_id;
+            InterlockedAdd(draw_commands_count[material_class], 1, draw_id);
+            uint dci = draw_id + pc.offset_table[material_class];
+
+            draw_indirect_cmds[dci].index_count = selected_lod.indices_count;
+            draw_indirect_cmds[dci].instance_count = 1;
+            draw_indirect_cmds[dci].first_index = selected_lod.base_index;
+            draw_indirect_cmds[dci].vertex_offset = int(mesh_instances[idx].base_vertex);
+#ifdef EMULATE_DRAW_ID
+            draw_indirect_cmds[dci].first_instance = draw_id;
+#else
+            draw_indirect_cmds[dci].first_instance = 0;
+#endif
+            draw_indirect_cmds[dci].instance_id = idx;
         }
 #endif
     }

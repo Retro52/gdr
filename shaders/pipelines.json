@@ -30,9 +30,9 @@
       ]
     }
   },
-  "task_cull_pipeline": {
+  "indexed_cull_pipeline": {
     "shaders": [
-      "cull_tasks.comp"
+      "cull_indexed.comp"
     ]
   },
   "task_render_pipeline": {
@@ -103,9 +103,9 @@
       "mesh_ext"
     ]
   },
-  "task_occlusion_cull_pipeline": {
+  "indexed_occlusion_cull_pipeline": {
     "shaders": [
-      "cull_occlusion_tasks.comp"
+      "cull_occlusion_indexed.comp"
     ]
   },
   "mdi_cull_pipeline": {

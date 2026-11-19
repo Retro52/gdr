@@ -21,8 +21,8 @@ namespace app
         mesh_resolve_pipeline = "mesh_resolve_pipeline"_crc32,
         vert_resolve_pipeline = "vert_resolve_pipeline"_crc32,
 
-        task_cull_pipeline           = "task_cull_pipeline"_crc32,
-        task_occlusion_cull_pipeline = "task_occlusion_cull_pipeline"_crc32,
+        indexed_cull_pipeline           = "indexed_cull_pipeline"_crc32,
+        indexed_occlusion_cull_pipeline = "indexed_occlusion_cull_pipeline"_crc32,
 
         mdi_cull_pipeline           = "mdi_cull_pipeline"_crc32,
         mdi_occlusion_cull_pipeline = "mdi_occlusion_cull_pipeline"_crc32,

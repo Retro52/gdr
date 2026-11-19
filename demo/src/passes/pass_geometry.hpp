@@ -40,15 +40,12 @@ namespace app
         rhi::image v_buffer = rhi::null_image;
         depth_pyramid_data hizb;
 
-        rhi::buffer mesh_draw_count      = rhi::null_buffer;  // Raw per-mat class counter of task shader dispatches
-        rhi::buffer mesh_dispatch_count  = rhi::null_buffer;  // Patched thread count used to dispatch task shaders
-        rhi::buffer indexed_count_buffer = rhi::null_buffer;  // Counter for DrawIndexedIndirectCount/ExecuteIndirect
+        rhi::buffer mesh_draw_count = rhi::null_buffer;  // Per-mat class draw count for Draw*IndirectCount
 
         rhi::buffer mesh_visibility     = rhi::null_buffer;
         rhi::buffer meshlets_visibility = rhi::null_buffer;
 
-        rhi::buffer mesh_draw_commands    = rhi::null_buffer;
-        rhi::buffer indexed_draw_commands = rhi::null_buffer;
+        rhi::buffer mesh_draw_commands = rhi::null_buffer;
 
         constexpr static u32 kMaxMeshlets  = ~static_cast<u32>(0) >> 10;
         constexpr static u32 kMaxInstances = kMaxMeshlets >> 2;
@@ -72,17 +69,11 @@ namespace app
 
         void build_hzb(rhi::command_buffer cmd);
 
-        void patch_task_count(rhi::command_buffer cmd) const;
-
         void cull_scene(rhi::command_buffer cmd, const common_resources& res, const loader::scene_counters& counters,
                         bool occlusion_cull, bool mesh_pipeline) const;
 
         void draw_scene(rhi::command_buffer cmd, const common_resources& res, const rhi::pipeline& pipeline,
                         const loader::scene_counters& counters, u32 material_class, bool mesh_pipeline) const;
-
-        void build_indexed_draw_commands(rhi::command_buffer cmd, const common_resources& res,
-                                         const loader::scene_counters& counters, u32 material_class,
-                                         bool enable_occlusion_cull) const;
 
     private:
         uvec2 m_render_res             = uvec2(0);

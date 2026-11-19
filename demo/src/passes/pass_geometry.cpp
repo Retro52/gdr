@@ -52,22 +52,6 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
             .dbg_name    = "mesh_draw_count",
         });
 
-    indexed_count_buffer = *m_rhi.create_buffer(
-        m_ctx,
-        {
-            .size        = sizeof(u32[2]),
-            .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
-            .dbg_name    = "indexed_count_buffer",
-        });
-
-    mesh_dispatch_count = *m_rhi.create_buffer(
-        m_ctx,
-        {
-            .size        = sizeof(u32[shader_constants::kMatClassCount * 3]),
-            .usage_flags = rhi::buffer_usage::indirect | rhi::buffer_usage::copy_dst | rhi::buffer_usage::shader_rw,
-            .dbg_name    = "mesh_dispatch_count",
-        });
-
     m_spd_counter = m_rhi
                         .create_buffer(m_ctx,
                                        {
@@ -98,23 +82,9 @@ app::pass_geometry::pass_geometry(const rhi::impl& impl, const app::pso_data& pi
         {
             .size =
                 (counters.buckets_offset.back() + counters.buckets.back())
-                * core::max(sizeof(shader_types::DrawTaskCommandIndirect), sizeof(shader_types::DrawMeshTasksIndirect)),
+                * core::max(sizeof(shader_types::DrawIndexedIndirect), sizeof(shader_types::DrawMeshTasksIndirect)),
             .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
             .dbg_name    = "mesh_draw_commands",
-        });
-
-    u32 biggest_bucket = 0;
-    for (auto& entry : counters.buckets)
-    {
-        biggest_bucket = core::max(biggest_bucket, entry);
-    }
-
-    indexed_draw_commands = *m_rhi.create_buffer(
-        m_ctx,
-        {
-            .size = biggest_bucket * sizeof(shader_types::DrawIndexedIndirect) * shader_constants::kTaskWorkGroups / 2,
-            .usage_flags = rhi::buffer_usage::copy_dst | rhi::buffer_usage::indirect | rhi::buffer_usage::shader_rw,
-            .dbg_name    = "indexed_draw_commands",
         });
 }
 
@@ -129,10 +99,7 @@ void app::pass_geometry::shutdown()
     m_rhi.destroy_buffer(m_ctx, mesh_draw_count);
     m_rhi.destroy_buffer(m_ctx, mesh_visibility);
     m_rhi.destroy_buffer(m_ctx, mesh_draw_commands);
-    m_rhi.destroy_buffer(m_ctx, mesh_dispatch_count);
     m_rhi.destroy_buffer(m_ctx, meshlets_visibility);
-    m_rhi.destroy_buffer(m_ctx, indexed_count_buffer);
-    m_rhi.destroy_buffer(m_ctx, indexed_draw_commands);
 }
 
 void app::pass_geometry::draw(const rhi::command_buffer cmd, const common_resources& res,
@@ -152,19 +119,10 @@ void app::pass_geometry::draw(const rhi::command_buffer cmd, const common_resour
         }
 
         cull_scene(cmd, res, counters, occlusion_cull_pass, use_mesh_shaders);
-        if (!use_mesh_shaders)
-        {
-            patch_task_count(cmd);
-        }
     }
 
     for (const auto m_class : {shader_constants::kMatClassOpaque, shader_constants::kMatClassMasked})
     {
-        if (!use_mesh_shaders)
-        {
-            build_indexed_draw_commands(cmd, res, counters, m_class, occlusion_cull_pass);
-        }
-
         const auto& render_pipeline =
             gpass_get_render_pipeline(m_pipelines, m_class, occlusion_cull_pass, use_mesh_shaders);
         const auto push_constants = shader_types::DrawPushConstants {
@@ -253,7 +211,6 @@ void app::pass_geometry::on_pre_draw(const rhi::command_buffer cmd) const
     };
 
     m_rhi.cmd_barriers(cmd, {.images = std::span {clear_barriers}});
-    app::zero_buffer(m_rhi, cmd, indexed_count_buffer);
 }
 
 void app::pass_geometry::build_hzb(const rhi::command_buffer cmd)
@@ -327,43 +284,19 @@ void app::pass_geometry::build_hzb(const rhi::command_buffer cmd)
     m_rhi.cmd_barriers(cmd, done_barriers);
 }
 
-void app::pass_geometry::patch_task_count(const rhi::command_buffer cmd) const
-{
-    ZoneScoped;
-    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Patch task dispatch count");
-
-    const rhi::pipeline& patch_pass = m_pipelines[pso_id::task_count_patch_pipeline];
-
-    const rhi::binding bindings[] = {
-        mesh_draw_count,
-        mesh_dispatch_count,
-    };
-
-    m_rhi.cmd_bind_pso(cmd, patch_pass);
-    m_rhi.cmd_push_bindings(cmd, patch_pass, std::span {bindings});
-    m_rhi.cmd_dispatch(cmd, patch_pass, uvec3(1));
-
-    rhi::global_barrier barrier {
-        .before = {.stages = rhi::barrier_stage::compute_shader, .access = rhi::barrier_access::storage_write},
-        .after  = {
-                   .stages =
-                rhi::barrier_stage::compute_shader | rhi::barrier_stage::indirect | rhi::barrier_stage::all_graphics,
-                   .access = rhi::barrier_access::indirect_read | rhi::barrier_access::storage_read,
-                   }
-    };
-
-    const rhi::barrier_batch barriers {
-        .globals = {&barrier, 1}
-    };
-    m_rhi.cmd_barriers(cmd, barriers);
-}
-
 void app::pass_geometry::cull_scene(const rhi::command_buffer cmd, const common_resources& res,
                                     const loader::scene_counters& counters, const bool occlusion_cull,
                                     const bool mesh_pipeline) const
 {
     ZoneScoped;
     SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Cull scene");
+
+#if defined(__APPLE__)
+    if (!mesh_pipeline)
+    {
+        app::zero_buffer(m_rhi, cmd, mesh_draw_commands);
+    }
+#endif
 
     u32 update_data[shader_constants::kMatClassCount];
     core::cx_fill(&update_data[0], update_data + COUNT_OF(update_data), 0);
@@ -409,7 +342,7 @@ void app::pass_geometry::cull_scene(const rhi::command_buffer cmd, const common_
     }
     else
     {
-        cull_id = occlusion_cull ? pso_id::task_occlusion_cull_pipeline : pso_id::task_cull_pipeline;
+        cull_id = occlusion_cull ? pso_id::indexed_occlusion_cull_pipeline : pso_id::indexed_cull_pipeline;
     }
 
     const rhi::pipeline& cull_pass = m_pipelines[cull_id];
@@ -485,18 +418,17 @@ void app::pass_geometry::draw_scene(const rhi::command_buffer cmd, const common_
     bindings.bind_at(res.instances, shader_bindings::draw::kInstanceBinding);
     bindings.bind_at(rhi::binding(res.bindless_sampler), shader_bindings::draw::kTextureBinding);
 
-    bindings.bind_at(mesh_draw_commands, shader_bindings::draw::kDrawBinding, mesh_pipeline);
+    bindings.bind_at(mesh_draw_commands, shader_bindings::draw::kDrawBinding);
     bindings.bind_at(mesh_draw_count, shader_bindings::draw::kCountBinding, mesh_pipeline);
     bindings.bind_at(meshlets_visibility, shader_bindings::draw::kVisibilityBinding, mesh_pipeline);
     bindings.bind_at(rhi::binding(hizb.image, hizb.sampler), shader_bindings::draw::kHiZBinding, mesh_pipeline);
     bindings.bind_at(res.frame_cull_data_buffer().buffer, shader_bindings::draw::kCullBinding, mesh_pipeline);
 
-    bindings.bind_at(indexed_draw_commands, shader_bindings::draw::kDrawBinding, !mesh_pipeline);
+    m_rhi.cmd_push_bindings(cmd, pipeline, bindings.get());
 
-    if (mesh_pipeline)
+    if (counters.buckets[material_class] > 0)
     {
-        m_rhi.cmd_push_bindings(cmd, pipeline, bindings.get());
-        if (counters.buckets[material_class] > 0)
+        if (mesh_pipeline)
         {
             constexpr u32 kStride = sizeof(shader_types::DrawMeshTasksIndirect);
             m_rhi.cmd_draw_mesh_indirect_count(cmd,
@@ -508,102 +440,27 @@ void app::pass_geometry::draw_scene(const rhi::command_buffer cmd, const common_
                                                counters.buckets[material_class],
                                                kStride);
         }
-    }
-    else
-    {
-        m_rhi.cmd_push_bindings(cmd, pipeline, bindings.get());
-        m_rhi.cmd_bind_index(cmd, res.index);
+        else
+        {
+            constexpr u32 kStride = sizeof(shader_types::DrawIndexedIndirect);
+            m_rhi.cmd_bind_index(cmd, res.index);
 #if defined(__APPLE__)
-        m_rhi.cmd_draw_indexed_indirect(cmd,
-                                        indexed_draw_commands,
-                                        0,
-                                        counters.buckets[material_class] * shader_constants::kTaskWorkGroups / 2,
-                                        sizeof(shader_types::DrawIndexedIndirect));
+            m_rhi.cmd_draw_indexed_indirect(cmd,
+                                            mesh_draw_commands,
+                                            counters.buckets_offset[material_class] * kStride,
+                                            counters.buckets[material_class],
+                                            kStride);
 #else
-        m_rhi.cmd_draw_indexed_indirect_count(cmd,
-                                              indexed_draw_commands,
-                                              0,
-                                              indexed_count_buffer,
-                                              sizeof(u32),
-                                              counters.buckets[material_class] * shader_constants::kTaskWorkGroups / 2,
-                                              sizeof(shader_types::DrawIndexedIndirect));
+            m_rhi.cmd_draw_indexed_indirect_count(cmd,
+                                                  mesh_draw_commands,
+                                                  counters.buckets_offset[material_class] * kStride,
+                                                  mesh_draw_count,
+                                                  material_class * sizeof(u32),
+                                                  counters.buckets[material_class],
+                                                  kStride);
 #endif
+        }
     }
 
     m_rhi.cmd_clear_draw_state(cmd);
-}
-
-void app::pass_geometry::build_indexed_draw_commands(const rhi::command_buffer cmd, const common_resources& res,
-                                                     const loader::scene_counters& counters, const u32 material_class,
-                                                     const bool enable_occlusion_cull) const
-{
-    ZoneScoped;
-    SCOPED_GPU_PASS(m_rhi, cmd, m_ctx, "Build indexed draw commands");
-
-#if defined(__APPLE__)
-    app::zero_buffer(m_rhi, cmd, indexed_draw_commands);
-#endif
-    app::zero_buffer(m_rhi, cmd, indexed_count_buffer, sizeof(u32));
-
-    descriptor_bindings bindings;
-    bindings.bind_next(res.meshlets);
-    bindings.bind_next(res.meshlets_payload);
-    bindings.bind_next(res.primitives);
-    bindings.bind_next(res.instances);
-    bindings.bind_next(mesh_draw_commands);
-    bindings.bind_next(mesh_draw_count);
-    bindings.bind_next(res.frame_cull_data_buffer().buffer);
-    bindings.bind_next(res.index);
-    bindings.bind_next(indexed_draw_commands);
-    bindings.bind_next(indexed_count_buffer);
-    bindings.bind_next(meshlets_visibility);
-    bindings.bind_next(rhi::binding(this->hizb.image, this->hizb.sampler), enable_occlusion_cull);
-
-    pso_id id;
-    switch (material_class)
-    {
-    case shader_constants::kMatClassMasked :
-    case shader_constants::kMatClassTranslucent :
-        id = (enable_occlusion_cull ? pso_id::mesh_to_indexed_ds_late_pipeline : pso_id::mesh_to_indexed_ds_pipeline);
-        break;
-    default :
-    case shader_constants::kMatClassOpaque :
-        id = (enable_occlusion_cull ? pso_id::mesh_to_indexed_late_pipeline : pso_id::mesh_to_indexed_pipeline);
-        break;
-    }
-
-    const rhi::pipeline& fill_pass = m_pipelines[id];
-
-    const struct push_constants
-    {
-        u32 cmd_offset;
-        u32 count_offset;
-    } pc(counters.buckets_offset[material_class], material_class);
-
-    m_rhi.cmd_bind_pso(cmd, fill_pass);
-    m_rhi.cmd_push_constants(cmd, fill_pass, &pc, sizeof(pc), 0);
-
-    m_rhi.cmd_push_bindings(cmd, fill_pass, bindings.get());
-    m_rhi.cmd_dispatch_indirect(cmd, mesh_dispatch_count, material_class * 3 * sizeof(u32));
-
-    constexpr rhi::global_barrier barrier {
-        .before =
-            {
-                     .stages = rhi::barrier_stage::compute_shader,
-                     .access = rhi::barrier_access::storage_write,
-                     },
-        .after =
-            {
-                     .stages = rhi::barrier_stage::compute_shader | rhi::barrier_stage::indirect
-                        | rhi::barrier_stage::all_graphics,
-                     .access = rhi::barrier_access::indirect_read | rhi::barrier_access::storage_read
-                        | rhi::barrier_access::index_read,
-                     },
-    };
-
-    const rhi::barrier_batch barriers {
-        .globals = {&barrier, 1}
-    };
-
-    m_rhi.cmd_barriers(cmd, barriers);
 }

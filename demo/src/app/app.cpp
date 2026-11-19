@@ -150,56 +150,6 @@ namespace
         return min + static_cast<T>(static_cast<f64>(rand() * (max - min)) / static_cast<f64>(RAND_MAX));
     }
 
-    core::heap_array<u32> resolve_meshlet_indices(loader::scene_data& scene)
-    {
-        ZoneScoped;
-
-        u32 base_index = 0;
-        core::heap_array<u32> result;
-
-        auto load = [](const u32* data, const u32 byte_offset) -> u32
-        {
-            return data[byte_offset / 4];
-        };
-
-        auto load_u8 = [](const u32* data, const u32 byte_offset) -> u32
-        {
-            return (data[(byte_offset & ~3u) / 4] >> ((byte_offset & 3u) * 8u)) & 0xFFu;
-        };
-
-        auto meshlet_read_vertex = [&](const u32* meshlet_data, const u32 addr, const u32 idx_size_bytes)
-        {
-            const u32 word = load(meshlet_data, addr & ~3u);
-            const u32 mask = static_cast<u32>((1ull << (idx_size_bytes * 8)) - 1);
-            return (word >> ((addr & 3u) * 8)) & mask;
-        };
-
-        const u32* data = reinterpret_cast<const u32*>(scene.meshlets_data.data());
-
-        for (auto& meshlet : scene.meshlets)
-        {
-            meshlet.index_offset = base_index;
-            base_index += meshlet.triangles_count() * 3;
-
-            const u32 index_size_bytes = meshlet.index_size_bytes;
-            const u32 m_base_index     = meshlet.data_offset + meshlet.vertices_count() * index_size_bytes;
-
-            for (u32 i = 0; i < meshlet.triangles_count(); ++i)
-            {
-                const u32 iid = m_base_index + i * 3;
-
-                result.emplace_back() = meshlet_read_vertex(
-                    data, meshlet.data_offset + load_u8(data, iid + 0) * index_size_bytes, index_size_bytes);
-                result.emplace_back() = meshlet_read_vertex(
-                    data, meshlet.data_offset + load_u8(data, iid + 1) * index_size_bytes, index_size_bytes);
-                result.emplace_back() = meshlet_read_vertex(
-                    data, meshlet.data_offset + load_u8(data, iid + 2) * index_size_bytes, index_size_bytes);
-            }
-        }
-
-        return result;
-    }
-
     loader::scene_data populate_scene(const u32 draw_count, const core::heap_array<mesh::raw_mesh>& primitives,
                                       scene& scene)
     {
@@ -211,6 +161,7 @@ namespace
         core::heap_array<loader::prim_layout> layouts(primitives.size());
 
         u64 total_vertices = 0;
+        u64 total_indices  = 0;
         u64 total_meshlets = 0;
         u64 total_payload  = 0;
         for (u32 p = 0; p < primitives.size(); ++p)
@@ -227,8 +178,10 @@ namespace
                 layout.lod_array[i] = {
                     .meshlet_offset      = total_meshlets,
                     .meshlet_data_offset = total_payload,
+                    .index_offset        = total_indices,
                 };
 
+                total_indices += lod.raw_indices.size();
                 total_meshlets += lod.raw_meshlets.size();
                 total_payload += lod.raw_meshlets_payload.size();
             }
@@ -237,6 +190,7 @@ namespace
         data.instances.resize(draw_count);
         data.materials.resize(draw_count);
         data.vertices.resize(total_vertices);
+        data.indices.resize(total_indices);
         data.meshlets.resize(total_meshlets);
         data.meshlets_data.resize(total_payload);
         data.primitives.resize(primitives.size());
@@ -460,11 +414,10 @@ int app::instance::run()
         updates.push_back(rhi::bindless_set_write_info {.dst = handle, .index = i + 1});
     }
 
-    const auto meshlets_indices_lookup = resolve_meshlet_indices(scene_data);
     common_resources resources(m_rhi,
                                *context,
                                scene_data.counters,
-                               meshlets_indices_lookup.size(),
+                               scene_data.indices.size(),
                                scene_data.meshlets_data.size(),
                                kFramesInFlight);
 
@@ -484,7 +437,7 @@ int app::instance::run()
 
     m_rhi.update_bindless_set(*context, resources.bindless_textures, std::span {updates});
     upload_mgr.submit(resources.vertex, scene_data.vertices.data(), scene_data.vertices.size());
-    upload_mgr.submit(resources.index, meshlets_indices_lookup.data(), meshlets_indices_lookup.size());
+    upload_mgr.submit(resources.index, scene_data.indices.data(), scene_data.indices.size());
     upload_mgr.submit(resources.meshlets, scene_data.meshlets.data(), scene_data.meshlets.size());
     upload_mgr.submit(resources.instances, scene_data.instances.data(), scene_data.instances.size());
     upload_mgr.submit(resources.materials, scene_data.materials.data(), scene_data.materials.size());

@@ -28,9 +28,9 @@ struct Output
 Output main(Input input)
 {
 #ifdef EMULATE_DRAW_ID
-    uint cid = input.base_instance;
+    uint cid = input.base_instance + pc.cmd_offset;
 #else
-    uint cid = input.draw_id;
+    uint cid = input.draw_id + pc.cmd_offset;
 #endif
 
     // unlike gl_VertexIndex, SV_VertexID doesn't include the base vertex (Vulkan matches it with -fvk-support-nonzero-base-vertex)
