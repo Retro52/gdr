@@ -45,6 +45,7 @@ namespace shader_types
     using shader_constants::kLODCount;
     using shader_constants::kMatClassCount;
     using shader_constants::kMaxVerticesPerMeshlet;
+    using shader_constants::kTaskWorkGroups;
 
 #define QUAT glm::quat
 #else
@@ -104,7 +105,7 @@ namespace shader_types
     {
         uint instance_id;
         uint base_vertex;
-        uint meshlet_ids[kMaxVerticesPerMeshlet];
+        uint meshlet_ids[kTaskWorkGroups];
     };
 
     struct MeshLod

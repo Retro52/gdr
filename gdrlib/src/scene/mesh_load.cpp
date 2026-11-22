@@ -222,8 +222,7 @@ void mesh::build_meshlets(const core::heap_array<raw_vertex>& vertices, const co
 
     {
         ZoneScopedN("re-align meshlets array");
-        constexpr u32 kTSAlign = shader_constants::kTaskWorkGroups;
-        meshlets.resize(((meshlets_count + kTSAlign - 1) / kTSAlign) * kTSAlign);
+        meshlets.resize(meshlets_count);
     }
 
     {

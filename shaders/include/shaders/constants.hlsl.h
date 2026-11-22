@@ -25,8 +25,8 @@ namespace shader_constants
 
     static const uint kEnvPrefilterMips = 5;
 
-    static const uint kMaxVerticesPerMeshlet     = 64;
-    static const uint kMaxTrianglesPerMeshlet    = 84;
+    static const uint kMaxVerticesPerMeshlet     = 128;
+    static const uint kMaxTrianglesPerMeshlet    = 126;
     static const uint kMeshletIndexMaxSizeInBits = 7;
     static const uint kMeshletIndexMask          = 127;
     static const uint kMaxIndicesPerMeshlet      = kMaxTrianglesPerMeshlet * 3;
@@ -34,7 +34,7 @@ namespace shader_constants
     static const uint kLODCount = 8;
 
     static const uint kTaskWorkGroups           = 64;
-    static const uint kMeshWorkGroups           = 64;
+    static const uint kMeshWorkGroups           = 128;
     static const uint kMaxTaskDispatchDimension = 65535;
 
     static const uint kInstanceIdMask = ~(1u << 31);

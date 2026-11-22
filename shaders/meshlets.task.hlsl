@@ -40,8 +40,8 @@ void main(uint3 group_id: SV_GroupID, uint3 local_id: SV_GroupThreadID)
         visible = DBG_GET_BIT1(frame_cull[0].flags, kMeshletConeCullBit) == 0
                   || is_cone_aligned(sphere.xyz, sphere.w, cone.xyz, cone.w);
 #endif
-        visible = DBG_GET_BIT1(frame_cull[0].flags, kMeshletFrustumCullBit) == 0
-                  || is_within_frustum(sphere.xyz, sphere.w, frame_cull[0].frustum);
+        visible = visible && (DBG_GET_BIT1(frame_cull[0].flags, kMeshletFrustumCullBit) == 0
+                              || is_within_frustum(sphere.xyz, sphere.w, frame_cull[0].frustum));
 
         float4 extents;
         const bool is_valid_proj = project_sphere(sphere.xyz, sphere.w, frame_cull[0].frustum[4], frame_cull[0].p00, frame_cull[0].p11, extents);
